@@ -24,7 +24,7 @@ class SessionController extends Controller {
             ]
         );
 
-        if ( ! Auth::attempt( $attributes ) ) {
+        if ( ! Auth::attempt( $attributes , $request->has('remember')) ) {
             return back()->withErrors( [ 'email' => 'Invalid credentials' ] )->onlyInput( 'email' );
         }
 

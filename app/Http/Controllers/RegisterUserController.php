@@ -25,23 +25,7 @@ class RegisterUserController extends Controller {
             ]
         );
 
-        $employer_attributes = $request->validate(
-            [
-                'employer' => 'required|string|max:255',
-                'logo'     => 'nullable|image|max:2048',
-            ]
-        );
-
         $user = \App\Models\User::create( $user_attributes );
-
-        $logo_path = $request->file( 'logo' )?->store( 'logos' );
-
-        $user->employer()->create(
-            [
-                'name' => $employer_attributes[ 'employer' ],
-                'logo' => $logo_path,
-            ]
-        );
 
         Auth::login( $user );
 

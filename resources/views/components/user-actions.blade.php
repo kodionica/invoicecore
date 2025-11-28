@@ -15,7 +15,7 @@
                     <form action="{{ route('logout') }}" method="POST" class="dropdown-item logout-form">
                         @csrf
                         @method('DELETE')
-                        <button class="btn btn--danger logout-button">Log out</button>
+                        <button class="btn p-0 text-danger logout-button">Log out</button>
                     </form>
                 </li>
             </ul>

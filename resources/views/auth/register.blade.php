@@ -13,7 +13,7 @@
                 <x-forms.input label="Password" name="password" type="password" required="true" class="mb-2"/>
             </div>
             <div class="col-md-6">
-                <x-forms.input label="Password Confirm" name="password_confirm" type="password" required="true" class="mb-2"/>
+                <x-forms.input label="Password Confirm" name="password_confirmation" type="password" required="true" class="mb-2"/>
             </div>
         </div>
 

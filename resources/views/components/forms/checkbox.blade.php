@@ -6,7 +6,7 @@
         'id' => $name,
         'name' => $name,
         'value' => old($name),
-        'class' => 'form-check-input',
+        'class' => 'form-check-input ' . ($errors->first($name) ? 'is-invalid' : ''),
     ];
 
     $wrapper_class .= ' form-check';

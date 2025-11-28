@@ -1,5 +1,4 @@
 @props(['label', 'name', 'wrapper_class' => ''])
-
 <div class="{{ $wrapper_class }}">
     {{ $slot }}
 
