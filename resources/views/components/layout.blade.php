@@ -14,7 +14,7 @@
         @endisset
     @endif
 </head>
-<body class="">
+<body class="{{ Auth::user() ? 'user--logged-in' : 'user--guest' }}">
 <x-header/>
 
 <main id="main" class="container">{{ $slot }}</main>
