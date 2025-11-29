@@ -1,0 +1,9 @@
+@use "bootstrap";
+
+@use "layout/header";
+@use "layout/sidebar-nav";
+
+body {
+    --sidebar-width: 250px;
+    padding-left: var(--sidebar-width);
+}

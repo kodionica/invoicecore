@@ -1,0 +1,16 @@
+.sidebar-nav {
+    --bs-body-color: #fff;
+    --bs-nav-link-color: #fff;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 1000;
+    width: var(--sidebar-width);
+    background-color: #2A3F54;
+
+    .sub-item {
+        padding-left: 15px;
+        font-size: 15px;
+    }
+}

@@ -15,11 +15,11 @@
     @endif
 </head>
 <body class="{{ Auth::user() ? 'user--logged-in' : 'user--guest' }}">
+<x-sidebar/>
+
 <x-header/>
 
 <main id="main" class="container">{{ $slot }}</main>
-
-<x-footer/>
 
 @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
     @isset($script)

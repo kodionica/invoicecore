@@ -1,4 +1,4 @@
-@props(['label', 'name', 'wrapper_class'])
+@props(['label' => '', 'name', 'wrapper_class' => ''])
 
 @php
     $defaults = [
