@@ -16,6 +16,12 @@ class Invoice extends Model {
         'invoice_date', 'due_date', 'currency', 'total_amount',
     ];
 
+    protected $casts = [
+        'invoice_date' => 'date',
+        'due_date'     => 'date',
+        'total_amount' => 'decimal:2',
+    ];
+
     public function user(): BelongsTo {
         return $this->belongsTo( User::class );
     }

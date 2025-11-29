@@ -13,9 +13,7 @@ class ClientController extends Controller {
 //        $jobs = Job::latest()->with( [ 'employer', 'tags' ] )->get()->groupBy( 'featured' );
         $clients = \Auth::user()->clients;
 
-        return view( 'clients.index', [
-            'clients' => $clients,
-        ] );
+        return view( 'clients.index', compact( 'clients' ) );
     }
 
     /**

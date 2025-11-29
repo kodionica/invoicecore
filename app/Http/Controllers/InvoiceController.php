@@ -2,28 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Invoice;
 use Illuminate\Http\Request;
 
-class InvoiceController extends Controller
-{
+class InvoiceController extends Controller {
     /**
      * Display a listing of the resource.
      */
     public function index() {
-        $jobs = Job::latest()->with( [ 'employer', 'tags' ] )->get()->groupBy( 'featured' );
+        $invoices = \Auth::user()->invoices;
 
-        return view( 'jobs.index', [
-            'jobs'          => $jobs[ 0 ],
-            'featured_jobs' => $jobs[ 1 ],
-            'tags'          => Tag::all(),
-        ] );
+        return view( 'invoices.index', compact( 'invoices'));
     }
 
     /**
      * Show the form for creating a new resource.
      */
     public function create() {
-        return view( 'jobs.create' );
+        return view( 'invoices.create' );
     }
 
     /**
@@ -57,28 +53,28 @@ class InvoiceController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show( Job $job ) {
+    public function show( Invoice $invoice ) {
         //
     }
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit( Job $job ) {
+    public function edit( Invoice $invoice ) {
         //
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update( UpdateJobRequest $request, Job $job ) {
+    public function update( Request $request, Invoice $invoice ) {
         //
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy( Job $job ) {
+    public function destroy( Invoice $invoice ) {
         //
     }
 }

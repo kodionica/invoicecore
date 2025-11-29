@@ -7,14 +7,14 @@
     <title>{{ config('app.name', 'Laravel') }}</title>
 
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-        @isset($stle)
+        @isset($style)
             @vite($style)
         @else
             @vite('resources/css/app.scss')
         @endisset
     @endif
 </head>
-<body class="{{ Auth::user() ? 'user--logged-in' : 'user--guest' }}">
+<body class="{{ body_classes() }}">
 <x-sidebar/>
 
 <x-header/>
