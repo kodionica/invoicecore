@@ -12,7 +12,7 @@ class InvoiceController extends Controller {
     public function index() {
         $invoices = \Auth::user()->invoices;
 
-        return view( 'invoices.index', compact( 'invoices'));
+        return view( 'invoices.index', compact( 'invoices' ) );
     }
 
     /**
@@ -54,7 +54,10 @@ class InvoiceController extends Controller {
      * Display the specified resource.
      */
     public function show( Invoice $invoice ) {
-        //
+        $user = \Auth::user();
+        $invoice_items = $invoice->items;
+
+        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );
     }
 
     /**

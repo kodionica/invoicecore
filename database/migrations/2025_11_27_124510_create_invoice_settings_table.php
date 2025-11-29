@@ -13,11 +13,12 @@ return new class extends Migration {
             $table->id();
             $table->foreignId( 'user_id' )->constrained()->onDelete( 'cascade' );
 
-            $table->string( 'company_name' )->nullable();
-            $table->string( 'company_address' )->nullable();
-            $table->string( 'company_email' )->nullable();
-            $table->string( 'company_phone' )->nullable();
+            $table->string( 'company_name' );
+            $table->string( 'company_address' );
+            $table->string( 'company_email' );
+            $table->string( 'company_phone' );
 
+            $table->string( 'pib' );
             $table->string( 'iban' )->nullable();
             $table->string( 'swift' )->nullable();
 

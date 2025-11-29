@@ -29,7 +29,7 @@
                 <thead>
                 <tr role="row">
                     <th>
-                        <x-forms.checkbox id="select-all-clients" name="" class="select-all-checkbox"/>
+                        <x-forms.checkbox id="select-all-checkbox" name="" class="select-all-checkbox"/>
                     </th>
                     <th>Invoice</th>
                     <th>Date</th>
@@ -44,11 +44,11 @@
                 @foreach($invoices as $invoice)
                     <tr role="row" class="{{ $loop->odd ? 'odd' : 'even' }}">
                         <td>
-                            <x-forms.checkbox name="selected_clients[]" value="{{ $invoice->id }}" class="select-all"/>
+                            <x-forms.checkbox name="selected_invoices[]" value="{{ $invoice->id }}" class="select-all"/>
                         </td>
                         <td>
                             <span class="text">
-                                <a href="{{ route('clients.edit', $invoice ) }}">{{ $invoice->invoice_number }}</a>
+                                <a href="{{ route('invoices.show', $invoice ) }}">{{ $invoice->invoice_number }}</a>
                             </span>
                         </td>
                         <td>{{ Carbon::create($invoice->invoice_date)->format('d.m.Y') }}</td>

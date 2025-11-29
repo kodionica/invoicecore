@@ -50,10 +50,10 @@ namespace App\Models{
  * @property int $user_id
  * @property int $client_id
  * @property string $invoice_number
- * @property string $invoice_date
- * @property string|null $due_date
+ * @property \Illuminate\Support\Carbon $invoice_date
+ * @property \Illuminate\Support\Carbon|null $due_date
  * @property string $currency
- * @property string $total_amount
+ * @property numeric $total_amount
  * @property string|null $pdf_path
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
