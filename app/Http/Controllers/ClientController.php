@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Client;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class ClientController extends Controller {
     /**
@@ -68,8 +69,29 @@ class ClientController extends Controller {
     /**
      * Update the specified resource in storage.
      */
-    public function update( Request $request, Client $client ) {
-        //
+    public function update( Request $request, Client $client ): \Illuminate\Http\RedirectResponse {
+        $attrs = $request->validate(
+            [
+                'name'           => 'required|string|max:255',
+                'email'          => 'required|email|max:255',
+                'address'        => 'required|string|max:255',
+                'country'        => 'required|string|max:255',
+                'vat_number'     => 'required|string|max:255',
+                'company_number' => 'nullable|string|max:255',
+            ]
+        );
+
+        Auth::user()->clients()->update( $attrs );
+
+        return redirect()
+            ->route( 'clients.show', [ 'client' => $client->id ] )
+            ->with(
+                'status',
+                [
+                    'type'    => 'success',
+                    'message' => 'Client updated successfully.',
+                ]
+            );
     }
 
     /**

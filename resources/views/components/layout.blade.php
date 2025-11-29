@@ -19,7 +19,13 @@
 
 <x-header/>
 
-<main id="main" class="container">{{ $slot }}</main>
+<main id="main" class="container py-3">
+    @if(session()->has('status'))
+        <x-notices.notice :notice="session('status')"/>
+    @endif
+
+    {{ $slot }}
+</main>
 
 @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
     @isset($script)

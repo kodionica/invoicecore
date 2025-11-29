@@ -50,7 +50,7 @@
                         </td>
                         <td>
                             <span class="text">
-                                <a href="{{ route('clients.edit', $client ) }}">{{ $client->name }}</a>
+                                <a href="{{ route('clients.show', $client ) }}">{{ $client->name }}</a>
                             </span>
                         </td>
                         <td>{{ $client->email }}</td>
