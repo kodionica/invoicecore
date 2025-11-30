@@ -56,20 +56,24 @@ class ClientController extends Controller {
      * Display the specified resource.
      */
     public function show( Client $client ) {
-        return view( 'clients.show', [ 'client' => $client ] );
+        return view( 'clients.edit', [ 'client' => $client ] );
     }
 
     /**
      * Show the form for editing the specified resource.
      */
     public function edit( Client $client ) {
-        //
+        return view( 'clients.edit', [ 'client' => $client ] );
     }
 
     /**
      * Update the specified resource in storage.
      */
     public function update( Request $request, Client $client ): \Illuminate\Http\RedirectResponse {
+        if ( $client->user_id !== Auth::id() ) {
+            abort( 403 );
+        }
+
         $attrs = $request->validate(
             [
                 'name'           => 'required|string|max:255',
@@ -81,10 +85,10 @@ class ClientController extends Controller {
             ]
         );
 
-        Auth::user()->clients()->update( $attrs );
+        $client->update( $attrs );
 
         return redirect()
-            ->route( 'clients.show', [ 'client' => $client->id ] )
+            ->route( 'clients.edit', [ 'client' => $client->id ] )
             ->with(
                 'status',
                 [
@@ -97,7 +101,9 @@ class ClientController extends Controller {
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy( Client $client ) {
-        //
+    public function destroy( Client $client ): \Illuminate\Http\RedirectResponse {
+        $client->delete();
+
+        return redirect()->route( 'clients.index' );
     }
 }

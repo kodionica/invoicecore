@@ -46,11 +46,11 @@
                 @foreach($clients as $client)
                     <tr role="row" class="{{ $loop->odd ? 'odd' : 'even' }}">
                         <td>
-                            <x-forms.checkbox name="selected_clients[]" value="{{ $client->id }}" class="select-all"/>
+                            <x-forms.checkbox name="selected_clients[]" id="client-{{ $client->id }}" value="{{ $client->id }}" class="select-all"/>
                         </td>
                         <td>
                             <span class="text">
-                                <a href="{{ route('clients.show', $client ) }}">{{ $client->name }}</a>
+                                <a href="{{ route('clients.edit', $client ) }}">{{ $client->name }}</a>
                             </span>
                         </td>
                         <td>{{ $client->email }}</td>

@@ -15,7 +15,7 @@ class ClientFactory extends Factory {
      * @return array<string, mixed>
      */
     public function definition(): array {
-        $user = User::first();
+        $user = User::all()->random();
 
         return [
             'user_id'    => $user?->id,

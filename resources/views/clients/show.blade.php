@@ -1,6 +1,7 @@
 <x-layout>
     <div class="page-header pt-3 pb-2 mb-4 border-bottom">
         <h1>Edit client: {{ $client->name }}</h1>
+        <a href="{{ route('clients.index') }}">Back</a>
     </div>
 
     <x-forms.form method="POST" action="/clients/{{ $client->id }}">
