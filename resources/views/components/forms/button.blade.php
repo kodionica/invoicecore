@@ -1,1 +1,5 @@
-<button {{ $attributes(['class' => 'btn btn-primary']) }}>{{ $slot }}</button>
+@php
+    $classes = 'btn ' . ($attributes->get('class') ?? 'btn-primary');
+@endphp
+
+<button {{ $attributes(['class' => $classes]) }}>{{ $slot }}</button>

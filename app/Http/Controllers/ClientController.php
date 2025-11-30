@@ -11,7 +11,6 @@ class ClientController extends Controller {
      * Display a listing of the resource.
      */
     public function index() {
-//        $jobs = Job::latest()->with( [ 'employer', 'tags' ] )->get()->groupBy( 'featured' );
         $clients = \Auth::user()->clients;
 
         return view( 'clients.index', compact( 'clients' ) );
@@ -27,29 +26,29 @@ class ClientController extends Controller {
     /**
      * Store a newly created resource in storage.
      */
-    public function store( Request $request ) {
+    public function store( Request $request ): \Illuminate\Http\RedirectResponse {
         $attrs = $request->validate(
             [
-                'title'    => 'required|string|max:255',
-                'salary'   => 'nullable|numeric|min:0',
-                'location' => 'required|string|max:255',
-                'schedule' => 'required|in:Full-time,Part-time,Contract,Internship',
-                'url'      => 'required|url',
-                'tags'     => 'nullable',
+                'name'           => 'required|string|max:255',
+                'email'          => 'required|email|max:255',
+                'address'        => 'required|string|max:255',
+                'country'        => 'required|string|max:255',
+                'vat_number'     => 'nullable|string|max:255',
+                'company_number' => 'nullable|string|max:255',
             ]
         );
 
-        $attrs[ 'featured' ] = $request->has( 'featured' );
+        Auth::user()->clients()->create( $attrs );
 
-        $job = Auth::user()->employer->jobs()->create( Arr::except( $attrs, 'tags' ) );
-
-        if ( isset( $attrs[ 'tags' ] ) ) {
-            foreach ( explode( ',', $attrs[ 'tags' ] ) as $tag ) {
-                $job->tag( $tag );
-            }
-        }
-
-        return redirect( '/' );
+        return redirect()
+            ->route( 'clients.index' )
+            ->with(
+                'status',
+                [
+                    'type'    => 'success',
+                    'message' => 'Client created successfully.',
+                ]
+            );
     }
 
     /**
@@ -80,7 +79,7 @@ class ClientController extends Controller {
                 'email'          => 'required|email|max:255',
                 'address'        => 'required|string|max:255',
                 'country'        => 'required|string|max:255',
-                'vat_number'     => 'required|string|max:255',
+                'vat_number'     => 'nullable|string|max:255',
                 'company_number' => 'nullable|string|max:255',
             ]
         );
