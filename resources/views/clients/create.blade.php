@@ -5,7 +5,7 @@
 
     <x-forms.form method="POST" action="{{ route('clients.index') }}" class="d-flex flex-column justify-content-start gap-3">
         <x-forms.input label="Name" name="name" type="text" required/>
-        <x-forms.input label="Email" name="email" type="email" required/>
+        <x-forms.input label="Email" name="email" type="email"/>
         <x-forms.input label="Address" name="address" type="text" required/>
         <x-forms.input label="Country" name="country" type="text" required/>
         <x-forms.input label="VAT Number" name="vat_number" type="text" required/>

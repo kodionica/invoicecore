@@ -30,7 +30,7 @@ class ClientController extends Controller {
         $attrs = $request->validate(
             [
                 'name'           => 'required|string|max:255',
-                'email'          => 'required|email|max:255',
+                'email'          => 'nullable|email|max:255',
                 'address'        => 'required|string|max:255',
                 'country'        => 'required|string|max:255',
                 'vat_number'     => 'nullable|string|max:255',
