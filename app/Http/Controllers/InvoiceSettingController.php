@@ -2,83 +2,44 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Invoice;
+use App\Models\InvoiceSetting;
 use Illuminate\Http\Request;
 
-class InvoiceSettingController extends Controller
-{
-    /**
-     * Display a listing of the resource.
-     */
-    public function index() {
-        $jobs = Job::latest()->with( [ 'employer', 'tags' ] )->get()->groupBy( 'featured' );
-
-        return view( 'jobs.index', [
-            'jobs'          => $jobs[ 0 ],
-            'featured_jobs' => $jobs[ 1 ],
-            'tags'          => Tag::all(),
-        ] );
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create() {
-        return view( 'jobs.create' );
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store( Request $request ) {
-        $attrs = $request->validate(
-            [
-                'title'    => 'required|string|max:255',
-                'salary'   => 'nullable|numeric|min:0',
-                'location' => 'required|string|max:255',
-                'schedule' => 'required|in:Full-time,Part-time,Contract,Internship',
-                'url'      => 'required|url',
-                'tags'     => 'nullable',
-            ]
-        );
-
-        $attrs[ 'featured' ] = $request->has( 'featured' );
-
-        $job = Auth::user()->employer->jobs()->create( Arr::except( $attrs, 'tags' ) );
-
-        if ( isset( $attrs[ 'tags' ] ) ) {
-            foreach ( explode( ',', $attrs[ 'tags' ] ) as $tag ) {
-                $job->tag( $tag );
-            }
-        }
-
-        return redirect( '/' );
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show( Job $job ) {
-        //
-    }
-
+class InvoiceSettingController extends Controller {
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit( Job $job ) {
-        //
+    public function edit( InvoiceSetting $invoice ) {
+        $settings = \Auth::user()->invoiceSettings()->firstOrNew();
+
+        return view( 'settings.invoice', compact( 'settings' ) );
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update( UpdateJobRequest $request, Job $job ) {
-        //
-    }
+    public function update( Request $request, InvoiceSetting $invoice ) {
+        $data = $request->validate(
+            [
+                'company_name'     => 'required|string|max:255',
+                'company_address'  => 'required|string|max:255',
+                'company_email'    => 'required|email|max:255',
+                'company_phone'    => 'required|string|max:50',
+                'pib'              => 'required|string|max:50',
+                'iban'             => 'nullable|string|max:50',
+                'swift'            => 'nullable|string|max:50',
+                'default_currency' => 'required|string|max:3',
+                'default_due_days' => 'required|integer|min:1',
+                'footer_note'      => 'nullable|string',
+            ]
+        );
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy( Job $job ) {
-        //
+        \Auth::user()->invoiceSettings()->updateOrCreate(
+            [ 'user_id' => \Auth::id() ],
+            $data
+        );
+
+        return back()->with( 'status', [ 'type' => 'success', 'message' => 'Settings saved.' ] );
     }
 }

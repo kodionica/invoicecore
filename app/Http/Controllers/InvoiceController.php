@@ -19,42 +19,55 @@ class InvoiceController extends Controller {
      * Show the form for creating a new resource.
      */
     public function create() {
-        return view( 'invoices.create' );
+        $clients    = \Auth::user()->clients->map( fn( $client ) => [ 'id' => $client->id, 'name' => $client->name ] )->all();
+        $currencies = get_currencies();
+
+        return view( 'invoices.create', compact( 'clients', 'currencies' ) );
     }
 
     /**
      * Store a newly created resource in storage.
      */
     public function store( Request $request ) {
+        $now   = now();
         $attrs = $request->validate(
             [
-                'title'    => 'required|string|max:255',
-                'salary'   => 'nullable|numeric|min:0',
-                'location' => 'required|string|max:255',
-                'schedule' => 'required|in:Full-time,Part-time,Contract,Internship',
-                'url'      => 'required|url',
-                'tags'     => 'nullable',
+                'service'   => 'required|string|max:255',
+                'quantity'  => 'required|numeric|min:1',
+                'price'     => 'required|string|max:255',
+                'client_id' => 'required|numeric',
+                'currency'  => 'nullable|string',
             ]
         );
 
-        $attrs[ 'featured' ] = $request->has( 'featured' );
+        $sequence                  = \Auth::user()
+                ->invoices()
+                ->whereYear( 'invoice_date', $now->year )
+                ->whereMonth( 'invoice_date', $now->month )
+                ->count() + 1;
+        $attrs[ 'invoice_number' ] = sprintf( '%d-%02d-%03d', $now->year, $now->month, $sequence );
+        $attrs[ 'invoice_date' ]   = $now->toDateString();
+        $attrs[ 'due_date' ]       = $now->addDays( 7 )->toDateString();
+        $attrs[ 'total_amount' ]   = (float) $attrs[ 'quantity' ] * (float) $attrs[ 'price' ];
 
-        $job = Auth::user()->employer->jobs()->create( Arr::except( $attrs, 'tags' ) );
+        \Auth::user()->invoices()->create( $attrs );
 
-        if ( isset( $attrs[ 'tags' ] ) ) {
-            foreach ( explode( ',', $attrs[ 'tags' ] ) as $tag ) {
-                $job->tag( $tag );
-            }
-        }
-
-        return redirect( '/' );
+        return redirect()
+            ->route( 'invoices.index' )
+            ->with(
+                'status',
+                [
+                    'type'    => 'success',
+                    'message' => 'Invoice created successfully.',
+                ]
+            );
     }
 
     /**
      * Display the specified resource.
      */
     public function show( Invoice $invoice ) {
-        $user = \Auth::user();
+        $user          = \Auth::user();
         $invoice_items = $invoice->items;
 
         return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );

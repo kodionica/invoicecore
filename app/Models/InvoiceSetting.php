@@ -12,7 +12,7 @@ class InvoiceSetting extends Model {
 
     protected $fillable = [
         'user_id', 'company_name', 'company_address', 'company_email',
-        'company_phone', 'iban', 'swift', 'logo_path',
+        'company_phone', 'pib', 'iban', 'swift', 'logo_path',
         'default_currency', 'default_due_days', 'footer_note',
     ];
 
