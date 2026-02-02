@@ -27,6 +27,7 @@ class InvoiceSettingController extends Controller {
                 'company_email'    => 'required|email|max:255',
                 'company_phone'    => 'required|string|max:50',
                 'pib'              => 'required|string|max:50',
+                'mb'               => 'required|string|max:50',
                 'iban'             => 'nullable|string|max:50',
                 'swift'            => 'nullable|string|max:50',
                 'default_currency' => 'required|string|max:3',

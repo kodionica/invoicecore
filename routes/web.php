@@ -14,6 +14,7 @@ Route::get( '/', static function () {
 Route::middleware( 'auth' )->group( static function () {
     Route::resource( 'clients', ClientController::class );
     Route::resource( 'invoices', InvoiceController::class );
+    Route::get( '/invoice/{invoice}/pdf', [ InvoiceController::class, 'generatePDF' ] )->name( 'invoice.pdf' );
 
     Route::get( '/settings/invoice', [ InvoiceSettingController::class, 'edit' ] )->name( 'settings.invoice.edit' );
     Route::put( '/settings/invoice', [ InvoiceSettingController::class, 'update' ] )->name( 'settings.invoice.update' );

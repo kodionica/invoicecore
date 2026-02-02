@@ -73,6 +73,22 @@ class InvoiceController extends Controller {
         return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );
     }
 
+    public function generatePDF( Invoice $invoice ) {
+        $user          = \Auth::user();
+        $invoice_items = $invoice->items;
+
+        if ( ! $user ) {
+            $user = $invoice->user;
+        }
+
+        $date = $invoice->invoice_date;
+        $path = storage_path( "app/private/invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf" );
+
+//        Pdf::view( 'invoices.invoice', compact( 'invoice', 'user', 'invoice_items' ) )->save( $path );
+
+        return view( 'invoices.invoice', compact( 'invoice', 'user', 'invoice_items' ) );
+    }
+
     /**
      * Show the form for editing the specified resource.
      */

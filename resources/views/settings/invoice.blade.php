@@ -11,10 +11,11 @@
         <x-forms.input label="Company email" name="company_email" type="email" :value="$settings->company_email" required/>
         <x-forms.input label="Company phone" name="company_phone" type="tel" :value="$settings->company_phone" required/>
         <x-forms.input label="PIB" name="pib" type="number" :value="$settings->pib" required/>
+        <x-forms.input label="Matični broj" name="mb" type="number" :value="$settings->mb" required/>
         <x-forms.input label="IBAN" name="iban" type="text" :value="$settings->iban"/>
         <x-forms.input label="SWIFT" name="swift" type="text" :value="$settings->swift"/>
         <x-forms.select label="Default currency" name="default_currency" :options="get_currencies()" :value="old('default_currency', $settings->default_currency ?? null)"/>
-        <x-forms.input label="Default due days" name="default_due_days" type="number" :value="$settings->swift"/>
+        <x-forms.input label="Default due days" name="default_due_days" type="number" :value="$settings->default_due_days"/>
         <x-forms.input label="Invoice footer note" name="footer_note" type="text" :value="$settings->footer_note"/>
 
         <div class="form-actions">

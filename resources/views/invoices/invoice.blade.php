@@ -1,12 +1,22 @@
 @php
     use Carbon\Carbon;
 @endphp
-<x-layout>
-    <div class="page-header pt-3 pb-2 mb-4 border-bottom">
-        <h1>Invoice</h1>
-        <a href="{{ route('invoices.index') }}">Back</a>
-    </div>
-
+    <!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ config('app.name', 'Laravel') }}</title>
+    @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
+        @isset($style)
+            @vite($style)
+        @else
+            @vite('resources/css/app.scss')
+        @endisset
+    @endif
+</head>
+<body class="{{ body_classes() }}">
+<div class="container">
     <div class="card mt-5">
         <div class="card-body">
             <div class="container-fluid d-flex justify-content-between">
@@ -119,4 +129,6 @@
             </div>
         </div>
     </div>
-</x-layout>
+</div>
+</body>
+</html>
