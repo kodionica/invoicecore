@@ -1,1 +1,12 @@
 @use "global";
+
+.invoice-pdf {
+    padding: 0;
+
+    #header,
+    .page-header,
+    .sidebar-nav,
+    .actions {
+        display: none !important;
+    }
+}

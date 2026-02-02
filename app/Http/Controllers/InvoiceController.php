@@ -86,7 +86,7 @@ class InvoiceController extends Controller {
 
 //        Pdf::view( 'invoices.invoice', compact( 'invoice', 'user', 'invoice_items' ) )->save( $path );
 
-        return view( 'invoices.invoice', compact( 'invoice', 'user', 'invoice_items' ) );
+        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );
     }
 
     /**

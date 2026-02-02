@@ -7,30 +7,36 @@
         <a href="{{ route('invoices.index') }}">Back</a>
     </div>
 
-    <div class="card mt-5">
+    <div class="card mt-5 invoice-view">
         <div class="card-body">
-            <div class="container-fluid d-flex justify-content-between">
-                <div class="col-lg-3 ps-0">
-                    <p class="mt-1 mb-1"><b>{{ $user->invoiceSettings->company_name }}</b></p>
-                    <p class="mb-0">{{ $user->invoiceSettings->company_address }}</p>
-                    <p class="mb-0">{{ $user->invoiceSettings->company_phone }}</p>
-                    <p class="mb-0">{{ $user->invoiceSettings->company_email }}</p>
-                    <p class="mb-0"><span>IBAN: </span>{{ $user->invoiceSettings->iban }}</p>
-                    <p class="mb-0"><span>SWIFT: </span>{{ $user->invoiceSettings->swift }}</p>
-                    <p class="mb-0"><span>PIB: </span>{{ $user->invoiceSettings->pib }}</p>
-                    <p class="mb-0"><span>MB: </span>{{ $user->invoiceSettings->mb }}</p>
-                    <h5 class="mt-5 mb-2 text-secondary">Invoice to:</h5>
-                    <p class="mb-0">{{ $invoice->client->name }}</p>
-                    <p class="mb-0">{{ $invoice->client->address }}</p>
-                    <p class="mb-0">{{ $invoice->client->email }}</p>
+            <div class="invoice__header">
+                <div class="invoice__company">
+                    <p><strong>{{ $user->invoiceSettings->company_name }}</strong></p>
+                    <p>{{ $user->invoiceSettings->company_address }}</p>
+                    <p>{{ $user->invoiceSettings->company_phone }}</p>
+                    <p>{{ $user->invoiceSettings->company_email }}</p>
+                    <p><strong>IBAN: </strong>{{ $user->invoiceSettings->iban }}</p>
+                    <p><strong>SWIFT: </strong>{{ $user->invoiceSettings->swift }}</p>
+                    <p><strong>PIB: </strong>{{ $user->invoiceSettings->pib }}</p>
+                    <p><strong>MB: </strong>{{ $user->invoiceSettings->mb }}</p>
                 </div>
-                <div class="col-lg-3 pe-0">
-                    <h4 class="fw-bold text-uppercase text-end mt-4 mb-2">Faktura</h4>
-                    <h6 class="text-end mb-5 pb-4">#{{ $invoice->invoice_number }}</h6>
-                    <p class="text-end mb-1">Za uplatu</p>
-                    <h4 class="text-end fw-normal">{{ Number::currency($invoice->total_amount, $invoice->currency) }}</h4>
-                    <h6 class="mb-0 mt-3 text-end fw-normal"><span class="text-secondary">Datum izdavanja:</span> {{ Carbon::create($invoice->invoice_date)->format('d.m.Y') }}</h6>
-                    <h6 class="text-end fw-normal"><span class="text-secondary">Rok za plaćanje:</span> {{ Carbon::create($invoice->due_date)->format('d.m.Y') }}</h6>
+                <div class="invoice__client">
+                    <p class="section-label">Račun za:</p>
+                    <p>{{ $invoice->client->name }}</p>
+                    <p>{{ $invoice->client->address }}, {{ $invoice->client->country }}</p>
+                    <p>{{ $invoice->client->email }}</p>
+                    <p><strong>ID: </strong>{{ $invoice->client->company_number }}</p>
+                    <p><strong>VAT: </strong>{{ $invoice->client->vat_number }}</p>
+                </div>
+                <div class="invoice__data">
+                    <p class="section-label">Faktura</p>
+                    <p>#{{ $invoice->invoice_number }}</p>
+                </div>
+
+                <div class="invoice__total-section">
+                    <p class="section-label">Za uplatu</p>
+                    <p class=""><strong>Datum izdavanja:</strong> {{ Carbon::create($invoice->invoice_date)->format('d.m.Y') }}</p>
+                    <p class=""><strong>Rok za plaćanje:</strong> {{ Carbon::create($invoice->due_date)->format('d.m.Y') }}</p>
                 </div>
             </div>
             <div class="container-fluid mt-5 d-flex justify-content-center w-100">
@@ -38,7 +44,6 @@
                     <table class="table table-bordered">
                         <thead>
                         <tr>
-                            <th>#</th>
                             <th>Description</th>
                             <th class="text-end">Quantity</th>
                             <th class="text-end">Unit cost</th>
@@ -47,7 +52,6 @@
                         </thead>
                         <tbody>
                         <tr class="text-end">
-                            <td class="text-start">1</td>
                             <td class="text-start">Freelance usluge programiranja</td>
                             <td>1</td>
                             <td>{{ Number::currency($invoice->total_amount, $invoice->currency) }}</td>
@@ -55,7 +59,6 @@
                         </tr>
                         @foreach($invoice->items as $item)
                             <tr class="text-end">
-                                <td class="text-start">{{ $loop->iteration }}</td>
                                 <td class="text-start">{{ $item->description }}</td>
                                 <td>{{ $item->quantity }}</td>
                                 <td>{{ Number::currency($item->unit_price, $invoice->currency) }}</td>
