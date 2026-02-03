@@ -7,11 +7,12 @@
         <div class="invoice__company__data">
             <p class="section-label section-label--small">Od:</p>
             <p class="section-label section-label--large">{{ $user->invoiceSettings->company_name }}</p>
-            <p>{{ $user->invoiceSettings->company_address }}</p>
-            <p>{{ $user->invoiceSettings->company_phone }}</p>
-            <p>{{ $user->invoiceSettings->company_email }}</p>
+            <p><strong>Adresa: </strong>{{ $user->invoiceSettings->company_address }}</p>
+            <p><strong>Telefon: </strong>{{ $user->invoiceSettings->company_phone }}</p>
+            <p><strong>Email: </strong>{{ $user->invoiceSettings->company_email }}</p>
             <p><strong>PIB: </strong>{{ $user->invoiceSettings->pib }}</p>
             <p><strong>MB: </strong>{{ $user->invoiceSettings->mb }}</p>
+            <p><strong>Broj računa: </strong>124335425345654</p>
             <p><strong>IBAN: </strong>{{ $user->invoiceSettings->iban }}</p>
             <p><strong>SWIFT: </strong>{{ $user->invoiceSettings->swift }}</p>
         </div>
@@ -30,9 +31,11 @@
     <div class="invoice__client">
         <p class="section-label section-label--small">Za:</p>
         <p class="section-label section-label--large">{{ $invoice->client->name }}</p>
-        <p>{{ $invoice->client->address }}</p>
-        <p>{{ $invoice->client->country }}</p>
-        <p>{{ $invoice->client->email }}</p>
+        <p><strong>Adresa: </strong>{{ $invoice->client->address }}</p>
+        <p><strong>Država: </strong>{{ $invoice->client->country }}</p>
+        @if($invoice->client->email)
+            <p><strong>Email: </strong>{{ $invoice->client->email }}</p>
+        @endif
         <p><strong>ID: </strong>{{ $invoice->client->company_number }}</p>
         <p><strong>VAT: </strong>{{ $invoice->client->vat_number }}</p>
     </div>

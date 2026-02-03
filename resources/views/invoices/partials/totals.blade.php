@@ -5,7 +5,7 @@
                 <table class="table">
                     <tbody>
                     <tr>
-                        <th>Metod plaćanja</th>
+                        <th>Način plaćanja</th>
                         {{--                                    <td class="text-end">{{ $invoice->payments->first()->method }}</td>--}}
                         <td>Uplata na račun</td>
                     </tr>
