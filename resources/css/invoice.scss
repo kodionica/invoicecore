@@ -20,16 +20,26 @@ p {
     }
 }
 
-.invoice-pdf {
-    padding: 0;
-
-    #header,
-    .sidebar-nav {
-        display: none !important;
-    }
-}
-
 .invoice {
+    &-pdf {
+        padding: 0;
+
+        #header,
+        .sidebar-nav {
+            display: none !important;
+        }
+
+        .container {
+            margin: 0;
+            padding: 0;
+        }
+
+        .invoice-view {
+            width: 1100px;
+            border: none;
+        }
+    }
+
     &-view {
         border: 1px solid var(--bs-border-color);
         padding: 30px;

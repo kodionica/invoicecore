@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use Illuminate\Http\Request;
+use Spatie\LaravelPdf\Enums\Format;
+use Spatie\LaravelPdf\Facades\Pdf;
 
 class InvoiceController extends Controller {
     /**
@@ -84,9 +86,17 @@ class InvoiceController extends Controller {
         $date = $invoice->invoice_date;
         $path = storage_path( "app/private/invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf" );
 
-//        Pdf::view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )->save( $path );
+        Pdf::view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )
+            ->format( Format::A4 )
+            ->save( $path );
 
-        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );
+        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )->with(
+            'status',
+            [
+                'type'    => 'success',
+                'message' => 'PDF generated successfully.',
+            ]
+        );
     }
 
     /**

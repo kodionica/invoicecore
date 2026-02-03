@@ -19,7 +19,7 @@
 
 <x-header/>
 
-<main id="main" class="container py-3">
+<main id="main" class="container">
     @if(session()->has('status'))
         <x-notices.notice :notice="session('status')"/>
     @endif
