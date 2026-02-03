@@ -58,6 +58,10 @@ p {
         flex-flow: row wrap;
         justify-content: space-between;
         grid-column: 1/-1;
+
+        &__logo {
+            flex: 0 0 120px;
+        }
     }
 
     &__data {
