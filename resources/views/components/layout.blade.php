@@ -7,11 +7,11 @@
     <title>{{ config('app.name', 'Laravel') }}</title>
 
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-        @isset($style)
-            @vite($style)
+        @hasSection('page-style')
+            @yield('page-style')
         @else
             @vite('resources/css/app.scss')
-        @endisset
+        @endif
     @endif
 </head>
 <body class="{{ $body_class ?? '' }}">
@@ -28,11 +28,11 @@
 </main>
 
 @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-    @isset($script)
-        @vite($script)
+    @hasSection('page-script')
+        @yield('page-script')
     @else
         @vite('resources/js/app.js')
-    @endisset
+    @endif
 @endif
 </body>
 </html>

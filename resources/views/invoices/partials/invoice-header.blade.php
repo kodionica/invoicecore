@@ -1,0 +1,45 @@
+@php
+    use Carbon\Carbon;
+@endphp
+
+<div class="invoice__header">
+    <div class="invoice__company">
+        <div class="invoice__company__data">
+            <p class="section-label section-label--small">Od:</p>
+            <p class="section-label section-label--large">{{ $user->invoiceSettings->company_name }}</p>
+            <p>{{ $user->invoiceSettings->company_address }}</p>
+            <p>{{ $user->invoiceSettings->company_phone }}</p>
+            <p>{{ $user->invoiceSettings->company_email }}</p>
+            <p><strong>PIB: </strong>{{ $user->invoiceSettings->pib }}</p>
+            <p><strong>MB: </strong>{{ $user->invoiceSettings->mb }}</p>
+            <p><strong>IBAN: </strong>{{ $user->invoiceSettings->iban }}</p>
+            <p><strong>SWIFT: </strong>{{ $user->invoiceSettings->swift }}</p>
+        </div>
+
+        <div class="invoice__company__logo">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 152 139.65" width="152" height="139.65">
+                <g fill="#1e3a8a">
+                    <path class="cls-1"
+                          d="M102.54,139.48c-18.97-23.21-58.58-70.27-58.58-70.27L102.38.4l39.04-.05c7.65,1.94,10.76,10.25,6.77,17-13.47,17.9-28.89,34.3-41.93,52.49l43.24,51.94c5.42,6.93,1.52,16.33-7.02,17.81-24.42.11-26.07.07-39.95-.1ZM131.24,14.82h-21.45l-46.34,54.33c14.66,19.38,31.39,37.16,47.12,55.67h22.23l-46.78-55,45.22-55Z"/>
+                    <path class="cls-1"
+                          d="M63.37,0c.09,4.86-.06,9.01,0,14.04h-24.58c-1.09,0-1.58,4.79-1.66,5.98-.66,9.74.59,19.87.06,29.52-.49,8.98-5.43,15.22-12.05,20.65,15.42,6.84,11.23,24.93,11.67,38.66.05,1.65-.06,16.74,1.99,16.74h24.58v14.04h-30.82c-1.16,0-6.38-3.21-7.4-4.3-6.92-7.35-2.93-33.74-3.88-44.49-.38-4.36-2.2-8.05-6-10.39-3.26-2.01-12.56-3.7-14.33-5.17-1.04-.86-1.15-9.66-.66-10.44.84-1.32,16.51-3.83,19.79-11.03.78-1.71,1.03-3.18,1.2-5.04.94-10.59-2.8-36.14,3.09-43.72.96-1.24,6.33-5.08,7.41-5.08h31.6Z"/>
+                </g>
+            </svg>
+        </div>
+    </div>
+    <div class="invoice__client">
+        <p class="section-label section-label--small">Za:</p>
+        <p class="section-label section-label--large">{{ $invoice->client->name }}</p>
+        <p>{{ $invoice->client->address }}</p>
+        <p>{{ $invoice->client->country }}</p>
+        <p>{{ $invoice->client->email }}</p>
+        <p><strong>ID: </strong>{{ $invoice->client->company_number }}</p>
+        <p><strong>VAT: </strong>{{ $invoice->client->vat_number }}</p>
+    </div>
+    <div class="invoice__data">
+        <p>Faktura: <strong>{{ $invoice->invoice_number }}</strong></p>
+        <p>Datum izdavanja: <strong>{{ Carbon::create($invoice->invoice_date)->format('d.m.Y') }}</strong></p>
+        <p>Datum prometa:<strong>{{ Carbon::create($invoice->invoice_date)->format('d.m.Y') }}</strong></p>
+        <p>Rok za plaćanje: <strong>{{ Carbon::create($invoice->due_date)->format('d.m.Y') }}</strong></p>
+    </div>
+</div>

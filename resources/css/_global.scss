@@ -1,9 +1,32 @@
-@use "bootstrap";
+@use "sass:color";
 
+@use "bootstrap";
 @use "layout/header";
 @use "layout/sidebar-nav";
 
 body {
+    --primary: #1e3a8a;
+    --secondary: #2563eb;
+    --accent: #22c55e;
+    --dark: #111827;
+    --gray: #6b7280;
+    --light-bg: #f9fafb;
+    --white: #fff;
+    --bs-primary: var(--primary);
+    --bs-secondary: var(--secondary);
+    --bs-dark: var(--dark);
+    --bs-gray: var(--gray);
     --sidebar-width: 250px;
     padding-left: var(--sidebar-width);
+    font-size: 18px;
+    line-height: 1.3;
+    color: var(--dark);
+}
+
+a {
+    color: var(--primary);
+
+    &:hover {
+        color: var(--secondary);
+    }
 }

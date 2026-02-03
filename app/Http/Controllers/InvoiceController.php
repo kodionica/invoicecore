@@ -84,7 +84,7 @@ class InvoiceController extends Controller {
         $date = $invoice->invoice_date;
         $path = storage_path( "app/private/invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf" );
 
-//        Pdf::view( 'invoices.invoice', compact( 'invoice', 'user', 'invoice_items' ) )->save( $path );
+//        Pdf::view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )->save( $path );
 
         return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );
     }
