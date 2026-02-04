@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $invoice_id
  * @property string $description
  * @property int $quantity
- * @property string $unit_price
- * @property string $total
+ * @property numeric $unit_price
+ * @property numeric $total
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Models\Invoice $invoice

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property int $id
  * @property int $invoice_id
- * @property string $amount
+ * @property numeric $amount
  * @property string $payment_date
  * @property string|null $method
  * @property \Illuminate\Support\Carbon|null $created_at
