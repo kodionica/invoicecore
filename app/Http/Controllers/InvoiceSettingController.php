@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Invoice;
 use App\Models\InvoiceSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 class InvoiceSettingController extends Controller {
     /**
@@ -13,7 +13,7 @@ class InvoiceSettingController extends Controller {
     public function edit( InvoiceSetting $invoice ) {
         $settings = \Auth::user()->invoiceSettings()->firstOrNew();
 
-        return view( 'settings.invoice', compact( 'settings' ) );
+        return view( 'settings.index', compact( 'settings' ) );
     }
 
     /**
@@ -26,6 +26,9 @@ class InvoiceSettingController extends Controller {
                 'company_address'  => 'required|string|max:255',
                 'company_email'    => 'required|email|max:255',
                 'company_phone'    => 'required|string|max:50',
+                'company_state'    => 'required|string|max:50',
+                'bank_account'     => 'required|string|max:50',
+                'logo'             => 'nullable|mimes:jpeg,png,jpg,webp,svg|max:2048',
                 'pib'              => 'required|string|max:50',
                 'mb'               => 'required|string|max:50',
                 'iban'             => 'nullable|string|max:50',
@@ -36,11 +39,21 @@ class InvoiceSettingController extends Controller {
             ]
         );
 
+        if ( $request->hasFile( 'logo' ) ) {
+            $file         = $request->file( 'logo' );
+            $originalName = pathinfo( $file->getClientOriginalName(), PATHINFO_FILENAME );
+            $extension    = $file->getClientOriginalExtension();
+            $safeName     = Str::slug( $originalName );
+            $filename     = $safeName . '-' . uniqid( '', true ) . '.' . $extension;
+
+            $data[ 'logo_path' ] = $file->storeAs( 'logos', $filename, 'public' );
+        }
+
         \Auth::user()->invoiceSettings()->updateOrCreate(
             [ 'user_id' => \Auth::id() ],
             $data
         );
 
-        return back()->with( 'status', [ 'type' => 'success', 'message' => 'Settings saved.' ] );
+        return back()->with( 'status', [ 'type' => 'success', 'message' => 'Podešavanja sačuvana.' ] );
     }
 }

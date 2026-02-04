@@ -3,6 +3,7 @@
 @use "bootstrap";
 @use "layout/header";
 @use "layout/sidebar-nav";
+@use "components/notice";
 
 body {
     --primary: #1e3a8a;

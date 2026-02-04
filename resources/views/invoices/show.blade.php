@@ -12,7 +12,7 @@
 
         @include('invoices.partials.products', compact('invoice'))
 
-        @include('invoices.partials.totals', compact('invoice'))
+        @include('invoices.partials.totals', compact('invoice', 'user'))
 
         @includeWhen(!request()->routeIs('invoice.pdf'), 'invoices.partials.actions', compact('invoice'))
     </div>

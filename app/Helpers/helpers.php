@@ -22,3 +22,14 @@ if ( ! function_exists( 'get_currencies' ) ) {
         ];
     }
 }
+
+if ( ! function_exists( 'get_states' ) ) {
+    function get_states(): array {
+        return [
+            [
+                'id'   => 'SER',
+                'name' => 'Srbija',
+            ],
+        ];
+    }
+}

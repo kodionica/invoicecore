@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Spatie\LaravelPdf\Enums\Format;
 use Spatie\LaravelPdf\Facades\Pdf;
 
@@ -75,6 +76,13 @@ class InvoiceController extends Controller {
         return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );
     }
 
+    /**
+     * TODO: Create rest api route to generate pdf and download
+     *
+     * @param \App\Models\Invoice $invoice
+     *
+     * @return \Illuminate\Contracts\View\Factory|\Illuminate\Contracts\View\View|\Illuminate\View\View
+     */
     public function generatePDF( Invoice $invoice ) {
         $user          = \Auth::user();
         $invoice_items = $invoice->items;
@@ -85,6 +93,8 @@ class InvoiceController extends Controller {
 
         $date = $invoice->invoice_date;
         $path = storage_path( "app/private/invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf" );
+
+        File::ensureDirectoryExists( dirname( $path ) );
 
         Pdf::view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )
             ->format( Format::A4 )
