@@ -12,6 +12,7 @@ p {
     &--large {
         font-size: 24px;
         font-weight: 700;
+        color: var(--primary);
     }
 
     &--small {
@@ -81,7 +82,15 @@ p {
     }
 
     &__products {
-
+        .table {
+            tr {
+                &:nth-child(odd) {
+                    td {
+                        background-color: var(--light-bg);
+                    }
+                }
+            }
+        }
     }
 
     &__notice {

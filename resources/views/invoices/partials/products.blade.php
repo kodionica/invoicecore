@@ -1,5 +1,5 @@
 <div class="table-responsive invoice__products">
-    <table class="table table-striped">
+    <table class="table">
         <thead>
         <tr>
             <th class="invoice__item invoice__item--product">Usluga/Proizvod</th>

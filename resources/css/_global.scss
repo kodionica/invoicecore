@@ -5,7 +5,7 @@
 @use "layout/sidebar-nav";
 @use "components/notice";
 
-body {
+:root {
     --primary: #1e3a8a;
     --secondary: #2563eb;
     --accent: #22c55e;
@@ -18,6 +18,9 @@ body {
     --bs-dark: var(--dark);
     --bs-gray: var(--gray);
     --sidebar-width: 250px;
+}
+
+body {
     padding-left: var(--sidebar-width);
     font-size: 18px;
     line-height: 1.3;
