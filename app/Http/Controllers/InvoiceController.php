@@ -81,7 +81,7 @@ class InvoiceController extends Controller {
      *
      * @param \App\Models\Invoice $invoice
      *
-     * @return \Illuminate\Contracts\View\Factory|\Illuminate\Contracts\View\View|\Illuminate\View\View
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function generatePDF( Invoice $invoice ) {
         $user          = \Auth::user();
@@ -96,17 +96,19 @@ class InvoiceController extends Controller {
 
         File::ensureDirectoryExists( dirname( $path ) );
 
-        Pdf::view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )
+        Pdf::view( 'invoices.show-pdf', compact( 'invoice', 'user', 'invoice_items' ) )
             ->format( Format::A4 )
             ->save( $path );
 
-        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )->with(
-            'status',
-            [
-                'type'    => 'success',
-                'message' => 'PDF generated successfully.',
-            ]
-        );
+        return redirect()
+            ->route( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )
+            ->with(
+                'status',
+                [
+                    'type'    => 'success',
+                    'message' => 'PDF with Invoice created successfully.',
+                ]
+            );
     }
 
     /**
