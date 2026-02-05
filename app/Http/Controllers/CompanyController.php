@@ -2,12 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreClientRequest;
-use App\Models\Client;
+use App\Http\Requests\StoreCompanyRequest;
 use App\Models\Company;
 use Illuminate\Http\Request;
 
-class ClientController extends Controller {
+class CompanyController extends Controller {
     /**
      * Display a listing of the resource.
      */
@@ -25,35 +24,37 @@ class ClientController extends Controller {
     /**
      * Store a newly created resource in storage.
      */
-    public function store( StoreClientRequest $request, Company $company ) {
-        $company->clients()->create( $request->validated() );
+    public function store( StoreCompanyRequest $request ) {
+        $company = Company::create( $request->validated() );
+
+        return response()->json( $company );
     }
 
     /**
      * Display the specified resource.
      */
-    public function show( Client $client ) {
+    public function show( Company $company ) {
         //
     }
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit( Client $client ) {
+    public function edit( Company $company ) {
         //
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update( Request $request, Client $client ) {
+    public function update( Request $request, Company $company ) {
         //
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy( Client $client ) {
+    public function destroy( Company $company ) {
         //
     }
 }

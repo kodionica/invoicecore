@@ -9,8 +9,12 @@ return new class extends Migration {
      * Run the migrations.
      */
     public function up(): void {
-        Schema::table( 'invoice_settings', static function ( Blueprint $table ) {
-            $table->string( 'mb' );
+        Schema::create( 'companies', static function ( Blueprint $table ) {
+            $table->id();
+            $table->string( 'name' );
+            $table->string( 'pib' )->nullable();
+            $table->string( 'mb' )->nullable();
+            $table->timestamps();
         } );
     }
 
@@ -18,8 +22,6 @@ return new class extends Migration {
      * Reverse the migrations.
      */
     public function down(): void {
-        Schema::table( 'invoice_settings', static function ( Blueprint $table ) {
-            $table->dropColumn( 'mb' );
-        } );
+        Schema::dropIfExists( 'companies' );
     }
 };

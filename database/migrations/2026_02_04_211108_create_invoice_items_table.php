@@ -9,13 +9,13 @@ return new class extends Migration {
      * Run the migrations.
      */
     public function up(): void {
-        Schema::create( 'payments', static function ( Blueprint $table ) {
+        Schema::create( 'invoice_items', static function ( Blueprint $table ) {
             $table->id();
-            $table->foreignId( 'invoice_id' )->constrained()->onDelete( 'cascade' );
-
-            $table->decimal( 'amount', 10, 2 );
-            $table->date( 'payment_date' );
-            $table->string( 'method' )->nullable(); // bank transfer, PayPal, crypto...
+            $table->foreignId( 'invoice_id' )->constrained()->cascadeOnDelete();
+            $table->string( 'name' );
+            $table->decimal( 'quantity', 8, 2 )->default( 1 );
+            $table->decimal( 'unit_price', 12, 2 );
+            $table->decimal( 'total', 12, 2 );
             $table->timestamps();
         } );
     }
@@ -24,6 +24,6 @@ return new class extends Migration {
      * Reverse the migrations.
      */
     public function down(): void {
-        Schema::dropIfExists( 'payments' );
+        Schema::dropIfExists( 'invoice_items' );
     }
 };

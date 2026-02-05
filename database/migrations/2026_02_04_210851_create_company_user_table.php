@@ -9,14 +9,12 @@ return new class extends Migration {
      * Run the migrations.
      */
     public function up(): void {
-        Schema::create( 'invoice_items', static function ( Blueprint $table ) {
+        Schema::create( 'company_user', static function ( Blueprint $table ) {
             $table->id();
-            $table->foreignId( 'invoice_id' )->constrained()->onDelete( 'cascade' );
-
-            $table->string( 'description' );
-            $table->integer( 'quantity' )->default( 1 );
-            $table->decimal( 'unit_price', 10, 2 );
-            $table->decimal( 'total', 10, 2 );
+            $table->foreignId( 'company_id' )->constrained()->cascadeOnDelete();
+            $table->foreignId( 'user_id' )->constrained()->cascadeOnDelete();
+            $table->string( 'role' )->default( 'owner' );
+            $table->unique( [ 'company_id', 'user_id' ] );
             $table->timestamps();
         } );
     }
@@ -25,6 +23,6 @@ return new class extends Migration {
      * Reverse the migrations.
      */
     public function down(): void {
-        Schema::dropIfExists( 'invoice_items' );
+        Schema::dropIfExists( 'company_user' );
     }
 };

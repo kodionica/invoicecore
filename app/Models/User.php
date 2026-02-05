@@ -5,6 +5,7 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -12,37 +13,37 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 /**
- * @property int $id
- * @property string $name
- * @property string $email
- * @property \Illuminate\Support\Carbon|null $email_verified_at
- * @property string $password
- * @property string|null $remember_token
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Client> $clients
- * @property-read int|null $clients_count
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\InvoiceItem> $invoiceItems
- * @property-read int|null $invoice_items_count
- * @property-read \App\Models\InvoiceSetting|null $invoiceSettings
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Invoice> $invoices
- * @property-read int|null $invoices_count
+ * @property int                                                                                                                $id
+ * @property string                                                                                                             $name
+ * @property string                                                                                                             $email
+ * @property \Illuminate\Support\Carbon|null                                                                                    $email_verified_at
+ * @property string                                                                                                             $password
+ * @property string|null                                                                                                        $remember_token
+ * @property \Illuminate\Support\Carbon|null                                                                                    $created_at
+ * @property \Illuminate\Support\Carbon|null                                                                                    $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Client>                                             $clients
+ * @property-read int|null                                                                                                      $clients_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\InvoiceItem>                                        $invoiceItems
+ * @property-read int|null                                                                                                      $invoice_items_count
+ * @property-read \App\Models\InvoiceSetting|null                                                                               $invoiceSettings
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Invoice>                                            $invoices
+ * @property-read int|null                                                                                                      $invoices_count
  * @property-read \Illuminate\Notifications\DatabaseNotificationCollection<int, \Illuminate\Notifications\DatabaseNotification> $notifications
- * @property-read int|null $notifications_count
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Payment> $payments
- * @property-read int|null $payments_count
- * @method static \Database\Factories\UserFactory factory($count = null, $state = [])
+ * @property-read int|null                                                                                                      $notifications_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Payment>                                            $payments
+ * @property-read int|null                                                                                                      $payments_count
+ * @method static \Database\Factories\UserFactory factory( $count = null, $state = [] )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User query()
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereCreatedAt($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmail($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmailVerifiedAt($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereId($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereName($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePassword($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereRememberToken($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereCreatedAt( $value )
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmail( $value )
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereEmailVerifiedAt( $value )
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereId( $value )
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereName( $value )
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePassword( $value )
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereRememberToken( $value )
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereUpdatedAt( $value )
  * @mixin \Eloquent
  */
 class User extends Authenticatable {
@@ -58,6 +59,7 @@ class User extends Authenticatable {
         'name',
         'email',
         'password',
+        'phone',
     ];
     /**
      * The attributes that should be hidden for serialization.
@@ -81,23 +83,11 @@ class User extends Authenticatable {
         ];
     }
 
-    public function clients(): HasMany {
-        return $this->hasMany( Client::class );
+    public function companies(): BelongsToMany {
+        return $this->belongsToMany( Company::class )->withPivot( 'role' );
     }
 
-    public function invoices(): HasMany {
-        return $this->hasMany( Invoice::class );
-    }
-
-    public function invoiceSettings(): HasOne {
-        return $this->hasOne( InvoiceSetting::class );
-    }
-
-    public function invoiceItems(): HasManyThrough {
-        return $this->hasManyThrough( InvoiceItem::class, Invoice::class );
-    }
-
-    public function payments(): HasManyThrough {
-        return $this->hasManyThrough( Payment::class, Invoice::class );
+    public function currentCompany() {
+        return $this->companies()->first();
     }
 }

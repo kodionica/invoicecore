@@ -4,26 +4,31 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Client extends Model {
+class CompanySettings extends Model {
     protected $fillable = [
         'company_id',
-        'name',
-        'pib',
-        'mb',
+        'invoice_prefix',
+        'next_invoice_number',
         'address',
         'city',
         'country',
         'email',
         'phone',
+        'bank_account',
+        'iban',
+        'swift',
+        'logo_path',
+        'default_currency',
+        'vat_enabled',
+        'default_due_days',
+        'footer_note',
+    ];
+    protected $casts    = [
+        'vat_enabled' => 'boolean',
     ];
 
     public function company(): BelongsTo {
         return $this->belongsTo( Company::class );
-    }
-
-    public function invoices(): HasMany {
-        return $this->hasMany( Invoice::class );
     }
 }
