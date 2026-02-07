@@ -10,23 +10,17 @@ return new class extends Migration {
      */
     public function up(): void {
         Schema::create( 'company_settings', static function ( Blueprint $table ) {
-            $table->id();
-            $table->foreignId( 'company_id' )->constrained()->cascadeOnDelete();
+            $table->unsignedBigInteger( 'company_id' )->primary();
+            $table->foreign( 'company_id' )->references( 'id' )->on( 'companies' )->cascadeOnDelete();
             $table->string( 'invoice_prefix' )->default( 'INV' );
-            $table->unsignedBigInteger( 'next_invoice_number' )->default( 1 );
-            $table->string( 'address' )->nullable();
-            $table->string( 'city' )->nullable();
-            $table->string( 'country' )->nullable();
-            $table->string( 'email' )->nullable();
-            $table->string( 'phone' )->nullable();
-            $table->string( 'bank_account' )->nullable();
-            $table->string( 'iban' )->nullable();
-            $table->string( 'swift' )->nullable();
-            $table->string( 'logo_path' )->nullable();
-            $table->string( 'default_currency' )->default( 'RSD' );
+            $table->unsignedInteger( 'invoice_start_number' )->default( 1 );
+            $table->unsignedInteger( 'invoice_next_number' )->default( 1 );
+            $table->string( 'currency' )->default( 'RSD' );
+            $table->unsignedTinyInteger( 'default_tax_percent' )->default( 20 );
             $table->boolean( 'vat_enabled' )->default( false );
-            $table->integer( 'default_due_days' )->default( 15 );
-            $table->text( 'footer_note' )->nullable();
+            $table->unsignedInteger( 'payment_due_days' )->default( 15 );
+            $table->text( 'invoice_note' )->nullable();
+            $table->json( 'other_settings' )->nullable();
             $table->timestamps();
         } );
     }

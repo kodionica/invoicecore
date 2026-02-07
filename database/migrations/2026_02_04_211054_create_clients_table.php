@@ -13,8 +13,8 @@ return new class extends Migration {
             $table->id();
             $table->foreignId( 'company_id' )->constrained()->cascadeOnDelete();
             $table->string( 'name' );
-            $table->string( 'pib' )->nullable();
-            $table->string( 'mb' )->nullable();
+            $table->tinyInteger( 'pib' )->nullable()->unique();
+            $table->tinyInteger( 'mb' )->nullable()->unique();
             $table->string( 'address' )->nullable();
             $table->string( 'city' )->nullable();
             $table->string( 'country' )->nullable();

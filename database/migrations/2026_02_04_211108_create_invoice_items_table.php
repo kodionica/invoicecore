@@ -14,8 +14,11 @@ return new class extends Migration {
             $table->foreignId( 'invoice_id' )->constrained()->cascadeOnDelete();
             $table->string( 'name' );
             $table->decimal( 'quantity', 8, 2 )->default( 1 );
-            $table->decimal( 'unit_price', 12, 2 );
+            $table->decimal( 'price', 12, 2 );
+            $table->decimal( 'sub_total', 12, 2 );
             $table->decimal( 'total', 12, 2 );
+            $table->decimal( 'tax_amount', 12, 2 );
+            $table->string( 'description' );
             $table->timestamps();
         } );
     }

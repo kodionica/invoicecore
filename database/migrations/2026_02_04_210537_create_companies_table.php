@@ -12,8 +12,18 @@ return new class extends Migration {
         Schema::create( 'companies', static function ( Blueprint $table ) {
             $table->id();
             $table->string( 'name' );
-            $table->string( 'pib' )->nullable();
-            $table->string( 'mb' )->nullable();
+            $table->tinyInteger( 'pib' )->nullable()->unique();
+            $table->tinyInteger( 'mb' )->nullable()->unique();
+            $table->string( 'address' )->nullable();
+            $table->string( 'city' )->nullable();
+            $table->string( 'country' )->nullable();
+            $table->string( 'email' )->nullable();
+            $table->string( 'phone' )->nullable();
+            $table->string( 'bank_account' )->nullable();
+            $table->string( 'iban' )->nullable();
+            $table->string( 'swift' )->nullable();
+            $table->string( 'logo_path' )->nullable();
+            $table->foreignId( 'user_id' )->constrained()->cascadeOnDelete();
             $table->timestamps();
         } );
     }

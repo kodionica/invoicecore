@@ -13,19 +13,14 @@ return new class extends Migration {
             $table->id();
             $table->foreignId( 'company_id' )->constrained()->cascadeOnDelete();
             $table->foreignId( 'client_id' )->constrained()->cascadeOnDelete();
-
-            $table->string( 'number' );
+            $table->integer( 'number' );
             $table->date( 'issue_date' );
-            $table->date( 'service_date' )->nullable();
             $table->date( 'due_date' );
-
             $table->string( 'currency' )->default( 'RSD' );
             $table->string( 'payment_method' )->nullable();
-
             $table->decimal( 'total', 12, 2 )->default( 0 );
             $table->string( 'status' )->default( 'draft' ); // draft, sent, paid
             $table->string( 'pdf_path' )->nullable();
-
             $table->text( 'note' )->nullable();
             $table->timestamps();
         } );
