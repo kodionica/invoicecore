@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Account\PasswordController;
+use App\Http\Controllers\Account\ProfileController;
+use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\RegisterUserController;
 use App\Http\Controllers\SessionController;
@@ -12,7 +15,13 @@ Route::get( '/', static function () {
 Route::middleware( 'auth' )->group( static function () {
     Route::resource( 'company', CompanyController::class );
 
-//    Route::resource( 'clients', ClientController::class );
+    // Manage account settings
+    Route::get( '/profile', [ ProfileController::class, 'edit' ] )->name( 'profile.edit' );
+    Route::patch( '/profile', [ ProfileController::class, 'update' ] )->name( 'profile.update' );
+    Route::get( '/password', [ PasswordController::class, 'edit' ] )->name( 'password.edit' );
+    Route::patch( '/password', [ PasswordController::class, 'update' ] )->name( 'password.update' );
+
+    Route::resource( 'clients', ClientController::class );
 //    Route::resource( 'invoices', InvoiceController::class );
 //    Route::get( '/invoice/{invoice}/pdf', [ InvoiceController::class, 'generatePDF' ] )->name( 'invoice.pdf' );
 //

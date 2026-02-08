@@ -1,4 +1,4 @@
-@props(['notice' => 'info', 'message' => ''])
+@props(['notice'])
 
 @php
     $alert_class = match ($notice['type']) {

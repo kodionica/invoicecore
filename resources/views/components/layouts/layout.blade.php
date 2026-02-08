@@ -21,8 +21,8 @@
 <x-header/>
 
 <main id="main" class="container">
-    @if(session()->has('status'))
-        <x-notices.notice :notice="session('status')"/>
+    @if(session()->has('flash'))
+        <x-notices.notice :notice="session('flash')"/>
     @endif
 
     {{ $slot }}

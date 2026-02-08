@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -27,7 +28,10 @@ class RegisterUserController extends Controller {
             ]
         );
 
-        $user = \App\Models\User::create( $user_attributes );
+        $user = new User();
+        $user->fill( \Arr::except( $user_attributes, 'email' ) );
+        $user->email = $user_attributes[ 'email' ];
+        $user->save();
 
         Auth::login( $user );
 

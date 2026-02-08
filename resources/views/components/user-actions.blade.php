@@ -5,8 +5,8 @@
                 <img src="https://github.com/mdo.png" alt="mdo" width="32" height="32" class="rounded-circle">
             </a>
             <ul class="dropdown-menu text-small">
-                <li><a class="dropdown-item" href="{{ route('settings.invoice.edit') }}">Podešavanja firme</a></li>
-                <li><a class="dropdown-item" href="#">Podešavanja profila</a></li>
+{{--                <li><a class="dropdown-item" href="{{ route('settings.invoice.edit') }}">Podešavanja firme</a></li>--}}
+                <li><a class="dropdown-item" href="{{ route('profile.edit') }}">Podešavanja profila</a></li>
                 <li>
                     <hr class="dropdown-divider">
                 </li>
