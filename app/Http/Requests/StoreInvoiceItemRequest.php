@@ -14,9 +14,9 @@ class StoreInvoiceItemRequest extends FormRequest {
         return [
             'items'               => [ 'required', 'array' ],
             'items.*.name'        => [ 'required', 'string' ],
+            'items.*.description' => [ 'required', 'string' ],
             'items.*.quantity'    => [ 'required', 'numeric', 'min:0.01' ],
             'items.*.price'       => [ 'required', 'numeric', 'min:0' ],
-            'items.*.tax_percent' => [ 'required', 'numeric', 'min:0' ],
         ];
     }
 }

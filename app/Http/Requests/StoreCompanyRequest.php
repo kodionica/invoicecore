@@ -19,9 +19,17 @@ class StoreCompanyRequest extends FormRequest {
      */
     public function rules(): array {
         return [
-            'name' => [ 'required', 'string', 'max:255' ],
-            'pib'  => [ 'required', 'string', 'size:9', 'unique:companies,pib' ],
-            'mb'   => [ 'required', 'string', 'size:8', 'unique:companies,mb' ],
+            'name'         => [ 'required', 'string', 'max:255' ],
+            'pib'          => [ 'required', 'string', 'size:9', 'unique:companies,pib' ],
+            'mb'           => [ 'required', 'string', 'size:8', 'unique:companies,mb' ],
+            'address'      => [ 'string' ],
+            'city'         => [ 'string' ],
+            'country'      => [ 'string' ],
+            'email'        => [ 'email' ],
+            'phone'        => [ 'string' ],
+            'bank_account' => [ 'string' ],
+            'iban'         => [ 'string' ],
+            'swift'        => [ 'string' ],
         ];
     }
 }

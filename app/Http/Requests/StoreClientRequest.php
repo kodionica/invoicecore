@@ -13,9 +13,13 @@ class StoreClientRequest extends FormRequest {
     public function rules(): array {
         return [
             'name'    => [ 'required', 'string', 'max:255' ],
-            'pib'     => [ 'nullable', 'string', 'size:9' ],
+            'pib'     => [ 'nullable', 'string', 'unique:clients,pib' ],
+            'mb'      => [ 'nullable', 'string', 'unique:clients,mb' ],
             'address' => [ 'nullable', 'string' ],
+            'city'    => [ 'nullable', 'string' ],
+            'country' => [ 'nullable', 'string' ],
             'email'   => [ 'nullable', 'email' ],
+            'phone'   => [ 'nullable', 'string' ],
         ];
     }
 }

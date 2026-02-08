@@ -19,15 +19,15 @@ class UpdateCompanySettingsRequest extends FormRequest {
      */
     public function rules(): array {
         return [
-            'address'      => [ 'nullable', 'string', 'max:255' ],
-            'city'         => [ 'nullable', 'string', 'max:100' ],
-            'country'      => [ 'nullable', 'string', 'max:100' ],
-            'email'        => [ 'nullable', 'email' ],
-            'phone'        => [ 'nullable', 'string', 'max:50' ],
-            'iban'         => [ 'nullable', 'string', 'max:50' ],
-            'swift'        => [ 'nullable', 'string', 'max:50' ],
-            'invoice_note' => [ 'nullable', 'string' ],
-            'is_vat'       => [ 'boolean' ],
+            'invoice_prefix'       => [ 'required', 'string', 'max:10' ],
+            'invoice_start_number' => [ 'required', 'integer', 'min:1' ],
+            'invoice_next_number'  => [ 'required', 'integer', 'min:1' ],
+            'currency'             => [ 'required', 'string', 'size:3' ],
+            'default_tax_percent'  => [ 'required', 'integer', 'min:0', 'max:100' ],
+            'payment_due_days'     => [ 'required', 'integer', 'min:0' ],
+            'invoice_note'         => [ 'nullable', 'string' ],
+            'vat_enabled'          => [ 'boolean' ],
+            'other_settings'       => [ 'nullable', 'array' ],
         ];
     }
 }

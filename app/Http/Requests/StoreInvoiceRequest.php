@@ -12,10 +12,11 @@ class StoreInvoiceRequest extends FormRequest {
      */
     public function rules(): array {
         return [
-            'client_id'    => [ 'required', 'exists:clients,id' ],
-            'invoice_date' => [ 'required', 'date' ],
-            'due_date'     => [ 'nullable', 'date' ],
-            'note'         => [ 'nullable', 'string' ],
+            'issue_date'     => [ 'required', 'date' ],
+            'due_date'       => [ 'nullable', 'date' ],
+            'currency'       => [ 'nullable', 'string' ],
+            'payment_method' => [ 'nullable', 'string' ],
+            'note'           => [ 'nullable', 'string' ],
         ];
     }
 }
