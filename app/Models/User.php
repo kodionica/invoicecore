@@ -44,6 +44,14 @@ use Illuminate\Notifications\Notifiable;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePassword( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereRememberToken( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereUpdatedAt( $value )
+ * @property string $first_name
+ * @property string $last_name
+ * @property string|null $phone
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Company> $companies
+ * @property-read int|null $companies_count
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereFirstName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastName($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePhone($value)
  * @mixin \Eloquent
  */
 class User extends Authenticatable {
