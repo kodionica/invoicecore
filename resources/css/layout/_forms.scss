@@ -1,0 +1,17 @@
+form {
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 10px;
+
+        & > * {
+            grid-column: span 6;
+        }
+
+        @for $i from 1 through 12 {
+            & > .columns-#{$i} {
+                grid-column: span $i;
+            }
+        }
+    }
+}

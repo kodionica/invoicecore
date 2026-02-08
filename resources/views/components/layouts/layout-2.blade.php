@@ -15,7 +15,6 @@
     @endif
 </head>
 <body class="{{ $body_class ?? '' }}">
-<x-sidebar/>
 
 <x-header/>
 

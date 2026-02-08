@@ -3,6 +3,7 @@
 @use "bootstrap";
 @use "layout/header";
 @use "layout/sidebar-nav";
+@use "layout/forms";
 @use "components/notice";
 
 :root {
@@ -37,4 +38,32 @@ a {
 
 svg {
     max-width: 100%;
+}
+
+.page-header {
+    border-bottom: 1px solid var(--gray);
+    padding-block: 10px;
+
+    h1 {
+        color: var(--primary);
+        font-size: 40px;
+        margin: 0;
+    }
+}
+
+.section-label {
+    font-size: 22px;
+    margin-bottom: 5px;
+    font-weight: 500;
+
+    &--large {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    &--small {
+        font-size: 18px;
+        margin-bottom: 0;
+    }
 }
