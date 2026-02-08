@@ -8,14 +8,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Invoice extends Model {
     protected $fillable = [
-        'company_id',
-        'client_id',
         'number',
         'issue_date',
         'due_date',
+        'currency',
         'total',
         'status',
         'pdf_path',
+        'note',
     ];
 
     public function items(): HasMany {
@@ -24,5 +24,9 @@ class Invoice extends Model {
 
     public function client(): BelongsTo {
         return $this->belongsTo( Client::class );
+    }
+
+    public function company(): BelongsTo {
+        return $this->belongsTo( Company::class );
     }
 }

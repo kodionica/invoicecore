@@ -7,22 +7,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CompanySettings extends Model {
     protected $fillable = [
-        'company_id',
         'invoice_prefix',
-        'next_invoice_number',
-        'address',
-        'city',
-        'country',
-        'email',
-        'phone',
-        'bank_account',
-        'iban',
-        'swift',
-        'logo_path',
-        'default_currency',
+        'invoice_start_number',
+        'invoice_next_number',
+        'currency',
+        'default_tax_percent',
         'vat_enabled',
-        'default_due_days',
-        'footer_note',
+        'payment_due_days',
+        'invoice_note',
+        'other_settings',
     ];
     protected $casts    = [
         'vat_enabled' => 'boolean',

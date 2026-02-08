@@ -8,16 +8,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InvoiceItem extends Model {
     public    $timestamps = false;
     protected $fillable   = [
-        'invoice_id',
         'name',
         'quantity',
-        'unit_price',
+        'price',
+        'sub_total',
         'total',
+        'tax_amount',
+        'description',
     ];
     protected $casts      = [
         'quantity'   => 'decimal:2',
-        'unit_price' => 'decimal:2',
+        'price'      => 'decimal:2',
+        'sub_total'  => 'decimal:2',
         'total'      => 'decimal:2',
+        'tax_amount' => 'decimal:2',
     ];
 
     public function invoice(): BelongsTo {

@@ -56,7 +56,8 @@ class User extends Authenticatable {
      * @var list<string>
      */
     protected $fillable = [
-        'name',
+        'first_name',
+        'last_name',
         'email',
         'password',
         'phone',
@@ -83,11 +84,7 @@ class User extends Authenticatable {
         ];
     }
 
-    public function companies(): BelongsToMany {
-        return $this->belongsToMany( Company::class )->withPivot( 'role' );
-    }
-
-    public function currentCompany() {
-        return $this->companies()->first();
+    public function companies(): HasMany {
+        return $this->hasMany( Company::class );
     }
 }
