@@ -5,7 +5,7 @@
 
             <x-nav/>
 
-            <x-user-actions/>
+            <x-user-actions :user="auth()->user()"/>
         </div>
     </div>
 </header>
