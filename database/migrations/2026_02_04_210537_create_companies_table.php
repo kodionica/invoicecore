@@ -12,8 +12,8 @@ return new class extends Migration {
         Schema::create( 'companies', static function ( Blueprint $table ) {
             $table->id();
             $table->string( 'name' );
-            $table->tinyInteger( 'pib' )->nullable()->unique();
-            $table->tinyInteger( 'mb' )->nullable()->unique();
+            $table->string( 'tax_id' )->nullable()->unique();
+            $table->string( 'company_id' )->nullable()->unique();
             $table->string( 'address' )->nullable();
             $table->string( 'city' )->nullable();
             $table->string( 'country' )->nullable();

@@ -20,8 +20,8 @@ class StoreCompanyRequest extends FormRequest {
     public function rules(): array {
         return [
             'name'         => [ 'required', 'string', 'max:255' ],
-            'pib'          => [ 'required', 'string', 'size:9', 'unique:companies,pib' ],
-            'mb'           => [ 'required', 'string', 'size:8', 'unique:companies,mb' ],
+            'tax_id'       => [ 'required', 'string', 'unique:companies,tax_id' ],
+            'company_id'   => [ 'required', 'string', 'unique:companies,company_id' ],
             'address'      => [ 'string' ],
             'city'         => [ 'string' ],
             'country'      => [ 'string' ],
@@ -30,6 +30,7 @@ class StoreCompanyRequest extends FormRequest {
             'bank_account' => [ 'string' ],
             'iban'         => [ 'string' ],
             'swift'        => [ 'string' ],
+            'logo'         => [ 'nullable', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],
         ];
     }
 }
