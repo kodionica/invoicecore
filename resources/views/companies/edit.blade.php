@@ -1,4 +1,4 @@
-<x-layout>
+<x-layouts.layout>
     <div class="page-header pt-3 pb-2 mb-4 border-bottom">
         <h1>Edit client: {{ $client->name }}</h1>
         <a href="{{ route('clients.index') }}">Back</a>
@@ -24,4 +24,4 @@
         @csrf
         @method('DELETE')
     </form>
-</x-layout>
+</x-layouts.layout>

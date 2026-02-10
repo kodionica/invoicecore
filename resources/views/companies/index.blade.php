@@ -67,7 +67,7 @@
                             <td>{{ $company->iban }}</td>
                             <td>{{ $company->swift }}</td>
                             <td>
-                                <img src="{{ asset("storage/$company->logo_path") }}" alt="">
+                                <img src="{{ asset("storage/$company->logo_path") }}" alt="{{ $company->name }} logo">
                             </td>
                             <td>
                             <span class="actions">

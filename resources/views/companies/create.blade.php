@@ -26,6 +26,10 @@
                 <label for="city">Grad</label>
             </div>
             <div class="form-floating ">
+                <input type="text" name="country" class="form-control" id="country" placeholder="Država" autocomplete="country-name">
+                <label for="country">Država</label>
+            </div>
+            <div class="form-floating ">
                 <input type="email" name="email" class="form-control" id="email" placeholder="Email" autocomplete="email">
                 <label for="email">Email</label>
             </div>
