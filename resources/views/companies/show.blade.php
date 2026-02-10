@@ -62,6 +62,7 @@
             <div class="form-group columns-12">
                 <button type="submit" class="btn btn-primary">Ažuriraj</button>
                 <a href="{{ route('company.index') }}" class="btn btn-outline-danger">Otkaži</a>
+                <a href="{{ route('company.settings.edit', $company) }}" class="btn btn-outline-primary">Izmeni podešavanja firme</a>
             </div>
         </div>
     </x-forms.form>

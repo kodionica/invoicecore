@@ -4,6 +4,7 @@ use App\Http\Controllers\Account\PasswordController;
 use App\Http\Controllers\Account\ProfileController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\CompanySettingsController;
 use App\Http\Controllers\RegisterUserController;
 use App\Http\Controllers\SessionController;
 use Illuminate\Support\Facades\Route;
@@ -20,6 +21,8 @@ Route::middleware( 'auth' )->group( static function () {
     Route::patch( '/password', [ PasswordController::class, 'update' ] )->name( 'password.update' );
 
     Route::resource( 'company', CompanyController::class );
+    Route::get( 'company/{company}/settings', [ CompanySettingsController::class, 'edit' ] )->name( 'company.settings.edit' );
+    Route::patch( 'company/{company}/settings', [ CompanySettingsController::class, 'update' ] )->name( 'company.settings.update' );
 
     Route::resource( 'clients', ClientController::class );
 //    Route::resource( 'invoices', InvoiceController::class );

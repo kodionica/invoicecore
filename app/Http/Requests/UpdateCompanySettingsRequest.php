@@ -12,6 +12,12 @@ class UpdateCompanySettingsRequest extends FormRequest {
         return true;
     }
 
+    protected function prepareForValidation() {
+        $this->merge( [
+                          'vat_enabled' => $this->has( 'vat_enabled' ),
+                      ] );
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
