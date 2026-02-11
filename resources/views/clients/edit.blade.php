@@ -1,27 +1,22 @@
-<x-layout>
-    <div class="page-header pt-3 pb-2 mb-4 border-bottom">
-        <h1>Edit client: {{ $client->name }}</h1>
-        <a href="{{ route('clients.index') }}">Back</a>
-    </div>
+<x-layouts.layout>
+    <x-page-header heading="Izmeni klijenta"/>
 
-    <x-forms.form method="POST" action="{{ route('clients.edit', $client) }}" class="d-flex flex-column justify-content-start gap-3">
-        @method('PATCH')
-
-        <x-forms.input label="Name" name="name" type="text" :value="$client->name" required/>
-        <x-forms.input label="Email" name="email" type="email" :value="$client->email" required/>
-        <x-forms.input label="Address" name="address" type="text" :value="$client->address" required/>
-        <x-forms.input label="Country" name="country" type="text" :value="$client->country" required/>
-        <x-forms.input label="VAT Number" name="vat_number" type="text" :value="$client->vat_number" required/>
-        <x-forms.input label="Company number" name="company_number" type="text" :value="$client->company_number"/>
+    <x-forms.form method="PATCH" action="{{ route('client.edit', $client) }}">
+        <x-forms.input label="Ime" name="name" type="text" required value="{{ $client->name }}"/>
+        <x-forms.input label="Email" name="email" type="email" value="{{ $client->email }}"/>
+        <x-forms.input label="Adresa" name="address" type="text" value="{{ $client->address }}"/>
+        <x-forms.input label="Grad" name="city" type="text" value="{{ $client->city }}"/>
+        <x-forms.input label="Država" name="country" type="text" value="{{ $client->country }}"/>
+        <x-forms.input label="Telefon" name="phone" type="tel" value="{{ $client->phone }}"/>
+        <x-forms.input label="PIB/VAT" name="tax_id" type="text" required value="{{ $client->tax_id }}"/>
+        <x-forms.input label="Matični broj" name="registration_number" type="text" value="{{ $client->registration_number }}"/>
 
         <div class="form-actions">
-            <x-forms.button form="delete-form">Update Client</x-forms.button>
-            <x-forms.button class="btn-danger">Delete Client</x-forms.button>
+            <button class="btn btn-primary" type="submit">Dodaj klijenta</button>
+            <button class="btn btn-danger" type="submit" form="delete-form">Obriši klijenta</button>
+            <a href="{{ route('client.index') }}" class="btn btn-outline-danger">Otkaži</a>
         </div>
     </x-forms.form>
 
-    <form action="{{ route('clients.destroy', $client) }}" method="POST" class="sr-only" id="delete-form">
-        @csrf
-        @method('DELETE')
-    </form>
-</x-layout>
+    <x-forms.form method="DELETE" action="{{ route('client.destroy', $client) }}" class="sr-only" id="delete-form"/>
+</x-layouts.layout>

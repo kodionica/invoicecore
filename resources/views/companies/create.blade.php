@@ -14,8 +14,8 @@
                 <label for="tax_id">PIB/VAT</label>
             </div>
             <div class="form-floating ">
-                <input type="text" name="company_id" class="form-control" id="company_id" placeholder="Matični broj" required>
-                <label for="company_id">Matični broj</label>
+                <input type="text" name="registration_number" class="form-control" id="registration_number" placeholder="Matični broj" required>
+                <label for="registration_number">Matični broj</label>
             </div>
             <div class="form-floating ">
                 <input type="text" name="address" class="form-control" id="address" placeholder="Adresa" autocomplete="street-address">

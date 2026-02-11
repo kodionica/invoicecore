@@ -1,19 +1,19 @@
-<x-layout>
-    <div class="page-header pt-3 pb-2 mb-4 border-bottom">
-        <h1>Add client</h1>
-    </div>
+<x-layouts.layout>
+    <x-page-header heading="Dodaj klijenta"/>
 
-    <x-forms.form method="POST" action="{{ route('clients.index') }}" class="d-flex flex-column justify-content-start gap-3">
-        <x-forms.input label="Name" name="name" type="text" required/>
+    <x-forms.form method="POST" action="{{ route('client.index') }}">
+        <x-forms.input label="Ime" name="name" type="text" required/>
         <x-forms.input label="Email" name="email" type="email"/>
-        <x-forms.input label="Address" name="address" type="text" required/>
-        <x-forms.input label="Country" name="country" type="text" required/>
-        <x-forms.input label="VAT Number" name="vat_number" type="text" required/>
-        <x-forms.input label="Company number" name="company_number" type="text"/>
+        <x-forms.input label="Adresa" name="address" type="text"/>
+        <x-forms.input label="Grad" name="city" type="text"/>
+        <x-forms.input label="Država" name="country" type="text"/>
+        <x-forms.input label="Telefon" name="phone" type="tel"/>
+        <x-forms.input label="PIB/VAT" name="tax_id" type="text" required/>
+        <x-forms.input label="Matični broj" name="registration_number" type="text"/>
 
         <div class="form-actions">
-            <x-forms.button>Add Client</x-forms.button>
-            <a href="{{ route('clients.index') }}" class="btn btn-outline-danger">Cancel</a>
+            <button class="btn btn-primary" type="submit">Dodaj klijenta</button>
+            <a href="{{ route('client.index') }}" class="btn btn-outline-danger">Otkaži</a>
         </div>
     </x-forms.form>
-</x-layout>
+</x-layouts.layout>
