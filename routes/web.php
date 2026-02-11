@@ -24,7 +24,7 @@ Route::middleware( 'auth' )->group( static function () {
     Route::get( 'company/{company}/settings', [ CompanySettingsController::class, 'edit' ] )->name( 'company.settings.edit' );
     Route::patch( 'company/{company}/settings', [ CompanySettingsController::class, 'update' ] )->name( 'company.settings.update' );
 
-    Route::resource( 'clients', ClientController::class );
+    Route::resource( 'client', ClientController::class );
 //    Route::resource( 'invoices', InvoiceController::class );
 //    Route::get( '/invoice/{invoice}/pdf', [ InvoiceController::class, 'generatePDF' ] )->name( 'invoice.pdf' );
 //

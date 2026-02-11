@@ -94,4 +94,8 @@ class User extends Authenticatable {
     public function companies(): HasMany {
         return $this->hasMany( Company::class );
     }
+
+    public function clients(): BelongsToMany {
+        return $this->belongsToMany( Client::class )->withTimestamps();
+    }
 }

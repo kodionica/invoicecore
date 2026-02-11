@@ -15,8 +15,8 @@
         <button class="btn btn-toggle" data-bs-toggle="collapse" data-bs-target="#clients-collapse" aria-expanded="true">Klijenti</button>
         <div class="collapse sub-item" id="clients-collapse">
             <ul class="btn-toggle-nav list-unstyled">
-                {{--                <li><a href="{{ route('clients.create') }}" class="nav-link">Add</a></li>--}}
-                {{--                <li><a href="{{ route('clients.index') }}" class="nav-link">View</a></li>--}}
+                <li><a href="{{ route('client.create') }}" class="nav-link">Dodaj</a></li>
+                <li><a href="{{ route('client.index') }}" class="nav-link">Pogledaj sve</a></li>
             </ul>
         </div>
     </li>

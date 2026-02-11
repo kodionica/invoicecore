@@ -22,19 +22,19 @@ class UpdateCompanyRequest extends FormRequest {
         $company = $this->route( 'company' );
 
         return [
-            'name'         => [ 'sometimes', 'string', 'max:255' ],
-            'tax_id'       => [ 'sometimes', 'string', Rule::unique( 'companies', 'tax_id' )->ignore( $company ) ],
-            'company_id'   => [ 'sometimes', 'string', Rule::unique( 'companies', 'company_id' )->ignore( $company ) ],
-            'address'      => [ 'sometimes', 'string' ],
-            'city'         => [ 'sometimes', 'string' ],
-            'country'      => [ 'sometimes', 'string' ],
-            'email'        => [ 'sometimes', 'email' ],
-            'phone'        => [ 'sometimes', 'string' ],
-            'bank_account' => [ 'sometimes', 'string' ],
-            'iban'         => [ 'sometimes', 'string' ],
-            'swift'        => [ 'sometimes', 'string' ],
-            'logo'         => [ 'sometimes', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],
-            'remove_logo'  => [ 'sometimes', 'boolean' ],
+            'name'                => [ 'sometimes', 'string', 'max:255' ],
+            'tax_id'              => [ 'sometimes', 'string', Rule::unique( 'companies', 'tax_id' )->ignore( $company ) ],
+            'registration_number' => [ 'sometimes', 'string', Rule::unique( 'companies', 'registration_number' )->ignore( $company ) ],
+            'address'             => [ 'sometimes', 'string' ],
+            'city'                => [ 'sometimes', 'string' ],
+            'country'             => [ 'sometimes', 'string' ],
+            'email'               => [ 'sometimes', 'email' ],
+            'phone'               => [ 'sometimes', 'string' ],
+            'bank_account'        => [ 'sometimes', 'string' ],
+            'iban'                => [ 'sometimes', 'string' ],
+            'swift'               => [ 'sometimes', 'string' ],
+            'logo'                => [ 'sometimes', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],
+            'remove_logo'         => [ 'sometimes', 'boolean' ],
         ];
     }
 }

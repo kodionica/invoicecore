@@ -19,18 +19,18 @@ class StoreCompanyRequest extends FormRequest {
      */
     public function rules(): array {
         return [
-            'name'         => [ 'required', 'string', 'max:255' ],
-            'tax_id'       => [ 'required', 'string', 'unique:companies,tax_id' ],
-            'company_id'   => [ 'required', 'string', 'unique:companies,company_id' ],
-            'address'      => [ 'nullable', 'string' ],
-            'city'         => [ 'nullable', 'string' ],
-            'country'      => [ 'nullable', 'string' ],
-            'email'        => [ 'nullable', 'email' ],
-            'phone'        => [ 'nullable', 'string' ],
-            'bank_account' => [ 'nullable', 'string' ],
-            'iban'         => [ 'nullable', 'string' ],
-            'swift'        => [ 'nullable', 'string' ],
-            'logo'         => [ 'nullable', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],
+            'name'                => [ 'required', 'string', 'max:255' ],
+            'tax_id'              => [ 'required', 'string', 'unique:companies,tax_id' ],
+            'registration_number' => [ 'required', 'string', 'unique:companies,registration_number' ],
+            'address'             => [ 'nullable', 'string' ],
+            'city'                => [ 'nullable', 'string' ],
+            'country'             => [ 'nullable', 'string' ],
+            'email'               => [ 'nullable', 'email' ],
+            'phone'               => [ 'nullable', 'string' ],
+            'bank_account'        => [ 'nullable', 'string' ],
+            'iban'                => [ 'nullable', 'string' ],
+            'swift'               => [ 'nullable', 'string' ],
+            'logo'                => [ 'nullable', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],
         ];
     }
 }

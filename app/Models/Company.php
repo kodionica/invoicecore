@@ -56,7 +56,7 @@ class Company extends Model {
     protected $fillable = [
         'name',
         'tax_id',
-        'company_id',
+        'registration_number',
         'address',
         'city',
         'country',
@@ -69,7 +69,7 @@ class Company extends Model {
         'user_id',
     ];
 
-    protected static function booted() {
+    protected static function booted(): void {
         static::created( static fn( $company ) => $company->settings()->create() );
     }
 
@@ -81,8 +81,8 @@ class Company extends Model {
         return $this->hasOne( CompanySettings::class );
     }
 
-    public function clients(): HasMany {
-        return $this->hasMany( Client::class );
+    public function clients(): BelongsToMany {
+        return $this->belongsToMany( Client::class )->withTimestamps();
     }
 
     public function invoices(): HasMany {
