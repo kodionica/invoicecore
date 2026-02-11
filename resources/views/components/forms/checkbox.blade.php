@@ -1,4 +1,4 @@
-@props(['label' => '', 'name', 'wrapper_class' => ''])
+@props(['label' => '', 'wrapper_class' => '', 'name'])
 
 @php
     $defaults = [
@@ -6,7 +6,7 @@
         'id' => $name,
         'name' => $name,
         'value' => old($name),
-        'class' => 'form-check-input ' . ($errors->first($name) ? 'is-invalid' : ''),
+        'class' => 'form-check-input' . ($errors->first($name) ? ' is-invalid' : ''),
     ];
 
     $wrapper_class .= ' form-check';

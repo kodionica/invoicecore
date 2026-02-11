@@ -1,16 +1,15 @@
-@props(['label', 'name', 'wrapper_class' => ''])
+@props(['label' => '', 'wrapper_class' => '', 'name'])
 
 @php
     $defaults = [
         'type' => 'text',
         'id' => $name,
         'name' => $name,
-        'class' => 'form-control ' . ($errors->first($name) ? 'is-invalid' : ''),
+        'class' => 'form-control' . ($errors->first($name) ? ' is-invalid' : ''),
         'value' => old($name),
         'autocomplete' => $name,
+        'placeholder' => $label,
     ];
-
-    $wrapper_class .= ' form-floating';
 @endphp
 
 <x-forms.field :$label :$name :$wrapper_class>

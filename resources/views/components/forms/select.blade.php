@@ -4,10 +4,8 @@
     $defaults = [
         'id' => $name,
         'name' => $name,
-        'class' => 'form-control ' . ($errors->first($name) ? 'is-invalid' : ''),
+        'class' => 'form-select' . ($errors->first($name) ? ' is-invalid' : ''),
     ];
-
-    $wrapper_class .= ' form-floating';
 @endphp
 
 <x-forms.field :$label :$name :$wrapper_class>

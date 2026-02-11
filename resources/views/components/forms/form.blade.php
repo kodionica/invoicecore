@@ -1,4 +1,8 @@
-<form {{ $attributes(["class" => "max-w-2xl mx-auto space-y-6", "method" => "GET"]) }}>
+@php
+    $form_classes = 'form needs-validation ' . ($errors->any() ? 'was-validated' : '');
+@endphp
+
+<form {{ $attributes(['class' => $form_classes, 'method' => 'GET']) }}>
     @if ($attributes->get('method', 'GET') !== 'GET')
         @csrf
         @method($attributes->get('method'))
