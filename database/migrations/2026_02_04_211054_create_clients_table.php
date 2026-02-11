@@ -11,10 +11,9 @@ return new class extends Migration {
     public function up(): void {
         Schema::create( 'clients', static function ( Blueprint $table ) {
             $table->id();
-            $table->foreignId( 'company_id' )->constrained()->cascadeOnDelete();
             $table->string( 'name' );
-            $table->tinyInteger( 'pib' )->nullable()->unique();
-            $table->tinyInteger( 'mb' )->nullable()->unique();
+            $table->string( 'tax_id' )->nullable()->unique();
+            $table->string( 'registration_number' )->nullable()->unique();
             $table->string( 'address' )->nullable();
             $table->string( 'city' )->nullable();
             $table->string( 'country' )->nullable();
