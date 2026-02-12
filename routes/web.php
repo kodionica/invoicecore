@@ -5,6 +5,7 @@ use App\Http\Controllers\Account\ProfileController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanySettingsController;
+use App\Http\Controllers\CompanySwitchController;
 use App\Http\Controllers\RegisterUserController;
 use App\Http\Controllers\SessionController;
 use Illuminate\Support\Facades\Route;
@@ -20,9 +21,8 @@ Route::middleware( 'auth' )->group( static function () {
     Route::get( '/password', [ PasswordController::class, 'edit' ] )->name( 'password.edit' );
     Route::patch( '/password', [ PasswordController::class, 'update' ] )->name( 'password.update' );
 
-    Route::resource( 'company', CompanyController::class );
-    Route::get( 'company/{company}/settings', [ CompanySettingsController::class, 'edit' ] )->name( 'company.settings.edit' );
-    Route::patch( 'company/{company}/settings', [ CompanySettingsController::class, 'update' ] )->name( 'company.settings.update' );
+    Route::resource( 'companies', CompanyController::class );
+//    Route::post( 'companies/switch', [ CompanySwitchController::class, 'switch' ] )->name( 'companies.switch' );
 
     Route::resource( 'client', ClientController::class );
 //    Route::resource( 'invoices', InvoiceController::class );

@@ -52,12 +52,8 @@ class Client extends Model {
         'phone',
     ];
 
-    public function companies(): BelongsToMany {
-        return $this->belongsToMany( Company::class )->withTimestamps();
-    }
-
-    public function users(): BelongsToMany {
-        return $this->belongsToMany( User::class )->withTimestamps();
+    public function company(): BelongsTo {
+        return $this->belongsTo( Company::class );
     }
 
     public function invoices(): HasMany {

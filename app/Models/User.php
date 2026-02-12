@@ -68,6 +68,7 @@ class User extends Authenticatable {
         'last_name',
         'password',
         'phone',
+        'active_company_id',
     ];
     /**
      * The attributes that should be hidden for serialization.
@@ -95,7 +96,7 @@ class User extends Authenticatable {
         return $this->hasMany( Company::class );
     }
 
-    public function clients(): BelongsToMany {
-        return $this->belongsToMany( Client::class )->withTimestamps();
+    public function activeCompany(): BelongsTo {
+        return $this->belongsTo( Company::class, 'active_company_id' );
     }
 }

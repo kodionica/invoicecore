@@ -53,7 +53,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @mixin \Eloquent
  */
 class Company extends Model {
-    protected $fillable = [
+    protected $fillable   = [
         'name',
         'tax_id',
         'registration_number',
@@ -66,23 +66,40 @@ class Company extends Model {
         'iban',
         'swift',
         'logo_path',
+        'invoice_prefix',
+        'invoice_start_number',
+        'invoice_next_number',
+        'currency',
+        'default_tax_percent',
+        'vat_enabled',
+        'payment_due_days',
+        'invoice_note',
+        'other_settings',
         'user_id',
     ];
-
-    protected static function booted(): void {
-        static::created( static fn( $company ) => $company->settings()->create() );
-    }
+    protected $casts      = [
+        'invoice_start_number' => 'integer',
+        'invoice_next_number'  => 'integer',
+        'default_tax_percent'  => 'integer',
+        'payment_due_days'     => 'integer',
+        'vat_enabled'          => 'boolean',
+    ];
+    protected $attributes = [
+        'invoice_prefix'       => 'INV',
+        'invoice_start_number' => 1,
+        'invoice_next_number'  => 1,
+        'currency'             => 'RSD',
+        'vat_enabled'          => false,
+        'default_tax_percent'  => 20,
+        'payment_due_days'     => 14,
+    ];
 
     public function user(): BelongsTo {
         return $this->belongsTo( User::class );
     }
 
-    public function settings(): HasOne {
-        return $this->hasOne( CompanySettings::class );
-    }
-
-    public function clients(): BelongsToMany {
-        return $this->belongsToMany( Client::class )->withTimestamps();
+    public function clients(): HasMany {
+        return $this->hasMany( Client::class );
     }
 
     public function invoices(): HasMany {

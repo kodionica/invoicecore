@@ -23,6 +23,15 @@ return new class extends Migration {
             $table->string( 'iban' )->nullable();
             $table->string( 'swift' )->nullable();
             $table->string( 'logo_path' )->nullable();
+            $table->string( 'invoice_prefix' )->default( 'INV' );
+            $table->unsignedInteger( 'invoice_start_number' )->default( 1 );
+            $table->unsignedInteger( 'invoice_next_number' )->default( 1 );
+            $table->string( 'currency' )->default( 'RSD' );
+            $table->unsignedTinyInteger( 'default_tax_percent' )->default( 20 );
+            $table->boolean( 'vat_enabled' )->default( false );
+            $table->unsignedInteger( 'payment_due_days' )->default( 15 );
+            $table->text( 'invoice_note' )->nullable();
+            $table->json( 'other_settings' )->nullable();
             $table->foreignId( 'user_id' )->constrained()->cascadeOnDelete();
             $table->timestamps();
         } );

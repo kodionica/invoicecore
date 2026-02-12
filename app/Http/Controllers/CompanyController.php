@@ -22,7 +22,12 @@ class CompanyController extends Controller {
      * Show the form for creating a new resource.
      */
     public function create() {
-        return view( 'companies.create' );
+        // Map currencies to select options
+        $currencies = collect( config( 'currency' ) )
+            ->map( fn( $currency ) => $currency[ 'name' ] . ' (' . $currency[ 'symbol' ] . ')' )
+            ->all();
+
+        return view( 'companies.create', compact( 'currencies' ) );
     }
 
     /**
@@ -44,9 +49,11 @@ class CompanyController extends Controller {
 
         $data[ 'user_id' ] = auth()->id();
 
-        Company::create( $data );
+        $company = new Company();
+        $company->fill( $data );
+        $company->save();
 
-        return redirect()->route( 'company.index' )->with( 'flash', [
+        return redirect()->route( 'companies.index' )->with( 'flash', [
             'message' => 'Firma je uspešno kreirana.',
             'type'    => 'success',
         ] );
@@ -56,14 +63,24 @@ class CompanyController extends Controller {
      * Display the specified resource.
      */
     public function show( Company $company ) {
-        return view( 'companies.show', compact( 'company' ) );
+        // Map currencies to select options
+        $currencies = collect( config( 'currency' ) )
+            ->map( fn( $currency ) => $currency[ 'name' ] . ' (' . $currency[ 'symbol' ] . ')' )
+            ->all();
+
+        return view( 'companies.show', compact( 'company', 'currencies' ) );
     }
 
     /**
      * Show the form for editing the specified resource.
      */
     public function edit( Company $company ) {
-        return view( 'companies.show', compact( 'company' ) );
+        // Map currencies to select options
+        $currencies = collect( config( 'currency' ) )
+            ->map( fn( $currency ) => $currency[ 'name' ] . ' (' . $currency[ 'symbol' ] . ')' )
+            ->all();
+
+        return view( 'companies.show', compact( 'company', 'currencies' ) );
     }
 
     /**
@@ -99,7 +116,7 @@ class CompanyController extends Controller {
             $company->save();
         }
 
-        return redirect()->route( 'company.edit', $company )->with( 'flash', [
+        return redirect()->route( 'companies.edit', $company )->with( 'flash', [
             'message' => 'Podaci o firmi su ažurirani.',
             'type'    => 'success',
         ] );

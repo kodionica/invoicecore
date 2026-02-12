@@ -12,6 +12,12 @@ class StoreCompanyRequest extends FormRequest {
         return true;
     }
 
+    protected function prepareForValidation() {
+        $this->merge( [
+                          'vat_enabled' => $this->has( 'vat_enabled' ),
+                      ] );
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -30,6 +36,8 @@ class StoreCompanyRequest extends FormRequest {
             'bank_account'        => [ 'nullable', 'string' ],
             'iban'                => [ 'nullable', 'string' ],
             'swift'               => [ 'nullable', 'string' ],
+            'currency'            => [ 'required', 'string', 'max:3' ],
+            'vat_enabled'         => [ 'nullable', 'boolean' ],
             'logo'                => [ 'nullable', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],
         ];
     }

@@ -20,11 +20,11 @@ class RegisterUserController extends Controller {
     public function store( Request $request ) {
         $user_attributes = $request->validate(
             [
-                'first_name' => 'required|string|max:255',
-                'last_name'  => 'required|string|max:255',
+                'first_name' => 'nullable|string|max:255',
+                'last_name'  => 'nullable|string|max:255',
                 'email'      => 'required|string|email|max:255|unique:users,email',
                 'password'   => 'required|string|min:5|confirmed',
-                'phone'      => 'string',
+                'phone'      => 'nullable|string',
             ]
         );
 
