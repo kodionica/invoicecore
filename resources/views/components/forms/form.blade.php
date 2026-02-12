@@ -1,11 +1,26 @@
+@props(['method' => 'POST', 'action' => ''])
+
 @php
-    $form_classes = 'form needs-validation ' . ($errors->any() ? 'was-validated' : '');
+    $htmlMethod = strtoupper($method);
+    $spoofMethod = null;
+
+    if (!in_array($htmlMethod, ['GET', 'POST'])) {
+        $spoofMethod = $htmlMethod;
+        $htmlMethod = 'POST';
+    }
+
+    $formAttributes = $attributes->merge([
+        'method' => $htmlMethod,
+        'action' => $action,
+        'class' => 'form needs-validation ' . ($errors->any() ? 'was-validated' : ''),
+    ]);
+
 @endphp
 
-<form {{ $attributes(['class' => $form_classes, 'method' => 'GET']) }}>
-    @if ($attributes->get('method', 'GET') !== 'GET')
+<form {{ $formAttributes }}>
+    @if ($htmlMethod === 'POST')
         @csrf
-        @method($attributes->get('method'))
+        @method($method)
     @endif
 
     {{ $slot }}

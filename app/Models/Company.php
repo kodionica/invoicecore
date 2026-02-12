@@ -94,6 +94,17 @@ class Company extends Model {
         'payment_due_days'     => 14,
     ];
 
+    protected static function booted() {
+        // Automatically set the user's active company when creating a new company.
+        static::created( static function ( $company ) {
+            $user = $company->user;
+
+            if ( $user->active_company_id === null ) {
+                $user->update( [ 'active_company_id' => $company->id ] );
+            }
+        } );
+    }
+
     public function user(): BelongsTo {
         return $this->belongsTo( User::class );
     }

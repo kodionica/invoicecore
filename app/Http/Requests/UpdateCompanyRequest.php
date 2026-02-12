@@ -45,7 +45,7 @@ class UpdateCompanyRequest extends FormRequest {
             'currency'             => [ 'sometimes', 'string', 'size:3' ],
             'default_tax_percent'  => [ 'sometimes', 'integer', 'min:0', 'max:100' ],
             'payment_due_days'     => [ 'sometimes', 'integer', 'min:0' ],
-            'invoice_note'         => [ 'sometimes', 'string' ],
+            'invoice_note'         => [ 'sometimes', 'string', 'nullable' ],
             'vat_enabled'          => [ 'sometimes', 'boolean' ],
             'other_settings'       => [ 'sometimes', 'nullable', 'array' ],
             'logo'                 => [ 'sometimes', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],

@@ -53,7 +53,7 @@
                             </td>
                             <td>
                             <span class="text">
-                                <a href="{{ route('company.edit', $company ) }}">{{ $company->name }}</a>
+                                <a href="{{ route('companies.edit', $company ) }}">{{ $company->name }}</a>
                             </span>
                             </td>
                             <td>{{ $company->tax_id }}</td>

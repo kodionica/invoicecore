@@ -14,4 +14,6 @@
 
 <x-forms.field :$label :$name :$wrapper_class>
     <input {{ $attributes($defaults) }}>
+
+    {{ $slot }}
 </x-forms.field>

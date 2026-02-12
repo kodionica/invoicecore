@@ -6,8 +6,8 @@
         <button class="btn btn-toggle" data-bs-toggle="collapse" data-bs-target="#company-collapse" aria-expanded="true">Firme</button>
         <div class="collapse sub-item" id="company-collapse">
             <ul class="btn-toggle-nav list-unstyled">
-                <li><a href="{{ route('company.create') }}" class="nav-link">Dodaj</a></li>
-                <li><a href="{{ route('company.index') }}" class="nav-link">Pogledaj sve</a></li>
+                <li><a href="{{ route('companies.create') }}" class="nav-link">Dodaj</a></li>
+                <li><a href="{{ route('companies.index') }}" class="nav-link">Pogledaj sve</a></li>
             </ul>
         </div>
     </li>

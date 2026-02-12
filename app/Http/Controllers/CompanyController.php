@@ -47,11 +47,9 @@ class CompanyController extends Controller {
 
         unset( $data[ 'logo' ] );
 
-        $data[ 'user_id' ] = auth()->id();
-
-        $company = new Company();
-        $company->fill( $data );
-        $company->save();
+        Company::create( array_merge( $data, [
+            'user_id' => auth()->id(),
+        ] ) );
 
         return redirect()->route( 'companies.index' )->with( 'flash', [
             'message' => 'Firma je uspešno kreirana.',
@@ -107,7 +105,6 @@ class CompanyController extends Controller {
         }
 
         unset( $data[ 'logo' ], $data[ 'remove_logo' ] );
-
         // Fill company model with validated data
         $company->fill( $data );
 

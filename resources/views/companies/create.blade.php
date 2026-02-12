@@ -3,61 +3,25 @@
         <h1>Dodaj firmu</h1>
     </div>
 
-    <x-forms.form method="POST" action="{{ route('company.index') }}" enctype="multipart/form-data" class="d-flex flex-column justify-content-start gap-3">
-        <div class="form-row">
-            <div class="form-floating ">
-                <input type="text" name="name" class="form-control" id="name" placeholder="Naziv firme" required autocomplete="organization">
-                <label for="name">Naziv firme</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="tax_id" class="form-control" id="tax_id" placeholder="PIB" required>
-                <label for="tax_id">PIB/VAT</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="registration_number" class="form-control" id="registration_number" placeholder="Matični broj" required>
-                <label for="registration_number">Matični broj</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="address" class="form-control" id="address" placeholder="Adresa" autocomplete="street-address">
-                <label for="address">Adresa</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="city" class="form-control" id="city" placeholder="Grad" autocomplete="address-level2">
-                <label for="city">Grad</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="country" class="form-control" id="country" placeholder="Država" autocomplete="country-name">
-                <label for="country">Država</label>
-            </div>
-            <div class="form-floating ">
-                <input type="email" name="email" class="form-control" id="email" placeholder="Email" autocomplete="email">
-                <label for="email">Email</label>
-            </div>
-            <div class="form-floating ">
-                <input type="tel" name="phone" class="form-control" id="phone" placeholder="Telefon" autocomplete="tel">
-                <label for="phone">Telefon</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="bank_account" class="form-control" id="bank_account" placeholder="Bankovni račun">
-                <label for="bank_account">Bankovni račun</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="iban" class="form-control" id="iban" placeholder="IBAN">
-                <label for="iban">IBAN</label>
-            </div>
-            <div class="form-floating ">
-                <input type="text" name="swift" class="form-control" id="swift" placeholder="SWIFT">
-                <label for="swift">SWIFT</label>
-            </div>
-            <div class="form-floating">
-                <input type="file" name="logo" class="form-control" id="logo">
-                <label for="logo" class="visually-hidden">Logo</label>
-            </div>
+    <x-forms.form method="POST" action="{{ route('companies.index') }}" enctype="multipart/form-data">
+        <x-forms.input name="name" label="Naziv firme" autocomplete="organization"/>
+        <x-forms.input name="tax_id" label="PIB/VAT"/>
+        <x-forms.input name="registration_number" label="Matični broj"/>
+        <x-forms.input name="address" label="Adresa" autocomplete="street-address"/>
+        <x-forms.input name="city" label="Grad" autocomplete="address-level2"/>
+        <x-forms.input name="country" label="Država" autocomplete="country-name"/>
+        <x-forms.input name="email" label="Email" autocomplete="email" type="email"/>
+        <x-forms.input name="phone" label="Telefon" autocomplete="tel" type="tel"/>
+        <x-forms.input name="bank_account" label="Bankovni račun"/>
+        <x-forms.input name="iban" label="IBAN"/>
+        <x-forms.input name="swift" label="SWIFT"/>
+        <x-forms.select name="currency" label="Valuta" :options="$currencies"/>
+        <x-forms.checkbox name="vat_enabled" label="U sistemu PDV?"/>
+        <x-forms.input name="logo" label="Logo" type="file"/>
 
-            <div class="form-group columns-12">
-                <button type="submit" class="btn btn-primary">Dodaj firmu</button>
-                <a href="{{ route('company.index') }}" class="btn btn-outline-danger">Otkaži</a>
-            </div>
+        <div class="form-group columns-12">
+            <button type="submit" class="btn btn-primary">Dodaj firmu</button>
+            <a href="{{ route('companies.index') }}" class="btn btn-outline-danger">Otkaži</a>
         </div>
     </x-forms.form>
 </x-layouts.layout>

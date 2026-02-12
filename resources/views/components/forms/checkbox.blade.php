@@ -5,13 +5,12 @@
         'type' => 'checkbox',
         'id' => $name,
         'name' => $name,
-        'value' => old($name),
+        'value' => 1,
         'class' => 'form-check-input' . ($errors->first($name) ? ' is-invalid' : ''),
+        'checked' => old($name),
     ];
-
-    $wrapper_class .= ' form-check';
 @endphp
 
-<x-forms.field :$label :$name :$wrapper_class>
+<x-forms.field :$label :$name :$wrapper_class type="checkbox">
     <input {{ $attributes($defaults) }}>
 </x-forms.field>
