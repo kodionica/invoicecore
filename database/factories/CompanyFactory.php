@@ -24,7 +24,7 @@ class CompanyFactory extends Factory {
             'country'             => fake()->country(),
             'email'               => fake()->companyEmail(),
             'phone'               => fake()->phoneNumber(),
-            'bank_account'        => fake()->randomNumber( 12 ),
+            'bank_account'        => fake()->randomNumber( 9 ),
             'iban'                => fake()->iban(),
             'swift'               => fake()->swiftBicNumber(),
             'logo_path'           => '',

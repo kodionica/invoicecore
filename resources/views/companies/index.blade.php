@@ -1,15 +1,6 @@
 <x-layouts.layout>
     <div class="card-box table-responsive">
-        <p class="text-muted font-13 m-b-30">
-            The Buttons extension for DataTables provides a common set of options, API methods and styling to display buttons on a page that will interact with a DataTable. The core library provides
-            the based framework upon which plug-ins can built.
-        </p>
         <div id="datatable-buttons_wrapper" class="dataTables_wrapper container-fluid dt-bootstrap no-footer">
-            <div class="dt-buttons btn-group">
-                <button type="button" class="btn btn-outline-primary btn--csv" data-option="csv">CSV</button>
-                <button type="button" class="btn btn-outline-primary btn--pdf" data-option="pdf">PDF</button>
-                <button type="button" class="btn btn-outline-primary btn--print" data-option="print">Print</button>
-            </div>
             <div class="dataTables_length" id="datatable-buttons_length">
                 <label>Show
                     <select name="datatable-buttons_length" class="form-control input-sm">
