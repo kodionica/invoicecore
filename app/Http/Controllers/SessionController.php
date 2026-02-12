@@ -19,13 +19,16 @@ class SessionController extends Controller {
     public function store( Request $request ) {
         $attributes = $request->validate(
             [
-                'email'    => 'required|email',
+                'login'    => 'required|string',
                 'password' => 'required',
             ]
         );
 
-        if ( ! Auth::attempt( $attributes , $request->has('remember')) ) {
-            return back()->withErrors( [ 'email' => 'Invalid credentials' ] )->onlyInput( 'email' );
+        // Check if login is an email or username
+        $login_type = filter_var( $request->login, FILTER_VALIDATE_EMAIL ) ? 'email' : 'username';
+
+        if ( ! Auth::attempt( [ $login_type => $attributes[ 'login' ], 'password' => $attributes[ 'password' ] ], $request->has( 'remember' ) ) ) {
+            return back()->withErrors( [ 'login' => 'Invalid credentials' ] )->onlyInput( 'login' );
         }
 
         $request->session()->regenerate();

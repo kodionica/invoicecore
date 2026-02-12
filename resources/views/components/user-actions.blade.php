@@ -2,7 +2,7 @@
     @auth
         <div class="dropdown text-end">
             <a href="#" class="d-block link-body-emphasis text-decoration-none dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                {{ $user->first_name ?? '' }}
+                {{ $user->display_name }}
             </a>
             <ul class="dropdown-menu text-small">
                 {{--                <li><a class="dropdown-item" href="{{ route('settings.invoice.edit') }}">Podešavanja firme</a></li>--}}

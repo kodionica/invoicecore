@@ -28,10 +28,9 @@ class RegisterUserController extends Controller {
             ]
         );
 
-        $user = new User();
-        $user->fill( \Arr::except( $user_attributes, 'email' ) );
-        $user->email = $user_attributes[ 'email' ];
-        $user->save();
+        $user_attributes[ 'username' ] = User::generateUsername( $user_attributes[ 'email' ] );
+
+        $user = User::create( $user_attributes );
 
         Auth::login( $user );
 

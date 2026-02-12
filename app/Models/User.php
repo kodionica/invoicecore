@@ -66,8 +66,10 @@ class User extends Authenticatable {
     protected $fillable = [
         'first_name',
         'last_name',
-        'password',
         'phone',
+        'email',
+        'password',
+        'username',
         'active_company_id',
     ];
     /**
@@ -90,6 +92,47 @@ class User extends Authenticatable {
             'email_verified_at' => 'datetime',
             'password'          => 'hashed',
         ];
+    }
+
+    protected $appends = [
+        'display_name',
+    ];
+
+    public function getDisplayNameAttribute(): string {
+        if ( $this->first_name && $this->last_name ) {
+            return $this->first_name . ' ' . $this->last_name;
+        }
+
+        if ( $this->username ) {
+            return $this->username;
+        }
+
+        if ( $this->email ) {
+            return $this->email;
+        }
+
+        return 'Guest';
+    }
+
+    /**
+     * Generate a username from a base string with checks for existing usernames.
+     *
+     * @param string $base
+     *
+     * @return string
+     */
+    public static function generateUsername( string $base ): string {
+        $base = strtolower( preg_replace( '/[^a-z0-9._]/', '', strstr( $base, '@', true ) ) );
+
+        $username = $base;
+        $counter  = 1;
+
+        // Add a number to the username if it already exists
+        while ( self::where( 'username', $username )->exists() ) {
+            $counter++;
+        }
+
+        return $base . $counter;
     }
 
     public function companies(): HasMany {
