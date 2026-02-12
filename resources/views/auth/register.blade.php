@@ -1,4 +1,4 @@
-<x-layouts.layout>
+<x-layouts.layout-2>
     <x-page-header heading="Registruj se"/>
 
     <x-forms.form action="{{ route('register.store') }}" method="POST">
@@ -17,4 +17,4 @@
             <button type="submit" class="btn btn-primary">Registruj se</button>
         </div>
     </x-forms.form>
-</x-layouts.layout>
+</x-layouts.layout-2>

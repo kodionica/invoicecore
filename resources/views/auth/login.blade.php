@@ -1,4 +1,4 @@
-<x-layouts.layout>
+<x-layouts.layout-2>
     <x-page-header heading="Prijava"/>
 
     <x-forms.form action="{{ route('login.store') }}" method="POST">
@@ -10,4 +10,4 @@
             <button type="submit" class="btn btn-primary">Prijavi se</button>
         </div>
     </x-forms.form>
-</x-layouts.layout>
+</x-layouts.layout-2>

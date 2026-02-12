@@ -22,10 +22,13 @@
 }
 
 body {
-    padding-left: var(--sidebar-width);
     font-size: 18px;
     line-height: 1.3;
     color: var(--dark);
+
+    &.logged-in {
+        padding-left: var(--sidebar-width);
+    }
 }
 
 a {

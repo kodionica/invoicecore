@@ -122,6 +122,7 @@ class User extends Authenticatable {
      * @return string
      */
     public static function generateUsername( string $base ): string {
+
         $base = strtolower( preg_replace( '/[^a-z0-9._]/', '', strstr( $base, '@', true ) ) );
 
         $username = $base;
