@@ -1,3 +1,5 @@
+@props(['user' => null])
+
 <div class="user-profile-actions">
     @auth
         <div class="dropdown text-end">

@@ -22,7 +22,7 @@ Route::middleware( 'auth' )->group( static function () {
     Route::patch( '/password', [ PasswordController::class, 'update' ] )->name( 'password.update' );
 
     Route::resource( 'companies', CompanyController::class );
-//    Route::post( 'companies/switch', [ CompanySwitchController::class, 'switch' ] )->name( 'companies.switch' );
+    Route::post( 'companies/switch', [ CompanySwitchController::class, 'switch' ] )->name( 'companies.switch' );
 
     Route::resource( 'client', ClientController::class );
 //    Route::resource( 'invoices', InvoiceController::class );
