@@ -56,7 +56,7 @@
                         <td>{{ $invoice->payments->first()?->method ?: 'N/A' }}</td>
                         <td>{{ Number::currency($invoice->total_amount, $invoice->currency) }}</td>
                         <td>
-                            <a href="{{ route('client.edit', $invoice->client) }}">{{ $invoice->client->name }}</a>
+                            <a href="{{ route('clients.edit', $invoice->client) }}">{{ $invoice->client->name }}</a>
                         </td>
                         <td>
                             <div class="actions">

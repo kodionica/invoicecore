@@ -1,7 +1,7 @@
 <x-layouts.layout>
     <x-page-header heading="Dodaj klijenta"/>
 
-    <x-forms.form method="POST" action="{{ route('client.index') }}">
+    <x-forms.form method="POST" action="{{ route('clients.index') }}">
         <x-forms.input label="Ime" name="name" type="text" required/>
         <x-forms.input label="Email" name="email" type="email"/>
         <x-forms.input label="Adresa" name="address" type="text"/>
@@ -13,7 +13,7 @@
 
         <div class="form-actions">
             <button class="btn btn-primary" type="submit">Dodaj klijenta</button>
-            <a href="{{ route('client.index') }}" class="btn btn-outline-danger">Otkaži</a>
+            <a href="{{ route('clients.index') }}" class="btn btn-outline-danger">Otkaži</a>
         </div>
     </x-forms.form>
 </x-layouts.layout>

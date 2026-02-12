@@ -4,8 +4,8 @@ use App\Http\Controllers\Account\PasswordController;
 use App\Http\Controllers\Account\ProfileController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompanyController;
-use App\Http\Controllers\CompanySettingsController;
 use App\Http\Controllers\CompanySwitchController;
+use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\RegisterUserController;
 use App\Http\Controllers\SessionController;
 use Illuminate\Support\Facades\Route;
@@ -24,12 +24,9 @@ Route::middleware( 'auth' )->group( static function () {
     Route::resource( 'companies', CompanyController::class );
     Route::post( 'companies/switch', [ CompanySwitchController::class, 'switch' ] )->name( 'companies.switch' );
 
-    Route::resource( 'client', ClientController::class );
-//    Route::resource( 'invoices', InvoiceController::class );
-//    Route::get( '/invoice/{invoice}/pdf', [ InvoiceController::class, 'generatePDF' ] )->name( 'invoice.pdf' );
-//
-//    Route::get( '/settings/invoice', [ InvoiceSettingController::class, 'edit' ] )->name( 'settings.invoice.edit' );
-//    Route::put( '/settings/invoice', [ InvoiceSettingController::class, 'update' ] )->name( 'settings.invoice.update' );
+    Route::resource( 'clients', ClientController::class );
+    Route::resource( 'invoices', InvoiceController::class );
+    Route::get( 'invoices/{invoice}/pdf', [ InvoiceController::class, 'generatePDF' ] )->name( 'invoices.pdf' );
 } );
 
 Route::middleware( 'guest' )->group( static function () {

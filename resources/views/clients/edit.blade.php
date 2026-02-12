@@ -1,7 +1,7 @@
 <x-layouts.layout>
     <x-page-header heading="Izmeni klijenta"/>
 
-    <x-forms.form method="PATCH" action="{{ route('client.edit', $client) }}">
+    <x-forms.form method="PATCH" action="{{ route('clients.edit', $client) }}">
         <x-forms.input label="Ime" name="name" type="text" required value="{{ $client->name }}"/>
         <x-forms.input label="Email" name="email" type="email" value="{{ $client->email }}"/>
         <x-forms.input label="Adresa" name="address" type="text" value="{{ $client->address }}"/>
@@ -14,9 +14,9 @@
         <div class="form-actions">
             <button class="btn btn-primary" type="submit">Dodaj klijenta</button>
             <button class="btn btn-danger" type="submit" form="delete-form">Obriši klijenta</button>
-            <a href="{{ route('client.index') }}" class="btn btn-outline-danger">Otkaži</a>
+            <a href="{{ route('clients.index') }}" class="btn btn-outline-danger">Otkaži</a>
         </div>
     </x-forms.form>
 
-    <x-forms.form method="DELETE" action="{{ route('client.destroy', $client) }}" class="sr-only" id="delete-form"/>
+    <x-forms.form method="DELETE" action="{{ route('clients.destroy', $client) }}" class="sr-only" id="delete-form"/>
 </x-layouts.layout>

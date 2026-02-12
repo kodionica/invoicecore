@@ -44,7 +44,7 @@ class ClientController extends Controller {
 
         $active_company->clients()->create( $data );
 
-        return redirect()->route( 'client.index' )->with( 'flash', [
+        return redirect()->route( 'clients.index' )->with( 'flash', [
             'message' => 'Novi klijent je kreiran.',
             'type'    => 'success',
         ] );
@@ -77,7 +77,7 @@ class ClientController extends Controller {
             $client->save();
         }
 
-        return redirect()->route( 'client.edit', $client )->with( 'flash', [
+        return redirect()->route( 'clients.edit', $client )->with( 'flash', [
             'message' => 'Klijent je ažuriran.',
             'type'    => 'success',
         ] );
