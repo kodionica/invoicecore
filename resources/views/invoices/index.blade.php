@@ -1,5 +1,5 @@
 @php use Carbon\Carbon; @endphp
-<x-layout>
+<x-layouts.layout>
 
     <div class="card-box table-responsive">
         <p class="text-muted font-13 m-b-30">
@@ -102,4 +102,4 @@
             </div>
         </div>
     </div>
-</x-layout>
+</x-layouts.layout>

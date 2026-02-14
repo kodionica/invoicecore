@@ -23,9 +23,7 @@ class CompanyController extends Controller {
      */
     public function create() {
         // Map currencies to select options
-        $currencies = collect( config( 'currency' ) )
-            ->map( fn( $currency ) => $currency[ 'name' ] . ' (' . $currency[ 'symbol' ] . ')' )
-            ->all();
+        $currencies = get_currencies();
 
         return view( 'companies.create', compact( 'currencies' ) );
     }

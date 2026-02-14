@@ -24,8 +24,8 @@
         <button class="btn btn-toggle" data-bs-toggle="collapse" data-bs-target="#invoices-collapse" aria-expanded="true">Fakture</button>
         <div class="collapse sub-item" id="invoices-collapse">
             <ul class="btn-toggle-nav list-unstyled">
-                {{--                <li><a href="{{ route('invoices.create') }}" class="nav-link">Add</a></li>--}}
-                {{--                <li><a href="{{ route('invoices.index') }}" class="nav-link">View</a></li>--}}
+                <li><a href="{{ route('invoices.create') }}" class="nav-link">Dodaj</a></li>
+                <li><a href="{{ route('invoices.index') }}" class="nav-link">Pogledaj sve</a></li>
             </ul>
         </div>
     </li>

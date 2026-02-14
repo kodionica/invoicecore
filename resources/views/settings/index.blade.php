@@ -14,7 +14,7 @@
             </div>
         </div>
         <x-forms.input label="Adresa" name="company_address" type="text" :value="$settings->company_address" required/>
-        <x-forms.select label="Država" name="company_state" :options="get_states()" :value="old('company_state', $settings->company_state ?? null)"/>
+        <x-forms.select label="Država" name="company_state" :options="get_currencies()" :value="old('company_state', $settings->company_state ?? null)"/>
         <x-forms.input label="Email" name="company_email" type="email" :value="$settings->company_email" required/>
         <x-forms.input label="Telefon" name="company_phone" type="tel" :value="$settings->company_phone" required/>
         <x-forms.input label="PIB" name="pib" type="number" :value="$settings->pib" required/>
