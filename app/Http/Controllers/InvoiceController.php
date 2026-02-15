@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\InvoiceStatus;
 use App\Http\Requests\StoreInvoiceRequest;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
@@ -57,6 +58,8 @@ class InvoiceController extends Controller {
         $attrs[ 'issue_date' ]     = $now->toDateString();
         $attrs[ 'due_date' ]       = $now->addDays( (int) $attrs[ 'due_date' ] )->toDateString();
         $attrs[ 'total' ]          = 0;
+        $attrs['payment_method'] = 'test';
+        $attrs['status'] = InvoiceStatus::DRAFT;
 
         $invoice = Invoice::create( $attrs );
 

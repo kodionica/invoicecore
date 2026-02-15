@@ -36,8 +36,8 @@
                     <th>Rok za naplatu</th>
                     <th>Metod plaćanja</th>
                     <th>Ukupno</th>
-                    <th>Klijent</th>
                     <th>Status</th>
+                    <th>Klijent</th>
                     <th>Akcije</th>
                 </tr>
                 </thead>
