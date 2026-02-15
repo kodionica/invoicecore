@@ -13,6 +13,8 @@
             @vite('resources/css/app.scss')
         @endif
     @endif
+
+    @yield('page-style-extra')
 </head>
 <body class="{{ $body_class ?? '' }}">
 
@@ -35,5 +37,7 @@
         @vite('resources/js/app.js')
     @endif
 @endif
+
+@yield('page-js-extra')
 </body>
 </html>

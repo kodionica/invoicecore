@@ -38,6 +38,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Client wherePhone( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Client wherePib( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Client whereUpdatedAt( $value )
+ * @property string|null $tax_id
+ * @property string|null $registration_number
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Client whereRegistrationNumber($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Client whereTaxId($value)
  * @mixin \Eloquent
  */
 class Client extends Model {

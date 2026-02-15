@@ -13,7 +13,7 @@ return new class extends Migration {
             $table->id();
             $table->foreignId( 'company_id' )->constrained()->cascadeOnDelete();
             $table->foreignId( 'client_id' )->constrained()->cascadeOnDelete();
-            $table->integer( 'number' );
+            $table->string( 'invoice_number' );
             $table->date( 'issue_date' );
             $table->date( 'due_date' );
             $table->string( 'currency' )->default( 'RSD' );

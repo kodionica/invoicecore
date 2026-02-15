@@ -52,6 +52,12 @@ use Illuminate\Notifications\Notifiable;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereFirstName( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereLastName( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|User wherePhone( $value )
+ * @property string $username
+ * @property int|null $active_company_id
+ * @property-read \App\Models\Company|null $activeCompany
+ * @property-read string $display_name
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereActiveCompanyId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|User whereUsername($value)
  * @mixin \Eloquent
  */
 class User extends Authenticatable {

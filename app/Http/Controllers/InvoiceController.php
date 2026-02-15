@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreInvoiceRequest;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -13,7 +14,7 @@ class InvoiceController extends Controller {
      * Display a listing of the resource.
      */
     public function index() {
-        $invoices = auth()->user()->invoices;
+        $invoices = auth()->user()->activeCompany->invoices()->latest()->get();
 
         return view( 'invoices.index', compact( 'invoices' ) );
     }
@@ -41,29 +42,43 @@ class InvoiceController extends Controller {
     /**
      * Store a newly created resource in storage.
      */
-    public function store( Request $request ) {
-        $now   = now();
-        $attrs = $request->validate(
-            [
-                'service'   => 'required|string|max:255',
-                'quantity'  => 'required|numeric|min:1',
-                'price'     => 'required|string|max:255',
-                'client_id' => 'required|numeric',
-                'currency'  => 'nullable|string',
-            ]
-        );
-
-        $sequence                  = \Auth::user()
+    public function store( StoreInvoiceRequest $request ) {
+        $now                       = now();
+        $attrs                     = $request->validated();
+        $user                      = auth()->user();
+        $active_company            = $user->activeCompany;
+        $attrs[ 'company_id' ]     = $active_company->id;
+        $sequence                  = $active_company
                 ->invoices()
-                ->whereYear( 'invoice_date', $now->year )
-                ->whereMonth( 'invoice_date', $now->month )
+                ->whereYear( 'issue_date', $now->year )
+                ->whereMonth( 'issue_date', $now->month )
                 ->count() + 1;
         $attrs[ 'invoice_number' ] = sprintf( '%d-%02d-%03d', $now->year, $now->month, $sequence );
-        $attrs[ 'invoice_date' ]   = $now->toDateString();
-        $attrs[ 'due_date' ]       = $now->addDays( 7 )->toDateString();
-        $attrs[ 'total_amount' ]   = (float) $attrs[ 'quantity' ] * (float) $attrs[ 'price' ];
+        $attrs[ 'issue_date' ]     = $now->toDateString();
+        $attrs[ 'due_date' ]       = $now->addDays( (int) $attrs[ 'due_date' ] )->toDateString();
+        $attrs[ 'total' ]          = 0;
 
-        \Auth::user()->invoices()->create( $attrs );
+        $invoice = Invoice::create( $attrs );
+
+        foreach ( $attrs[ 'items' ] as $item ) {
+            $sub_total  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
+            $tax_amount = $active_company->vat_enabled ? ( ( $sub_total * (float) $active_company->tax_rate ) / 100 ) : 0;
+            $total      = $sub_total + $tax_amount;
+
+            $invoice->items()->create(
+                [
+                    'name'        => $item[ 'name' ],
+                    'quantity'    => $item[ 'quantity' ],
+                    'price'       => $item[ 'price' ],
+                    'sub_total'   => $sub_total,
+                    'total'       => $total,
+                    'tax_amount'  => $tax_amount,
+                    'description' => $item[ 'description' ] ?? null,
+                ]
+            );
+        }
+
+        $invoice->update( [ 'total' => $invoice->items->sum( 'total' ) ] );
 
         return redirect()
             ->route( 'invoices.index' )
@@ -71,7 +86,7 @@ class InvoiceController extends Controller {
                 'status',
                 [
                     'type'    => 'success',
-                    'message' => 'Invoice created successfully.',
+                    'message' => 'Faktura je napravljena.',
                 ]
             );
     }

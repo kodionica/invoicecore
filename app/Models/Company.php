@@ -51,6 +51,30 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereSwift( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereUpdatedAt( $value )
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereUserId( $value )
+ * @property string|null $tax_id
+ * @property string|null $registration_number
+ * @property string $invoice_prefix
+ * @property int $invoice_start_number
+ * @property int $invoice_next_number
+ * @property string $currency
+ * @property int $default_tax_percent
+ * @property bool $vat_enabled
+ * @property int $payment_due_days
+ * @property string|null $invoice_note
+ * @property string|null $other_settings
+ * @property-read \App\Models\User $user
+ * @method static \Database\Factories\CompanyFactory factory($count = null, $state = [])
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereCurrency($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereDefaultTaxPercent($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoiceNextNumber($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoiceNote($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoicePrefix($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoiceStartNumber($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereOtherSettings($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company wherePaymentDueDays($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereRegistrationNumber($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereTaxId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereVatEnabled($value)
  * @mixin \Eloquent
  */
 class Company extends Model {
