@@ -68,7 +68,7 @@ class InvoiceController extends Controller {
 
             foreach ( $attrs[ 'items' ] as $item ) {
                 $sub_total  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
-                $tax_amount = $active_company->vat_enabled ? ( ( $sub_total * (float) $active_company->tax_rate ) / 100 ) : 0;
+                $tax_amount = $active_company->vat_enabled ? ( ( $sub_total * (float) $active_company->default_tax_percent ) / 100 ) : 0;
                 $total      = $sub_total + $tax_amount;
 
                 $invoice->items()->create(
@@ -102,10 +102,12 @@ class InvoiceController extends Controller {
      * Display the specified resource.
      */
     public function show( Invoice $invoice ) {
-        $user          = \Auth::user();
+        $user          = auth()->user();
         $invoice_items = $invoice->items;
+        $company       = $invoice->company;
+        $client        = $invoice->client;
 
-        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) );
+        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items', 'company', 'client' ) );
     }
 
     /**

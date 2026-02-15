@@ -1,4 +1,4 @@
-@props(['label' => '', 'wrapper_class' => '', 'name'])
+@props(['label' => '', 'wrapper_class' => '', 'checked' => false, 'name'])
 
 @php
     $defaults = [
@@ -7,7 +7,7 @@
         'name' => $name,
         'value' => 1,
         'class' => 'form-check-input' . ($errors->first($name) ? ' is-invalid' : ''),
-        'checked' => old($name),
+        'checked' => $checked,
     ];
 @endphp
 

@@ -13,11 +13,11 @@
 <body class="{{ $body_class ?? '' }}">
 <main id="main" class="container">
     <div class="invoice-view">
-        @include('invoices.partials.invoice-header', compact('user','invoice'))
+        @include('invoices.partials.invoice-header', compact('company', 'client', 'invoice'))
 
-        @include('invoices.partials.products', compact('invoice'))
+        @include('invoices.partials.products', compact('invoice_items', 'company'))
 
-        @include('invoices.partials.totals', compact('invoice', 'user'))
+        @include('invoices.partials.totals', compact('invoice', 'company'))
     </div>
 </main>
 </body>
