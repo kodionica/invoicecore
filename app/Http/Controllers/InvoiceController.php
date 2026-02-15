@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Http\Requests\StoreInvoiceRequest;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Spatie\LaravelPdf\Enums\Format;
 use Spatie\LaravelPdf\Facades\Pdf;
@@ -42,46 +43,49 @@ class InvoiceController extends Controller {
 
     /**
      * Store a newly created resource in storage.
+     *
+     * @throws \Throwable
      */
     public function store( StoreInvoiceRequest $request ) {
-        $now                       = now();
-        $attrs                     = $request->validated();
-        $user                      = auth()->user();
-        $active_company            = $user->activeCompany;
-        $attrs[ 'company_id' ]     = $active_company->id;
-        $sequence                  = $active_company
-                ->invoices()
-                ->whereYear( 'issue_date', $now->year )
-                ->whereMonth( 'issue_date', $now->month )
-                ->count() + 1;
-        $attrs[ 'invoice_number' ] = sprintf( '%d-%02d-%03d', $now->year, $now->month, $sequence );
-        $attrs[ 'issue_date' ]     = $now->toDateString();
-        $attrs[ 'due_date' ]       = $now->addDays( (int) $attrs[ 'due_date' ] )->toDateString();
-        $attrs[ 'total' ]          = 0;
-        $attrs['payment_method'] = 'test';
-        $attrs['status'] = InvoiceStatus::DRAFT;
+        $invoice = DB::transaction( static function () use ( $request ) {
+            $now                       = now();
+            $attrs                     = $request->validated();
+            $user                      = auth()->user();
+            $active_company            = $user->activeCompany;
+            $attrs[ 'company_id' ]     = $active_company->id;
+            $sequence                  = $active_company
+                    ->invoices()
+                    ->whereYear( 'issue_date', $now->year )
+                    ->whereMonth( 'issue_date', $now->month )
+                    ->count() + 1;
+            $attrs[ 'invoice_number' ] = sprintf( '%d-%02d-%03d', $now->year, $now->month, $sequence );
+            $attrs[ 'issue_date' ]     = $now->toDateString();
+            $attrs[ 'due_date' ]       = $now->addDays( (int) $attrs[ 'due_date' ] )->toDateString();
+            $attrs[ 'total' ]          = 0;
+            $attrs[ 'status' ]         = InvoiceStatus::DRAFT;
 
-        $invoice = Invoice::create( $attrs );
+            $invoice = Invoice::create( $attrs );
 
-        foreach ( $attrs[ 'items' ] as $item ) {
-            $sub_total  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
-            $tax_amount = $active_company->vat_enabled ? ( ( $sub_total * (float) $active_company->tax_rate ) / 100 ) : 0;
-            $total      = $sub_total + $tax_amount;
+            foreach ( $attrs[ 'items' ] as $item ) {
+                $sub_total  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
+                $tax_amount = $active_company->vat_enabled ? ( ( $sub_total * (float) $active_company->tax_rate ) / 100 ) : 0;
+                $total      = $sub_total + $tax_amount;
 
-            $invoice->items()->create(
-                [
-                    'name'        => $item[ 'name' ],
-                    'quantity'    => $item[ 'quantity' ],
-                    'price'       => $item[ 'price' ],
-                    'sub_total'   => $sub_total,
-                    'total'       => $total,
-                    'tax_amount'  => $tax_amount,
-                    'description' => $item[ 'description' ] ?? null,
-                ]
-            );
-        }
+                $invoice->items()->create(
+                    [
+                        'name'        => $item[ 'name' ],
+                        'quantity'    => $item[ 'quantity' ],
+                        'price'       => $item[ 'price' ],
+                        'sub_total'   => $sub_total,
+                        'total'       => $total,
+                        'tax_amount'  => $tax_amount,
+                        'description' => $item[ 'description' ] ?? null,
+                    ]
+                );
+            }
 
-        $invoice->update( [ 'total' => $invoice->items->sum( 'total' ) ] );
+            $invoice->update( [ 'total' => $invoice->items->sum( 'total' ) ] );
+        } );
 
         return redirect()
             ->route( 'invoices.index' )

@@ -52,6 +52,7 @@ class Invoice extends Model {
         'issue_date',
         'due_date',
         'currency',
+        'payment_method',
         'total',
         'status',
         'pdf_path',
