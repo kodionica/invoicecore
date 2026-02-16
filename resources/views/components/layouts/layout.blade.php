@@ -16,7 +16,7 @@
 
     @yield('page-style-extra')
 </head>
-<body class="{{ $body_class ?? '' }}">
+<body class="{{ $body_class ?? '' }} has-sidebar">
 
 <x-sidebar/>
 

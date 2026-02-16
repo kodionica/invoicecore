@@ -9,7 +9,7 @@
     <table class="table">
         <thead>
         <tr>
-            <th class="invoice__item invoice__item--product">Usluga/Proizvod</th>
+            <th class="invoice__item invoice__item--product">Usluga / Proizvod</th>
             <th class="invoice__item invoice__item--product">Opis</th>
             <th class="invoice__item invoice__item--quantity">Količina</th>
             <th class="invoice__item invoice__item--price">Cena</th>

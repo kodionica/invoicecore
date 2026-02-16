@@ -3,7 +3,6 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark light"/>
     <title>{{ config('app.name', 'Laravel') }}</title>
 
     @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
@@ -11,14 +10,12 @@
     @endif
 </head>
 <body class="{{ $body_class ?? '' }}">
-<main id="main" class="container">
-    <div class="invoice-view">
-        @include('invoices.partials.invoice-header', compact('company', 'client', 'invoice'))
+<div class="invoice-view">
+    @include('invoices.partials.invoice-header', compact('company', 'client', 'invoice'))
 
-        @include('invoices.partials.products', compact('invoice_items', 'company'))
+    @include('invoices.partials.products', compact('invoice_items', 'company'))
 
-        @include('invoices.partials.totals', compact('invoice', 'company'))
-    </div>
-</main>
+    @include('invoices.partials.totals', compact('invoice', 'company'))
+</div>
 </body>
 </html>

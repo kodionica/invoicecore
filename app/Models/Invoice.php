@@ -60,6 +60,11 @@ class Invoice extends Model {
         'company_id',
         'client_id',
     ];
+    protected $casts    = [
+        'issue_date' => 'date',
+        'due_date'   => 'date',
+        'total'      => 'decimal:2',
+    ];
 
     public function items(): HasMany {
         return $this->hasMany( InvoiceItem::class );

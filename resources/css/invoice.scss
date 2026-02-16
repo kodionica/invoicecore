@@ -4,26 +4,27 @@ p {
     margin: 0;
 }
 
-.invoice {
+.invoices {
     &-pdf {
-        padding: 0;
-
-        #header,
-        .sidebar-nav {
-            display: none !important;
+        table {
+            page-break-inside: auto;
+            width: 100%;
+            table-layout: fixed;
         }
 
-        .container {
-            margin: 0;
-            padding: 0;
+        tr {
+            page-break-inside: avoid;
+            page-break-after: auto;
         }
 
         .invoice-view {
-            width: 1100px;
             border: none;
+            padding: 15px;
         }
     }
+}
 
+.invoice {
     &-view {
         border: 1px solid var(--bs-border-color);
         padding: 30px;

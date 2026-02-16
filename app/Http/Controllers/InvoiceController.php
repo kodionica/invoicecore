@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Http\Requests\StoreInvoiceRequest;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Spatie\LaravelPdf\Enums\Format;
@@ -16,7 +17,7 @@ class InvoiceController extends Controller {
      * Display a listing of the resource.
      */
     public function index() {
-        $invoices = auth()->user()->activeCompany->invoices()->latest()->get();
+        $invoices = auth()->user()->activeCompany?->invoices()->latest()->get();
 
         return view( 'invoices.index', compact( 'invoices' ) );
     }
@@ -48,10 +49,18 @@ class InvoiceController extends Controller {
      */
     public function store( StoreInvoiceRequest $request ) {
         $invoice = DB::transaction( static function () use ( $request ) {
-            $now                       = now();
-            $attrs                     = $request->validated();
-            $user                      = auth()->user();
-            $active_company            = $user->activeCompany;
+            $now            = now();
+            $attrs          = $request->validated();
+            $user           = auth()->user();
+            $active_company = $user->activeCompany;
+
+            if ( ! $active_company ) {
+                return redirect()->route( 'companies.create' )->with( 'flash', [
+                    'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi mogao praviti fakture.',
+                    'type'    => 'error',
+                ] );
+            }
+
             $attrs[ 'company_id' ]     = $active_company->id;
             $sequence                  = $active_company
                     ->invoices()
@@ -85,6 +94,8 @@ class InvoiceController extends Controller {
             }
 
             $invoice->update( [ 'total' => $invoice->items->sum( 'total' ) ] );
+
+            return $invoice;
         } );
 
         return redirect()
@@ -118,21 +129,21 @@ class InvoiceController extends Controller {
      * @return \Illuminate\Http\RedirectResponse
      */
     public function generatePDF( Invoice $invoice ) {
-        $user          = \Auth::user();
+        $user          = auth()->user() ?? $invoice->company->user;
         $invoice_items = $invoice->items;
+        $company       = $invoice->company;
+        $client        = $invoice->client;
+        $date          = $invoice->issue_date instanceof Carbon ? $invoice->issue_date : Carbon::parse( $invoice->issue_date );
+        $relative_path = "invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf";
 
-        if ( ! $user ) {
-            $user = $invoice->user;
-        }
+        File::ensureDirectoryExists( dirname( $relative_path ) );
 
-        $date = $invoice->invoice_date;
-        $path = storage_path( "app/private/invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf" );
-
-        File::ensureDirectoryExists( dirname( $path ) );
-
-        Pdf::view( 'invoices.show-pdf', compact( 'invoice', 'user', 'invoice_items' ) )
+        Pdf::view( 'invoices.show-pdf', compact( 'invoice', 'user', 'invoice_items', 'company', 'client' ) )
             ->format( Format::A4 )
-            ->save( $path );
+            ->disk( 'local' )
+            ->save( $relative_path );
+
+        $invoice->update( [ 'pdf_path' => $relative_path ] );
 
         return redirect()
             ->route( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )
@@ -140,7 +151,7 @@ class InvoiceController extends Controller {
                 'status',
                 [
                     'type'    => 'success',
-                    'message' => 'PDF with Invoice created successfully.',
+                    'message' => 'PDF fakture je napravljen.',
                 ]
             );
     }

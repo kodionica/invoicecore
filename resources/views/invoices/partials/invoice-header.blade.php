@@ -14,6 +14,7 @@
             <p class="section-label section-label--small">Od:</p>
             <p class="section-label section-label--large">{{ $company->name }}</p>
             <p><strong>Adresa: </strong>{{ $company->address }}</p>
+            <p><strong>Grad: </strong>{{ $company->city }}</p>
             <p><strong>Telefon: </strong>{{ $company->phone }}</p>
             <p><strong>Email: </strong>{{ $company->email }}</p>
             <p><strong>PIB: </strong>{{ $company->tax_id }}</p>

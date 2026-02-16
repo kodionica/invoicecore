@@ -16,7 +16,7 @@
                     <tbody>
                     <tr>
                         <th>Način plaćanja</th>
-                        <td class="text-end">{{ config('payment')[$invoice->payment_method] ?? 'N/A' }}</td>
+                        <td>{{ config('payment')[$invoice->payment_method] ?? 'N/A' }}</td>
                     </tr>
                     <tr>
                         <th>Ukupno svega</th>
