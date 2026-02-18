@@ -1,4 +1,4 @@
-@props(['label' => '', 'wrapper_class' => '', 'value' => null, 'name'])
+@props(['label' => '', 'wrapper_class' => '', 'value' => null, 'label_hidden' => false, 'name'])
 
 @php
     $defaults = [
@@ -14,7 +14,7 @@
 
 @endphp
 
-<x-forms.field :$label :$name :$wrapper_class>
+<x-forms.field :$label :$label_hidden :$name :$wrapper_class>
     <input {{ $attributes->except('value')->merge($defaults) }} value="{{ $value }}">
 
     {{ $slot }}

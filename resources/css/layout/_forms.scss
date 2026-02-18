@@ -2,7 +2,6 @@
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     gap: 10px;
-    margin-top: 20px;
 
     & > * {
         grid-column: span 12;
@@ -13,14 +12,63 @@
             grid-column: span $i;
         }
     }
+
+    &-group {
+        &--actions {
+            display: flex;
+            flex-flow: column nowrap;
+            align-items: flex-start;
+            gap: 10px;
+        }
+    }
+
+    &-check {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+
+        label {
+            font-weight: 500;
+        }
+    }
+
+    &-control {
+        background-color: transparent;
+        border: 1px solid var(--gray);
+        border-radius: 4px;
+        padding: 12px 15px;
+        font-size: 15px;
+        line-height: 1;
+        width: 100%;
+        color: inherit;
+        font-family: inherit;
+    }
+
+    &-text {
+        font-size: 13px;
+        margin-top: 4px;
+        color: var(--gray);
+    }
+
+    label {
+        cursor: pointer;
+
+        &.sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+    }
 }
 
 @media screen and (min-width: 768px) {
     .form {
-        & > * {
-            grid-column: span 6;
-        }
-
         @for $i from 1 through 12 {
             & > .columns-sm-#{$i} {
                 grid-column: span $i;

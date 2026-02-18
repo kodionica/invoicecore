@@ -1,12 +1,16 @@
-@props(['label' => '', 'wrapper_class' => '', 'type' => 'text', 'name' ])
+@props(['label' => '', 'label_hidden' => false, 'wrapper_class' => '', 'type' => 'text', 'name' ])
 
 @php
     if($type === 'checkbox') {
         $wrapper_class .= ' form-check';
         $label_class = 'form-check-label';
     } else {
-        $wrapper_class .= ' form-floating';
+        $wrapper_class .= ' form-group';
         $label_class = 'form-label';
+    }
+
+    if($label_hidden) {
+        $label_class .= ' sr-only';
     }
 @endphp
 

@@ -16,8 +16,6 @@
 </head>
 <body class="{{ $body_class ?? '' }}">
 
-<x-header/>
-
 <main id="main" class="container">
     @if(session()->has('flash'))
         <x-notices.notice :notice="session('flash')"/>

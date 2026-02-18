@@ -1,0 +1,38 @@
+@use "sass:color";
+@use "colors" as *;
+
+.btn {
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 15px;
+    line-height: 1;
+    background-color: var(--btn-bg-color, transparent);
+    color: var(--btn-text-color, #000);
+
+    &--primary {
+        --btn-bg-color: var(--primary);
+        --btn-bg-hover-color: #{color.adjust($primary, $lightness: 15%)};
+        --btn-text-color: #fff;
+        --btn-text-hover-color: #fff;
+    }
+
+    &--secondary {
+        --btn-bg-color: var(--secondary);
+        --btn-bg-hover-color: #{color.adjust($secondary, $lightness: 15%)};
+        --btn-text-color: #fff;
+        --btn-text-hover-color: #fff;
+    }
+
+    &--ternary {
+        --btn-bg-color: var(--accent);
+        --btn-bg-hover-color: #{color.adjust($accent, $lightness: 15%)};
+        --btn-text-color: #fff;
+        --btn-text-hover-color: #fff;
+    }
+
+    &:hover {
+        background-color: var(--btn-bg-hover-color, transparent);
+        color: var(--btn-text-hover-color, #000);
+    }
+}
