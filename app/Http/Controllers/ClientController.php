@@ -15,6 +15,14 @@ class ClientController extends Controller {
     public function index() {
         // Get all clients for the active company
         $company = auth()->user()->activeCompany;
+
+        if ( ! $company ) {
+            return redirect()->route( 'companies.create' )->with( 'flash', [
+                'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi se mogao dodati klijent.',
+                'type'    => 'error',
+            ] );
+        }
+
         $clients = $company->clients()->get();
 
         return view( 'clients.index', compact( 'clients' ) );

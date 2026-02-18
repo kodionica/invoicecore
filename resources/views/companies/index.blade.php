@@ -1,66 +1,67 @@
 <x-layouts.layout>
-    <div class="card-box table-responsive">
-        <div id="datatable-buttons_wrapper" class="dataTables_wrapper container-fluid dt-bootstrap no-footer">
-            <div class="dataTables_length" id="datatable-buttons_length">
-                <label>Show
-                    <select name="datatable-buttons_length" class="form-control input-sm">
-                        <option value="10">10</option>
-                        <option value="25">25</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                    </select> entries
-                </label>
-            </div>
-            <div id="datatable-buttons_filter" class="dataTables_filter">
-                <label>Search:<input type="search" class="form-control input-sm" placeholder="" aria-controls="datatable-buttons"></label>
-            </div>
-            <div class="table-responsive">
-                <table id="datatable-buttons" class="table table-striped">
-                    <thead>
-                    <tr role="row">
-                        <th>
-                            <x-forms.checkbox id="select-all-clients" name="" class="select-all-checkbox"/>
-                        </th>
-                        <th>Ime</th>
-                        <th>PIB/VAT</th>
-                        <th>Matični broj</th>
-                        <th>Adresa</th>
-                        <th>Grad</th>
-                        <th>Zemlja</th>
-                        <th>Email</th>
-                        <th>Telefon</th>
-                        <th>Broj računa</th>
-                        <th>IBAN</th>
-                        <th>SWIFT</th>
-                        <th>Logo</th>
-                        <th>Akcije</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    @foreach($companies as $company)
-                        <tr role="row" class="{{ $loop->odd ? 'odd' : 'even' }}">
-                            <td>
-                                <x-forms.checkbox name="selected_clients[]" id="client-{{ $company->id }}" value="{{ $company->id }}" class="select-all"/>
-                            </td>
-                            <td>
+    <x-page-header heading="Vaše firme" />
+
+    <div id="datatable-buttons_wrapper" class="dataTables_wrapper container-fluid dt-bootstrap no-footer">
+        <div class="dataTables_length" id="datatable-buttons_length">
+            <label>Show
+                <select name="datatable-buttons_length" class="form-control input-sm">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select> entries
+            </label>
+        </div>
+        <div id="datatable-buttons_filter" class="dataTables_filter">
+            <label>Search:<input type="search" class="form-control input-sm" placeholder="" aria-controls="datatable-buttons"></label>
+        </div>
+        <div class="table-responsive">
+            <table id="datatable-buttons" class="table table-striped">
+                <thead>
+                <tr role="row">
+                    <th>
+                        <x-forms.checkbox id="select-all-clients" name="" class="select-all-checkbox"/>
+                    </th>
+                    <th>Ime</th>
+                    <th>PIB/VAT</th>
+                    <th>Matični broj</th>
+                    <th>Adresa</th>
+                    <th>Grad</th>
+                    <th>Zemlja</th>
+                    <th>Email</th>
+                    <th>Telefon</th>
+                    <th>Broj računa</th>
+                    <th>IBAN</th>
+                    <th>SWIFT</th>
+                    <th>Logo</th>
+                    <th>Akcije</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach($companies as $company)
+                    <tr role="row" class="{{ $loop->odd ? 'odd' : 'even' }}">
+                        <td>
+                            <x-forms.checkbox name="selected_clients[]" id="client-{{ $company->id }}" value="{{ $company->id }}" class="select-all"/>
+                        </td>
+                        <td>
                             <span class="text">
                                 <a href="{{ route('companies.edit', $company ) }}">{{ $company->name }}</a>
                             </span>
-                            </td>
-                            <td>{{ $company->tax_id }}</td>
-                            <td>{{ $company->registration_number }}</td>
-                            <td>{{ $company->address }}</td>
-                            <td>{{ $company->city }}</td>
-                            <td>{{ $company->country }}</td>
-                            <td>{{ $company->email }}</td>
-                            <td>{{ $company->phone }}</td>
-                            <td>{{ $company->bank_account }}</td>
-                            <td>{{ $company->iban }}</td>
-                            <td>{{ $company->swift }}</td>
-                            <td>
-                                <img src="{{ asset("storage/$company->logo_path") }}" alt="{{ $company->name }} logo">
-                            </td>
-                            <td>
+                        </td>
+                        <td>{{ $company->tax_id }}</td>
+                        <td>{{ $company->registration_number }}</td>
+                        <td>{{ $company->address }}</td>
+                        <td>{{ $company->city }}</td>
+                        <td>{{ $company->country }}</td>
+                        <td>{{ $company->email }}</td>
+                        <td>{{ $company->phone }}</td>
+                        <td>{{ $company->bank_account }}</td>
+                        <td>{{ $company->iban }}</td>
+                        <td>{{ $company->swift }}</td>
+                        <td>
+                            <img src="{{ asset("storage/$company->logo_path") }}" alt="{{ $company->name }} logo">
+                        </td>
+                        <td>
                             <span class="actions">
                                 <a href="{{ route('clients.edit', $company) }}" class="action--item">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill" viewBox="0 0 16 16">
@@ -79,22 +80,21 @@
                                 </button>
                             </form>
                             </span>
-                            </td>
-                        </tr>
-                    @endforeach
-                    </tbody>
-                </table>
-            </div>
-            <div class="dataTables_info" id="datatable-buttons_info" role="status" aria-live="polite">Showing 1 to 10 of 57 entries</div>
-            <div class="dataTables_paginate paging_simple_numbers" id="datatable-buttons_paginate">
-                <ul class="pagination">
-                    <li class="paginate_button previous disabled" id="datatable-buttons_previous"><a href="#" aria-controls="datatable-buttons" data-dt-idx="0" tabindex="0">Previous</a></li>
-                    <li class="paginate_button active"><a href="#" aria-controls="datatable-buttons" data-dt-idx="1" tabindex="0">1</a></li>
-                    <li class="paginate_button "><a href="#" aria-controls="datatable-buttons" data-dt-idx="2" tabindex="0">2</a></li>
-                    <li class="paginate_button "><a href="#" aria-controls="datatable-buttons" data-dt-idx="3" tabindex="0">3</a></li>
-                    <li class="paginate_button next" id="datatable-buttons_next"><a href="#" aria-controls="datatable-buttons" data-dt-idx="7" tabindex="0">Next</a></li>
-                </ul>
-            </div>
+                        </td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table>
+        </div>
+        <div class="dataTables_info" id="datatable-buttons_info" role="status" aria-live="polite">Showing 1 to 10 of 57 entries</div>
+        <div class="dataTables_paginate paging_simple_numbers" id="datatable-buttons_paginate">
+            <ul class="pagination">
+                <li class="paginate_button previous disabled" id="datatable-buttons_previous"><a href="#" aria-controls="datatable-buttons" data-dt-idx="0" tabindex="0">Previous</a></li>
+                <li class="paginate_button active"><a href="#" aria-controls="datatable-buttons" data-dt-idx="1" tabindex="0">1</a></li>
+                <li class="paginate_button "><a href="#" aria-controls="datatable-buttons" data-dt-idx="2" tabindex="0">2</a></li>
+                <li class="paginate_button "><a href="#" aria-controls="datatable-buttons" data-dt-idx="3" tabindex="0">3</a></li>
+                <li class="paginate_button next" id="datatable-buttons_next"><a href="#" aria-controls="datatable-buttons" data-dt-idx="7" tabindex="0">Next</a></li>
+            </ul>
         </div>
     </div>
 </x-layouts.layout>

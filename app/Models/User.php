@@ -131,14 +131,14 @@ class User extends Authenticatable {
         $base = strtolower( preg_replace( '/[^a-z0-9._]/', '', strstr( $base, '@', true ) ) );
 
         $username = $base;
-        $counter  = 1;
+        $counter  = 0;
 
         // Add a number to the username if it already exists
         while ( self::where( 'username', $username )->exists() ) {
             $counter++;
         }
 
-        return $base . $counter;
+        return $counter === 0 ? $username : $username . $counter;
     }
 
     public function companies(): HasMany {
