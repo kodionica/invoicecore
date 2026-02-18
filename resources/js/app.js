@@ -14,6 +14,16 @@ window.addEventListener( 'load', () => {
 
         checkboxes.forEach( checkbox => checkbox.checked = e.target.checked );
     } );
+
+    document.addEventListener( 'click', e => {
+        if ( e.target.closest( '[data-toggle]' ) ) {
+            const target   = e.target.closest( '[data-toggle]' );
+            const targetId = target.getAttribute( 'data-toggle' );
+            const element  = document.querySelector( targetId );
+
+            element.classList.toggle( 'show' );
+        }
+    } );
 } );
 
 function manageAddRemoveInvoiceItemRow() {

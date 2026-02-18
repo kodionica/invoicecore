@@ -1,16 +1,54 @@
-.sidebar-nav {
-    --bs-body-color: #fff;
-    --bs-nav-link-color: #fff;
+.sidebar {
+    --link-color: #c2c7d0;
+    --link-hover-color: #fff;
     position: fixed;
     top: 0;
     left: 0;
     bottom: 0;
     z-index: 1000;
     width: var(--sidebar-width);
-    background-color: #2A3F54;
+    background-color: #343a40;
+    color: #c2c7d0;
+    padding: 30px 15px;
 
-    .sub-item {
-        padding-left: 15px;
-        font-size: 15px;
+    .btn--link {
+        width: 100%;
+        text-align: left;
+    }
+
+    .nav {
+        display: flex;
+        flex-flow: column nowrap;
+        gap: 3px;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+
+        &__sub-item {
+            list-style: none;
+            padding-left: 5px;
+            margin: 0;
+
+            &:not(.show) {
+                display: none;
+            }
+        }
+
+        &__link {
+            display: block;
+            padding: 8px 10px;
+            font-size: 16px;
+            border-radius: 4px;
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+
+            &.current {
+                background-color: #fff;
+                --link-color: #343a40;
+                --link-hover-color: #343a40;
+            }
+        }
     }
 }

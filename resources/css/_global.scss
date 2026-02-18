@@ -1,12 +1,13 @@
 @use "sass:color";
 @use "components/colors" as *;
+@use "components/notice";
+@use "components/button";
+@use "components/fonts";
 @use "bootstrap/scss/bootstrap-reboot";
 @use "bootstrap/scss/bootstrap-grid";
 @use "layout/header";
 @use "layout/sidebar-nav";
 @use "layout/forms";
-@use "components/notice";
-@use "components/button";
 
 
 :root {
@@ -17,6 +18,8 @@
     --gray: #{$gray};
     --light-bg: #{$light-bg};
     --white: #{$white};
+    --link-color: var(--primary);
+    --link-hover-color: #{color.adjust($primary, $lightness: 15%)};
     --sidebar-width: 200px;
 }
 
@@ -25,6 +28,7 @@ body {
     line-height: 1.3;
     color: var(--dark);
     background-color: var(--light-bg);
+    font-family: "Inter", sans-serif;
 
     &.has-sidebar {
         padding-left: var(--sidebar-width);
@@ -32,11 +36,11 @@ body {
 }
 
 a {
-    color: var(--primary);
+    color: var(--link-color);
     text-decoration: none;
 
     &:hover {
-        color: #{color.adjust($primary, $lightness: 15%)};
+        color: var(--link-hover-color);
     }
 }
 
