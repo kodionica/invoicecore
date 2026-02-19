@@ -2,29 +2,27 @@
 
 <div class="user-profile-actions">
     @auth
-        <div class="dropdown text-end">
-            <a href="#" class="d-block link-body-emphasis text-decoration-none dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        <div class="logged-in-actions">
+            <button type="button" class="btn btn--link btn--icon btn--toggler" data-toggle="#user-actions-dropdown">
                 {{ $user->display_name }}
-            </a>
-            <ul class="dropdown-menu text-small">
-                {{--                <li><a class="dropdown-item" href="{{ route('settings.invoice.edit') }}">Podešavanja firme</a></li>--}}
-                <li><a class="dropdown-item" href="{{ route('profile.edit') }}">Podešavanja profila</a></li>
-                <li>
-                    <hr class="dropdown-divider">
-                </li>
-                <li>
-                    <form action="{{ route('logout') }}" method="POST" class="dropdown-item logout-form">
-                        @csrf
-                        @method('DELETE')
-                        <button class="btn p-0 text-danger logout-button">Odjava</button>
-                    </form>
-                </li>
-            </ul>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" class="btn__icon">
+                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+            <div id="user-actions-dropdown" class="dropdown-menu">
+                <a class="dropdown-item" href="{{ route('profile.edit') }}">Podešavanje profila</a>
+                <hr class="dropdown-item dropdown-item--sepparator"/>
+                <form action="{{ route('logout') }}" method="POST" class="dropdown-item logout-form">
+                    @csrf
+                    @method('DELETE')
+                    <button class="btn btn--link logout-button">Odjava</button>
+                </form>
+            </div>
         </div>
     @endauth
 
     @guest
-        <div class="guest-actions space-x-4">
+        <div class="guest-actions">
             <a href="{{ route('login') }}" class="btn btn-outline-primary login-link">Prijava</a>
             <a href="{{ route('register') }}" class="btn signup-button">Registracija</a>
         </div>
