@@ -93,9 +93,9 @@ export default function DashboardLayout() {
             <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white fixed h-full z-20">
                 <div className="p-6 flex items-center space-x-3">
                     <div className="h-8 w-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-                        <span className="font-bold text-xl">L</span>
+                        <span className="font-bold text-xl">IC</span>
                     </div>
-                    <span className="text-xl font-bold tracking-tight">LaraInvoice</span>
+                    <span className="text-xl font-bold tracking-tight">InvoiceCore</span>
                 </div>
 
                 <nav className="flex-1 px-4 space-y-1 mt-6">
@@ -275,9 +275,9 @@ export default function DashboardLayout() {
                             <div className="p-6 flex items-center justify-between">
                                 <div className="flex items-center space-x-3 text-white">
                                     <div className="h-8 w-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-                                        <span className="font-bold text-xl">L</span>
+                                        <span className="font-bold text-xl">IC</span>
                                     </div>
-                                    <span className="text-xl font-bold">LaraInvoice</span>
+                                    <span className="text-xl font-bold">InvoiceCore</span>
                                 </div>
                                 <button onClick={() => setMobileMenuOpen(false)} className="text-slate-400 hover:text-white">
                                     <ChevronDown className="h-6 w-6 rotate-90"/>

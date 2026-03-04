@@ -1,9 +1,9 @@
 import React from 'react';
-import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router';
-import { useApp } from '../context/AppContext';
-import { toast } from 'sonner';
-import { ArrowLeft } from 'lucide-react';
+import {useForm} from 'react-hook-form';
+import {useNavigate} from 'react-router';
+import {useApp} from '../context/AppContext';
+import {toast} from 'sonner';
+import {ArrowLeft} from 'lucide-react';
 
 interface CompanyFormData {
     name: string;
@@ -24,9 +24,9 @@ interface CompanyFormData {
 
 export default function CompanyForm() {
     const navigate = useNavigate();
-    const { addCompany } = useApp();
+    const {addCompany, meta, metaLoading} = useApp();
 
-    const { register, handleSubmit, formState: { errors } } = useForm<CompanyFormData>({
+    const {register, handleSubmit, formState: {errors}} = useForm<CompanyFormData>({
         defaultValues: {
             currency: 'RSD',
             vat_enabled: true,
@@ -56,21 +56,21 @@ export default function CompanyForm() {
     };
 
     return (
-        <div className="max-w-2xl mx-auto space-y-6">
+        <div className="max-w-3xl mx-auto space-y-6">
             <div className="flex items-center space-x-4">
                 <button
                     onClick={() => navigate('/dashboard/companies')}
                     className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors"
                 >
-                    <ArrowLeft className="h-5 w-5" />
+                    <ArrowLeft className="h-5 w-5"/>
                 </button>
                 <h1 className="text-2xl font-bold text-gray-900">Nova Firma</h1>
             </div>
 
             <div className="bg-white shadow rounded-lg overflow-hidden">
                 <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
-                    <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                        <div className="sm:col-span-6">
+                    <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-12">
+                        <div className="sm:col-span-12">
                             <label htmlFor="name" className="block text-sm font-medium text-gray-700">
                                 Naziv Firme
                             </label>
@@ -85,7 +85,7 @@ export default function CompanyForm() {
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-6">
                             <label htmlFor="tax_id" className="block text-sm font-medium text-gray-700">
                                 PIB
                             </label>
@@ -93,14 +93,14 @@ export default function CompanyForm() {
                                 <input
                                     type="text"
                                     id="tax_id"
-                                    {...register('tax_id', { required: 'PIB je obavezan' })}
+                                    {...register('tax_id', {required: 'PIB je obavezan'})}
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                 />
                                 {errors.tax_id && <p className="mt-1 text-sm text-red-600">{errors.tax_id.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-6">
                             <label htmlFor="registration_number" className="block text-sm font-medium text-gray-700">
                                 Matični broj
                             </label>
@@ -108,14 +108,14 @@ export default function CompanyForm() {
                                 <input
                                     type="text"
                                     id="registration_number"
-                                    {...register('registration_number', { required: 'Matični broj je obavezan' })}
+                                    {...register('registration_number', {required: 'Matični broj je obavezan'})}
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                 />
                                 {errors.registration_number && <p className="mt-1 text-sm text-red-600">{errors.registration_number.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-6">
                             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                                 Email
                             </label>
@@ -123,14 +123,14 @@ export default function CompanyForm() {
                                 <input
                                     type="email"
                                     id="email"
-                                    {...register('email', { required: 'Email je obavezan' })}
+                                    {...register('email', {required: 'Email je obavezan'})}
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                 />
                                 {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-6">
                             <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
                                 Telefon
                             </label>
@@ -144,22 +144,23 @@ export default function CompanyForm() {
                             </div>
                         </div>
 
-                        <div className="sm:col-span-6">
+                        <div className="sm:col-span-4">
                             <label htmlFor="address" className="block text-sm font-medium text-gray-700">
                                 Adresa
                             </label>
                             <div className="mt-1">
-                <textarea
-                    id="address"
-                    rows={3}
-                    {...register('address', { required: 'Adresa je obavezna' })}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
-                />
+                                <input
+                                    type="text"
+                                    id="address"
+                                    {...register('address', {required: 'Adresa je obavezna'})}
+                                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                                    required
+                                />
                                 {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-4">
                             <label htmlFor="city" className="block text-sm font-medium text-gray-700">
                                 Grad
                             </label>
@@ -167,14 +168,14 @@ export default function CompanyForm() {
                                 <input
                                     type="text"
                                     id="city"
-                                    {...register('city', { required: 'Grad je obavezan' })}
+                                    {...register('city', {required: 'Grad je obavezan'})}
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                 />
                                 {errors.city && <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-4">
                             <label htmlFor="country" className="block text-sm font-medium text-gray-700">
                                 Država
                             </label>
@@ -182,14 +183,14 @@ export default function CompanyForm() {
                                 <input
                                     type="text"
                                     id="country"
-                                    {...register('country', { required: 'Država je obavezna' })}
+                                    {...register('country', {required: 'Država je obavezna'})}
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                 />
                                 {errors.country && <p className="mt-1 text-sm text-red-600">{errors.country.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-5">
                             <label htmlFor="bank_account" className="block text-sm font-medium text-gray-700">
                                 Broj računa
                             </label>
@@ -197,14 +198,14 @@ export default function CompanyForm() {
                                 <input
                                     type="text"
                                     id="bank_account"
-                                    {...register('bank_account', { required: 'Broj računa je obavezan' })}
+                                    {...register('bank_account', {required: 'Broj računa je obavezan'})}
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                 />
                                 {errors.bank_account && <p className="mt-1 text-sm text-red-600">{errors.bank_account.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-5">
                             <label htmlFor="iban" className="block text-sm font-medium text-gray-700">
                                 IBAN
                             </label>
@@ -218,7 +219,7 @@ export default function CompanyForm() {
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-2">
                             <label htmlFor="swift" className="block text-sm font-medium text-gray-700">
                                 SWIFT
                             </label>
@@ -232,25 +233,29 @@ export default function CompanyForm() {
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-4">
                             <label htmlFor="currency" className="block text-sm font-medium text-gray-700">
                                 Valuta
                             </label>
                             <div className="mt-1">
                                 <select
                                     id="currency"
-                                    {...register('currency', { required: 'Valuta je obavezna' })}
+                                    {...register('currency', {required: 'Valuta je obavezna'})}
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                                    required
                                 >
-                                    <option value="RSD">RSD</option>
-                                    <option value="EUR">EUR</option>
-                                    <option value="USD">USD</option>
+                                    <option value="">Izaberi valutu</option>
+                                    {!metaLoading && meta && Object.entries(meta.currencies).map(([code, item]) => (
+                                        <option key={code} value={code}>
+                                            {item.name} ({item.symbol ?? ''})
+                                        </option>
+                                    ))}
                                 </select>
                                 {errors.currency && <p className="mt-1 text-sm text-red-600">{errors.currency.message}</p>}
                             </div>
                         </div>
 
-                        <div className="sm:col-span-3 flex items-end">
+                        <div className="sm:col-span-12 flex items-end">
                             <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                                 <input
                                     type="checkbox"
@@ -261,7 +266,7 @@ export default function CompanyForm() {
                             </label>
                         </div>
 
-                        <div className="sm:col-span-6">
+                        <div className="sm:col-span-12">
                             <label htmlFor="logoFile" className="block text-sm font-medium text-gray-700">
                                 Logo (PNG, JPG, SVG)
                             </label>

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Account\PasswordController;
 use App\Http\Controllers\Account\ProfileController;
 use App\Http\Controllers\ClientController;
@@ -15,8 +16,10 @@ Route::middleware('guest')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
 });
 
+Route::get('/meta', MetaController::class);
+
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/user', function (Request $request) {
+    Route::get('/user', static function ( Request $request) {
         return $request->user();
     });
 

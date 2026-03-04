@@ -116,6 +116,12 @@ interface InvoiceCreatePayload {
   items: { description: string; quantity: number; price: number }[];
 }
 
+interface MetaData {
+  countries: Record<string, string> | Array<{ code: string; name: string }>;
+  currencies: Record<string, { name: string; symbol?: string }> | Array<{ code: string; name: string; symbol?: string }>;
+  payment_methods: Record<string, string> | Array<{ key: string; label: string }>;
+}
+
 interface AppContextType {
   user: User | null;
   authLoading: boolean;
@@ -123,6 +129,8 @@ interface AppContextType {
   companies: Company[];
   clients: Client[];
   invoices: Invoice[];
+  meta: MetaData | null;
+  metaLoading: boolean;
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
@@ -265,6 +273,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [clients, setClients] = useState<Client[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
+  const [meta, setMeta] = useState<MetaData | null>(null);
+  const [metaLoading, setMetaLoading] = useState(true);
 
   const refreshUser = async () => {
     setAuthLoading(true);
@@ -322,8 +332,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await Promise.all([loadCompanies(), loadClients(), loadInvoices()]);
   };
 
+  const loadMeta = async () => {
+    setMetaLoading(true);
+    try {
+      const response = await api.get('/api/meta');
+      setMeta(response.data);
+    } finally {
+      setMetaLoading(false);
+    }
+  };
+
   useEffect(() => {
     refreshUser().catch(() => undefined);
+    loadMeta().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -461,6 +482,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       companies,
       clients,
       invoices,
+      meta,
+      metaLoading,
       login,
       register,
       logout,

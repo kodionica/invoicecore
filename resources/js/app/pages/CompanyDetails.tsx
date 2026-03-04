@@ -1,13 +1,13 @@
 import React, {useState} from 'react';
 import {useParams, useNavigate} from 'react-router';
 import {useApp} from '../context/AppContext';
-import {ArrowLeft, Building2, Save, Trash2, CheckCircle, Users, FileText, Calculator} from 'lucide-react';
+import {ArrowLeft, Building2, Save, Trash2, CheckCircle, Users, FileText, Calculator, X} from 'lucide-react';
 import {toast} from 'sonner';
 
 export default function CompanyDetails() {
     const {id} = useParams();
     const navigate = useNavigate();
-    const {companies, clients, invoices, activeCompanyId, setActiveCompany, updateCompany, deleteCompany} = useApp();
+    const {companies, clients, invoices, activeCompanyId, setActiveCompany, updateCompany, deleteCompany, meta, metaLoading} = useApp();
 
     const companyId = id ? Number(id) : null;
     const company = companyId ? companies.find(c => c.id === companyId) : undefined;
@@ -238,16 +238,42 @@ export default function CompanyDetails() {
                     <div className="px-6 py-6 space-y-6">
                         {/* Company Icon */}
                         <div className="flex items-center gap-4">
-                            <div className="h-16 w-16 bg-indigo-50 rounded-lg flex items-center justify-center overflow-hidden">
+                            <div className="relative h-16 w-16 bg-indigo-50 rounded-lg flex items-center justify-center">
                                 {company.logoUrl ? (
-                                    <img src={company.logoUrl} alt={company.name} className="h-full w-full"/>
+                                    <img
+                                        src={company.logoUrl}
+                                        alt={company.name}
+                                        className={`h-full w-full ${formData.remove_logo ? 'opacity-40' : ''}`}
+                                    />
                                 ) : (
                                     <Building2 className="h-8 w-8 text-indigo-600"/>
+                                )}
+                                {isEditing && company.logoUrl && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setFormData({
+                                            ...formData,
+                                            remove_logo: !formData.remove_logo,
+                                            logoFile: formData.remove_logo ? formData.logoFile : undefined,
+                                        })}
+                                        className={`absolute -top-2 -right-2 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs shadow-sm transition ${
+                                            formData.remove_logo
+                                                ? 'bg-red-100 text-red-600 border-red-200'
+                                                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                        }`}
+                                        aria-label={formData.remove_logo ? 'Poništi uklanjanje logoa' : 'Ukloni logo'}
+                                        title={formData.remove_logo ? 'Poništi uklanjanje logoa' : 'Ukloni logo'}
+                                    >
+                                        <X className="h-3.5 w-3.5"/>
+                                    </button>
                                 )}
                             </div>
                             {isEditing && (
                                 <div className="text-sm text-gray-500">
                                     <p>Učitaj logo (PNG, JPG, SVG) ili ukloni postojeći.</p>
+                                    {company.logoUrl && formData.remove_logo && (
+                                        <p className="text-xs text-red-600 mt-1">Logo će biti uklonjen.</p>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -322,9 +348,9 @@ export default function CompanyDetails() {
                             </label>
                             <div className="mt-1">
                                 {isEditing ? (
-                                    <textarea
+                                    <input
+                                        type="text"
                                         id="address"
-                                        rows={3}
                                         value={formData.address}
                                         onChange={(e) => setFormData({...formData, address: e.target.value})}
                                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3"
@@ -468,7 +494,7 @@ export default function CompanyDetails() {
                                         id="swift"
                                         value={formData.swift}
                                         onChange={(e) => setFormData({...formData, swift: e.target.value})}
-                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3"
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                     />
                                 ) : (
                                     <p className="text-sm text-gray-900 py-2">{company.swift}</p>
@@ -483,14 +509,20 @@ export default function CompanyDetails() {
                             </label>
                             <div className="mt-1">
                                 {isEditing ? (
-                                    <input
-                                        type="text"
+                                    <select
                                         id="currency"
                                         value={formData.currency}
                                         onChange={(e) => setFormData({...formData, currency: e.target.value})}
                                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3"
                                         required
-                                    />
+                                    >
+                                        <option value="">Izaberi valutu</option>
+                                        {!metaLoading && meta && Object.entries(meta.currencies).map(([code, item]) => (
+                                            <option key={code} value={code}>
+                                                {item.name} ({item.symbol ?? ''})
+                                            </option>
+                                        ))}
+                                    </select>
                                 ) : (
                                     <p className="text-sm text-gray-900 py-2">{company.currency}</p>
                                 )}
@@ -537,21 +569,6 @@ export default function CompanyDetails() {
                                     </div>
                                 </div>
 
-                                {company.logoUrl && (
-                                    <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.remove_logo}
-                                            onChange={(e) => setFormData({
-                                                ...formData,
-                                                remove_logo: e.target.checked,
-                                                logoFile: e.target.checked ? undefined : formData.logoFile,
-                                            })}
-                                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                        />
-                                        Ukloni postojeći logo
-                                    </label>
-                                )}
                             </div>
                         )}
                     </div>
