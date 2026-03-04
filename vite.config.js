@@ -1,12 +1,29 @@
 import { defineConfig } from 'vite';
-import laravel          from 'laravel-vite-plugin';
-import { globSync }     from 'glob';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import laravel from 'laravel-vite-plugin';
 
-export default defineConfig( {
+export default defineConfig({
     plugins: [
-        laravel( {
-            input  : globSync( 'resources/{css,js}/*.{scss,css,js}', { ignore: 'resources/{css,js}/_*.{css,scss,js}' } ),
+        laravel({
+            input: ['resources/js/main.tsx'],
             refresh: true,
-        } ),
+        }),
+        react(),
+        tailwindcss(),
     ],
-} );
+    server: {
+        host: '0.0.0.0',
+        port: 5173,
+        strictPort: true,
+        origin: 'https://invoicecore.ddev.site:5173',
+        hmr: {
+            host: 'invoicecore.ddev.site',
+            protocol: 'wss',
+        },
+        cors: {
+            origin: 'https://invoicecore.ddev.site',
+            credentials: true,
+        },
+    },
+});

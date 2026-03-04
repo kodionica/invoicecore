@@ -1,0 +1,172 @@
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { useNavigate, useParams } from 'react-router';
+import { useApp } from '../context/AppContext';
+import { toast } from 'sonner';
+import { ArrowLeft } from 'lucide-react';
+
+interface ClientFormData {
+  name: string;
+  email: string;
+  pib: string;
+  address: string;
+  phone: string;
+}
+
+export default function ClientForm() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { clients, addClient, activeCompanyId } = useApp();
+  const isEdit = !!id;
+
+  const client = isEdit ? clients.find(c => c.id === id) : null;
+
+  const { register, handleSubmit, formState: { errors } } = useForm<ClientFormData>({
+    defaultValues: client ? {
+      name: client.name,
+      email: client.email,
+      pib: client.pib,
+      address: client.address,
+      phone: '', // Not in interface yet, mock only
+    } : {}
+  });
+
+  const onSubmit = (data: ClientFormData) => {
+    if (isEdit) {
+      // Edit logic would go here (update context)
+      toast.success('Klijent uspešno izmenjen');
+    } else {
+      if (!activeCompanyId) {
+        toast.error('Molimo izaberite aktivnu firmu');
+        return;
+      }
+      addClient({
+        companyId: activeCompanyId,
+        name: data.name,
+        email: data.email,
+        address: data.address,
+        pib: data.pib
+      });
+      toast.success('Novi klijent uspešno dodat');
+    }
+    navigate('/dashboard/clients');
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="flex items-center space-x-4">
+        <button 
+          onClick={() => navigate('/dashboard/clients')}
+          className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {isEdit ? 'Izmena Klijenta' : 'Novi Klijent'}
+        </h1>
+      </div>
+
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+          <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+            
+            <div className="sm:col-span-6">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                Naziv Klijenta / Ime
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  id="name"
+                  {...register("name", { required: "Naziv je obavezan" })}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+                {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email Adresa
+              </label>
+              <div className="mt-1">
+                <input
+                  type="email"
+                  id="email"
+                  {...register("email", { 
+                    required: "Email je obavezan",
+                    pattern: {
+                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                      message: "Neispravna email adresa"
+                    }
+                  })}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+                 {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                Telefon
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  id="phone"
+                  {...register("phone")}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="pib" className="block text-sm font-medium text-gray-700">
+                PIB
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  id="pib"
+                  {...register("pib")}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-6">
+              <label htmlFor="address" className="block text-sm font-medium text-gray-700">
+                Adresa
+              </label>
+              <div className="mt-1">
+                <textarea
+                  id="address"
+                  rows={3}
+                  {...register("address")}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+              </div>
+            </div>
+
+          </div>
+
+          <div className="pt-5 border-t border-gray-200 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/dashboard/clients')}
+              className="rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              Otkaži
+            </button>
+            <button
+              type="submit"
+              className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              Sačuvaj
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
