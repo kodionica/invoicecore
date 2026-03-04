@@ -53,7 +53,7 @@ export default function CompanyDetails() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const { logoFile, remove_logo, ...payload } = formData;
+        const {logoFile, remove_logo, ...payload} = formData;
         await updateCompany(company.id, {
             ...payload,
             logoFile,

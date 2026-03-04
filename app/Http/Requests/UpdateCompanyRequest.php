@@ -14,9 +14,11 @@ class UpdateCompanyRequest extends FormRequest {
     }
 
     protected function prepareForValidation() {
-        $this->merge( [
-                          'vat_enabled' => $this->has( 'vat_enabled' ),
-                      ] );
+        $this->merge(
+            [
+                'vat_enabled' => $this->boolean( 'vat_enabled' ),
+            ]
+        );
     }
 
     /**
