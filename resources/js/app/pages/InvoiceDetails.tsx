@@ -1,22 +1,25 @@
 import React, {useRef} from 'react';
 import {useParams, useNavigate} from 'react-router';
-import {useApp} from '../context/AppContext';
+import {useApp, type InvoiceStatus} from '../context/AppContext';
 import {formatCurrency} from '../utils/format';
 import {ArrowLeft, Printer, Download, Mail, Trash2, Edit, CheckCircle, XCircle, Send} from 'lucide-react';
 import {format} from 'date-fns';
 import {srLatn} from 'date-fns/locale';
 import {toast} from 'sonner';
+import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusSelectClass} from '../utils/invoiceStatus';
 
 export default function InvoiceDetails() {
     const {id} = useParams();
     const navigate = useNavigate();
-    const {invoices, clients, companies, updateInvoiceStatus} = useApp();
+    const {invoices, clients, companies, updateInvoiceStatus, meta} = useApp();
     const printRef = useRef<HTMLDivElement>(null);
 
     const invoiceId = id ? Number(id) : null;
     const invoice = invoiceId ? invoices.find(i => i.id === invoiceId) : undefined;
     const client = clients.find(c => c.id === invoice?.clientId);
     const company = companies.find(c => c.id === invoice?.companyId);
+    const statusOptions = getInvoiceStatusOptions(meta?.invoice_statuses);
+    const statusLabelMap = getInvoiceStatusLabelMap(statusOptions);
 
     if (!invoice || !client || !company) {
         return (
@@ -36,9 +39,10 @@ export default function InvoiceDetails() {
         window.print();
     };
 
-    const handleStatusChange = async (status: 'paid' | 'sent' | 'draft' | 'overdue' | 'cancelled') => {
+    const handleStatusChange = async (status: InvoiceStatus) => {
         await updateInvoiceStatus(invoice.id, status);
-        toast.success(`Status fakture promenjen u ${status}`);
+        const label = statusLabelMap[status] ?? status;
+        toast.success(`Status fakture promenjen u ${label}`);
     };
 
     const handleDelete = () => {
@@ -67,16 +71,12 @@ export default function InvoiceDetails() {
                         <h1 className="text-2xl font-bold text-gray-900">Faktura #{invoice.number}</h1>
                         <select
                             value={invoice.status}
-                            onChange={(e) => handleStatusChange(e.target.value as any)}
-                            className={`block rounded-md border-0 py-1.5 pl-3 pr-10 text-xs font-semibold ring-1 ring-inset focus:ring-2 focus:ring-indigo-600 sm:text-xs sm:leading-6
-                ${invoice.status === 'paid' ? 'bg-green-100 text-green-800 ring-green-200' :
-                                invoice.status === 'sent' ? 'bg-blue-100 text-blue-800 ring-blue-200' :
-                                    invoice.status === 'overdue' ? 'bg-red-100 text-red-800 ring-red-200' : 'bg-gray-100 text-gray-800 ring-gray-200'}`}
+                            onChange={(e) => handleStatusChange(e.target.value as InvoiceStatus)}
+                            className={`block rounded-md border-0 py-1.5 pl-3 pr-10 text-xs font-semibold ring-1 ring-inset focus:ring-2 focus:ring-indigo-600 sm:text-xs sm:leading-6 ${invoiceStatusSelectClass[invoice.status]}`}
                         >
-                            <option value="draft">NACRT</option>
-                            <option value="sent">POSLATO</option>
-                            <option value="paid">PLAĆENO</option>
-                            <option value="overdue">KASNI</option>
+                            {statusOptions.map((status) => (
+                                <option key={status.key} value={status.key}>{status.label}</option>
+                            ))}
                         </select>
                     </div>
                 </div>
