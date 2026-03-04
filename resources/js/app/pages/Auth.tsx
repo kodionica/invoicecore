@@ -11,6 +11,7 @@ type AuthFormValues = {
   last_name?: string;
   email?: string;
   password_confirmation?: string;
+  remember?: boolean;
 };
 
 export default function Auth() {
@@ -27,6 +28,7 @@ export default function Auth() {
         await login({
           login: data.login || '',
           password: data.password,
+          remember: data.remember,
         });
         toast.success('Uspešna prijava');
       } else {
@@ -171,6 +173,17 @@ export default function Auth() {
                 </div>
               </div>
             )}
+
+              <div>
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                      <input
+                          type="checkbox"
+                          {...register('remember')}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      Zapamti me
+                  </label>
+              </div>
 
             <div>
               <button

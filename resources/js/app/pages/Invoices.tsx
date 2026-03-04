@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { formatCurrency } from '../utils/format';
 import { Plus, Search, Filter, Download, Eye, Trash2, Send } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { format } from 'date-fns';
@@ -133,7 +134,7 @@ export default function Invoices() {
                       {format(new Date(invoice.dueDate), 'dd. MMM yyyy', { locale: srLatn })}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                      €{invoice.total.toLocaleString()}
+                      {formatCurrency(invoice.total, invoice.currency)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <div className="flex justify-end gap-2">

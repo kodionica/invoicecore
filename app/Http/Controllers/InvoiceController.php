@@ -144,6 +144,7 @@ class InvoiceController extends Controller {
             $attrs[ 'invoice_number' ] = $providedNumber ?: sprintf( '%d-%02d-%03d', $year, $month, $sequence );
             $attrs[ 'issue_date' ]     = $now->toDateString();
             $attrs[ 'due_date' ]       = $now->addDays( (int) $attrs[ 'due_date' ] )->toDateString();
+            $attrs[ 'currency' ]       = $attrs[ 'currency' ] ?? $active_company->currency ?? 'RSD';
             $attrs[ 'total' ]          = 0;
             $attrs[ 'status' ]         = InvoiceStatus::DRAFT;
 

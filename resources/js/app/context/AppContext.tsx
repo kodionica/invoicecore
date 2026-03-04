@@ -49,6 +49,7 @@ export interface Invoice {
   number: string;
   date: string;
   dueDate: string;
+  currency: string;
   items: InvoiceItem[];
   status: InvoiceStatus;
   total: number;
@@ -238,6 +239,7 @@ const normalizeInvoice = (invoice: any): Invoice => {
     number: invoice.invoice_number ?? '',
     date: invoice.issue_date ?? '',
     dueDate: invoice.due_date ?? '',
+    currency: invoice.currency ?? 'RSD',
     status: invoice.status as InvoiceStatus,
     total: Number(invoice.total ?? 0),
     items: items.map((item: any) => ({

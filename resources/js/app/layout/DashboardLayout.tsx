@@ -134,7 +134,7 @@ export default function DashboardLayout() {
             {/* Main Content */}
             <div className="flex-1 md:ml-64 flex flex-col min-w-0 overflow-hidden">
                 {/* Header */}
-                <header className="bg-white shadow-sm z-10 sticky top-0">
+                <header className="bg-white shadow-sm z-10 sticky top-0 print:hidden">
                     <div className="px-4 sm:px-6 lg:px-8 h-16 flex justify-between items-center">
 
                         {/* Left: Mobile Menu & Company Switcher */}
