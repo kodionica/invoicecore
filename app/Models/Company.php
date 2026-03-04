@@ -55,7 +55,6 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string|null $registration_number
  * @property string $invoice_prefix
  * @property int $invoice_start_number
- * @property int $invoice_next_number
  * @property string $currency
  * @property int $default_tax_percent
  * @property bool $vat_enabled
@@ -66,7 +65,6 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @method static \Database\Factories\CompanyFactory factory($count = null, $state = [])
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereCurrency($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereDefaultTaxPercent($value)
- * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoiceNextNumber($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoiceNote($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoicePrefix($value)
  * @method static \Illuminate\Database\Eloquent\Builder<static>|Company whereInvoiceStartNumber($value)
@@ -95,7 +93,6 @@ class Company extends Model {
         'logo_path',
         'invoice_prefix',
         'invoice_start_number',
-        'invoice_next_number',
         'currency',
         'default_tax_percent',
         'vat_enabled',
@@ -106,7 +103,6 @@ class Company extends Model {
     ];
     protected $casts      = [
         'invoice_start_number' => 'integer',
-        'invoice_next_number'  => 'integer',
         'default_tax_percent'  => 'integer',
         'payment_due_days'     => 'integer',
         'vat_enabled'          => 'boolean',
@@ -114,7 +110,6 @@ class Company extends Model {
     protected $attributes = [
         'invoice_prefix'       => 'INV',
         'invoice_start_number' => 1,
-        'invoice_next_number'  => 1,
         'currency'             => 'RSD',
         'vat_enabled'          => false,
         'default_tax_percent'  => 20,

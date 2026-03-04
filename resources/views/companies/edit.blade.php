@@ -20,7 +20,6 @@
 
         <x-forms.input name="invoice_prefix" label="Prefiks za fakture" :value="$company->invoice_prefix"/>
         <x-forms.input name="invoice_start_number" label="Početni broj fakture" type="number" :value="$company->invoice_start_number"/>
-        <x-forms.input name="invoice_next_number" label="Sledeći broj fakture" type="number" :value="$company->invoice_next_number"/>
         <x-forms.input name="default_tax_percent" label="Osnovna visina poreza u procentima" :value="$company->default_tax_percent"/>
         <x-forms.input name="payment_due_days" label="Rok za plaćanje" type="number" :value="$company->payment_due_days"/>
         <x-forms.textarea name="invoice_note" label="Dodatni tekst za fakturu" :value="$company->invoice_note"/>

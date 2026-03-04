@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\InvoiceStatus;
 use App\Http\Requests\StoreInvoiceRequest;
 use App\Models\Invoice;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +35,41 @@ class InvoiceController extends Controller {
         return response()->json( $invoices );
     }
 
+    public function nextNumber() {
+        $active_company = auth()->user()->activeCompany;
+
+        if ( ! $active_company ) {
+            return response()->json( [
+                'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi mogao videti fakture.',
+            ], 422 );
+        }
+
+        $now = now();
+        $year = (int) $now->year;
+        $month = (int) $now->month;
+
+        $counter = DB::table( 'invoice_counters' )
+            ->where( 'company_id', $active_company->id )
+            ->where( 'year', $year )
+            ->where( 'month', $month )
+            ->first();
+
+        if ( $counter ) {
+            $sequence = (int) $counter->next_number;
+        } else {
+            $existingCount = $active_company
+                ->invoices()
+                ->whereYear( 'issue_date', $year )
+                ->whereMonth( 'issue_date', $month )
+                ->count();
+            $sequence = max( (int) $active_company->invoice_start_number, $existingCount + 1 );
+        }
+
+        return response()->json( [
+            'invoice_number' => sprintf( '%d-%02d-%03d', $year, $month, $sequence ),
+        ] );
+    }
+
     /**
      * Store a newly created resource in storage.
      *
@@ -58,14 +94,54 @@ class InvoiceController extends Controller {
 
         $invoice = DB::transaction( static function () use ( $attrs, $active_company ) {
             $now = now();
+            $year = (int) $now->year;
+            $month = (int) $now->month;
 
-            $attrs[ 'company_id' ]     = $active_company->id;
-            $sequence                  = $active_company
+            $attrs[ 'company_id' ] = $active_company->id;
+
+            $counterQuery = DB::table( 'invoice_counters' )
+                ->where( 'company_id', $active_company->id )
+                ->where( 'year', $year )
+                ->where( 'month', $month );
+
+            $counter = $counterQuery->lockForUpdate()->first();
+
+            if ( $counter ) {
+                $sequence = (int) $counter->next_number;
+                $counterQuery->update( [ 'next_number' => $sequence + 1 ] );
+            } else {
+                $existingCount = $active_company
                     ->invoices()
-                    ->whereYear( 'issue_date', $now->year )
-                    ->whereMonth( 'issue_date', $now->month )
-                    ->count() + 1;
-            $attrs[ 'invoice_number' ] = sprintf( '%d-%02d-%03d', $now->year, $now->month, $sequence );
+                    ->whereYear( 'issue_date', $year )
+                    ->whereMonth( 'issue_date', $month )
+                    ->count();
+                $sequence = max( (int) $active_company->invoice_start_number, $existingCount + 1 );
+
+                try {
+                    DB::table( 'invoice_counters' )->insert( [
+                        'company_id'  => $active_company->id,
+                        'year'        => $year,
+                        'month'       => $month,
+                        'next_number' => $sequence + 1,
+                        'created_at'  => $now,
+                        'updated_at'  => $now,
+                    ] );
+                } catch ( QueryException $e ) {
+                    $counter = $counterQuery->lockForUpdate()->first();
+
+                    if ( ! $counter ) {
+                        throw $e;
+                    }
+
+                    $sequence = (int) $counter->next_number;
+                    $counterQuery->update( [ 'next_number' => $sequence + 1 ] );
+                }
+            }
+
+            $providedNumber = isset( $attrs[ 'invoice_number' ] ) && trim( (string) $attrs[ 'invoice_number' ] ) !== ''
+                ? trim( (string) $attrs[ 'invoice_number' ] )
+                : null;
+            $attrs[ 'invoice_number' ] = $providedNumber ?: sprintf( '%d-%02d-%03d', $year, $month, $sequence );
             $attrs[ 'issue_date' ]     = $now->toDateString();
             $attrs[ 'due_date' ]       = $now->addDays( (int) $attrs[ 'due_date' ] )->toDateString();
             $attrs[ 'total' ]          = 0;

@@ -16,6 +16,7 @@ export interface Company {
   swift: string;
   currency: string;
   vat_enabled: boolean;
+  payment_due_days?: number;
   logoUrl?: string;
 }
 
@@ -113,6 +114,10 @@ interface InvoiceCreatePayload {
   clientId: number;
   date: string;
   dueDate: string;
+  number?: string;
+  currency?: string;
+  paymentMethod?: string;
+  note?: string;
   items: { description: string; quantity: number; price: number }[];
 }
 
@@ -144,6 +149,7 @@ interface AppContextType {
   updateClient: (id: number, data: ClientCreatePayload) => Promise<void>;
   deleteClient: (id: number) => Promise<void>;
   addInvoice: (invoice: InvoiceCreatePayload) => Promise<void>;
+  getNextInvoiceNumber: () => Promise<string>;
   updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
 }
 
@@ -203,6 +209,7 @@ const normalizeCompany = (company: any): Company => {
     swift: company.swift ?? '',
     currency: company.currency ?? 'RSD',
     vat_enabled: Boolean(company.vat_enabled),
+    payment_due_days: company.payment_due_days !== undefined ? Number(company.payment_due_days) : undefined,
     logoUrl,
   };
 };
@@ -454,7 +461,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const payload = {
       client_id: invoice.clientId,
+      invoice_number: invoice.number,
       due_date: dueDays,
+      currency: invoice.currency,
+      payment_method: invoice.paymentMethod,
+      note: invoice.note,
       items: invoice.items.map(item => ({
         name: item.description,
         description: item.description,
@@ -466,6 +477,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const response = await api.post('/api/invoices', payload);
     const created = normalizeInvoice(response.data);
     setInvoices(current => [...current, created]);
+  };
+
+  const getNextInvoiceNumber = async () => {
+    const response = await api.get('/api/invoices/next-number');
+    return response.data?.invoice_number ?? '';
   };
 
   const updateInvoiceStatus = async (id: number, status: InvoiceStatus) => {
@@ -497,6 +513,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateClient,
       deleteClient,
       addInvoice,
+      getNextInvoiceNumber,
       updateInvoiceStatus,
     }}>
       {children}

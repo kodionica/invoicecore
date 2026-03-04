@@ -25,7 +25,6 @@ return new class extends Migration {
             $table->string( 'logo_path' )->nullable();
             $table->string( 'invoice_prefix' )->default( 'INV' );
             $table->unsignedInteger( 'invoice_start_number' )->default( 1 );
-            $table->unsignedInteger( 'invoice_next_number' )->default( 1 );
             $table->string( 'currency' )->default( 'RSD' );
             $table->unsignedTinyInteger( 'default_tax_percent' )->default( 20 );
             $table->boolean( 'vat_enabled' )->default( false );

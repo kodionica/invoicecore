@@ -14,6 +14,7 @@ class StoreInvoiceRequest extends FormRequest {
         return [
             'client_id'      => [ 'required', 'integer' ],
             'due_date'       => [ 'nullable', 'integer' ],
+            'invoice_number' => [ 'nullable', 'string', 'max:255' ],
             'currency'       => [ 'nullable', 'string', 'size:3' ],
             'payment_method' => [ 'nullable', 'string' ],
             'note'           => [ 'nullable', 'string' ],

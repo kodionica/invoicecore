@@ -43,7 +43,6 @@ class UpdateCompanyRequest extends FormRequest {
             'swift'                => [ 'sometimes', 'string' ],
             'invoice_prefix'       => [ 'sometimes', 'string', 'max:10' ],
             'invoice_start_number' => [ 'sometimes', 'integer', 'min:1' ],
-            'invoice_next_number'  => [ 'sometimes', 'integer', 'min:1' ],
             'currency'             => [ 'sometimes', 'string', 'size:3' ],
             'default_tax_percent'  => [ 'sometimes', 'integer', 'min:0', 'max:100' ],
             'payment_due_days'     => [ 'sometimes', 'integer', 'min:0' ],
