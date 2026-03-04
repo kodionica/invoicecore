@@ -12,7 +12,8 @@ export default function InvoiceDetails() {
   const { invoices, clients, companies, updateInvoiceStatus } = useApp();
   const printRef = useRef<HTMLDivElement>(null);
 
-  const invoice = invoices.find(i => i.id === id);
+  const invoiceId = id ? Number(id) : null;
+  const invoice = invoiceId ? invoices.find(i => i.id === invoiceId) : undefined;
   const client = clients.find(c => c.id === invoice?.clientId);
   const company = companies.find(c => c.id === invoice?.companyId);
 

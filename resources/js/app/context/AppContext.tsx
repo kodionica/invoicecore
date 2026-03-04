@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import axios from 'axios';
 
 export interface Company {
-  id: string;
+  id: number;
   name: string;
   tax_id: string;
   registration_number: string;
@@ -20,8 +20,8 @@ export interface Company {
 }
 
 export interface Client {
-  id: string;
-  companyId: string;
+  id: number;
+  companyId: number;
   name: string;
   email: string;
   address: string;
@@ -33,7 +33,7 @@ export interface Client {
 }
 
 export interface InvoiceItem {
-  id: string;
+  id: number;
   description: string;
   quantity: number;
   price: number;
@@ -42,9 +42,9 @@ export interface InvoiceItem {
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
 
 export interface Invoice {
-  id: string;
-  companyId: string;
-  clientId: string;
+  id: number;
+  companyId: number;
+  clientId: number;
   number: string;
   date: string;
   dueDate: string;
@@ -54,11 +54,11 @@ export interface Invoice {
 }
 
 interface User {
-  id: number | string;
+  id: number;
   name: string;
   email: string;
   avatarUrl?: string;
-  activeCompanyId?: string | null;
+  activeCompanyId?: number | null;
 }
 
 interface LoginPayload {
@@ -110,7 +110,7 @@ interface ClientCreatePayload {
 }
 
 interface InvoiceCreatePayload {
-  clientId: string;
+  clientId: number;
   date: string;
   dueDate: string;
   items: { description: string; quantity: number; price: number }[];
@@ -119,7 +119,7 @@ interface InvoiceCreatePayload {
 interface AppContextType {
   user: User | null;
   authLoading: boolean;
-  activeCompanyId: string | null;
+  activeCompanyId: number | null;
   companies: Company[];
   clients: Client[];
   invoices: Invoice[];
@@ -128,15 +128,15 @@ interface AppContextType {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
-  setActiveCompany: (id: string) => Promise<void>;
+  setActiveCompany: (id: number) => Promise<void>;
   addCompany: (company: CompanyCreatePayload) => Promise<void>;
-  updateCompany: (id: string, data: CompanyUpdatePayload) => Promise<void>;
-  deleteCompany: (id: string) => Promise<void>;
+  updateCompany: (id: number, data: CompanyUpdatePayload) => Promise<void>;
+  deleteCompany: (id: number) => Promise<void>;
   addClient: (client: ClientCreatePayload) => Promise<void>;
-  updateClient: (id: string, data: ClientCreatePayload) => Promise<void>;
-  deleteClient: (id: string) => Promise<void>;
+  updateClient: (id: number, data: ClientCreatePayload) => Promise<void>;
+  deleteClient: (id: number) => Promise<void>;
   addInvoice: (invoice: InvoiceCreatePayload) => Promise<void>;
-  updateInvoiceStatus: (id: string, status: InvoiceStatus) => Promise<void>;
+  updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -162,11 +162,11 @@ const normalizeUser = (apiUser: any): User => {
     'User';
 
   return {
-    id: apiUser?.id ?? '',
+    id: Number(apiUser?.id ?? 0),
     name,
     email: apiUser?.email ?? '',
     avatarUrl: apiUser?.avatar_url ?? apiUser?.avatarUrl,
-    activeCompanyId: apiUser?.active_company_id ?? null,
+    activeCompanyId: apiUser?.active_company_id ? Number(apiUser.active_company_id) : null,
   };
 };
 
@@ -181,7 +181,7 @@ const normalizeCompany = (company: any): Company => {
     : undefined;
 
   return {
-    id: String(company.id),
+    id: Number(company.id),
     name: company.name ?? '',
     tax_id: company.tax_id ?? '',
     registration_number: company.registration_number ?? '',
@@ -201,8 +201,8 @@ const normalizeCompany = (company: any): Company => {
 
 const normalizeClient = (client: any): Client => {
   return {
-    id: String(client.id),
-    companyId: String(client.company_id ?? ''),
+    id: Number(client.id),
+    companyId: Number(client.company_id ?? 0),
     name: client.name ?? '',
     email: client.email ?? '',
     address: client.address ?? '',
@@ -217,16 +217,16 @@ const normalizeClient = (client: any): Client => {
 const normalizeInvoice = (invoice: any): Invoice => {
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   return {
-    id: String(invoice.id),
-    companyId: String(invoice.company_id ?? ''),
-    clientId: String(invoice.client_id ?? ''),
+    id: Number(invoice.id),
+    companyId: Number(invoice.company_id ?? 0),
+    clientId: Number(invoice.client_id ?? 0),
     number: invoice.invoice_number ?? '',
     date: invoice.issue_date ?? '',
     dueDate: invoice.due_date ?? '',
     status: invoice.status as InvoiceStatus,
     total: Number(invoice.total ?? 0),
     items: items.map((item: any) => ({
-      id: String(item.id ?? ''),
+      id: Number(item.id ?? 0),
       description: item.name ?? item.description ?? '',
       quantity: Number(item.quantity ?? 0),
       price: Number(item.price ?? 0),
@@ -264,7 +264,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
+  const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
 
   const refreshUser = async () => {
     setAuthLoading(true);
@@ -372,7 +372,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUser(current => (current ? { ...current, ...updates } : current));
   };
 
-  const setActiveCompany = async (id: string) => {
+  const setActiveCompany = async (id: number) => {
     await api.post('/api/companies/switch', { company_id: id });
     setActiveCompanyId(id);
   };
@@ -390,7 +390,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateCompany = async (id: string, data: CompanyUpdatePayload) => {
+  const updateCompany = async (id: number, data: CompanyUpdatePayload) => {
     const form = buildCompanyFormData(data);
     const response = await api.post(`/api/companies/${id}?_method=PUT`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -400,7 +400,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setCompanies(current => current.map(c => (c.id === id ? updated : c)));
   };
 
-  const deleteCompany = async (id: string) => {
+  const deleteCompany = async (id: number) => {
     await api.delete(`/api/companies/${id}`);
     setCompanies(current => current.filter(c => c.id !== id));
     if (activeCompanyId === id) {
@@ -414,13 +414,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setClients(current => [...current, created]);
   };
 
-  const updateClient = async (id: string, data: ClientCreatePayload) => {
+  const updateClient = async (id: number, data: ClientCreatePayload) => {
     const response = await api.put(`/api/clients/${id}`, data);
     const updated = normalizeClient(response.data);
     setClients(current => current.map(c => (c.id === id ? updated : c)));
   };
 
-  const deleteClient = async (id: string) => {
+  const deleteClient = async (id: number) => {
     await api.delete(`/api/clients/${id}`);
     setClients(current => current.filter(c => c.id !== id));
   };
@@ -432,7 +432,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const dueDays = Number.isNaN(msDiff) ? 0 : Math.max(0, Math.round(msDiff / 86400000));
 
     const payload = {
-      client_id: Number(invoice.clientId),
+      client_id: invoice.clientId,
       due_date: dueDays,
       items: invoice.items.map(item => ({
         name: item.description,
@@ -447,7 +447,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setInvoices(current => [...current, created]);
   };
 
-  const updateInvoiceStatus = async (id: string, status: InvoiceStatus) => {
+  const updateInvoiceStatus = async (id: number, status: InvoiceStatus) => {
     const response = await api.put(`/api/invoices/${id}`, { status });
     const updated = normalizeInvoice(response.data);
     setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));

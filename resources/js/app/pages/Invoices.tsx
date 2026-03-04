@@ -12,10 +12,10 @@ export default function Invoices() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredInvoices = invoices
-    .filter(inv => inv.companyId === activeCompanyId)
+    .filter(inv => (activeCompanyId ? inv.companyId === activeCompanyId : false))
     .filter(inv => inv.number.includes(searchTerm) || clients.find(c => c.id === inv.clientId)?.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const handleStatusChange = async (id: string, newStatus: string) => {
+  const handleStatusChange = async (id: number, newStatus: string) => {
     await updateInvoiceStatus(id, newStatus as any);
     toast.success('Status promenjen');
   };

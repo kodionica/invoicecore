@@ -45,7 +45,7 @@ export default function InvoiceForm() {
     }
 
     await addInvoice({
-      clientId: data.clientId,
+      clientId: Number(data.clientId),
       date: data.date,
       dueDate: data.dueDate,
       items: data.items.map((item) => ({ ...item }))
@@ -55,7 +55,7 @@ export default function InvoiceForm() {
     navigate('/dashboard/invoices');
   };
 
-  const activeClients = clients.filter(c => c.companyId === activeCompanyId);
+  const activeClients = activeCompanyId ? clients.filter(c => c.companyId === activeCompanyId) : [];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">

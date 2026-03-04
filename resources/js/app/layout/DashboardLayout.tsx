@@ -59,7 +59,7 @@ function SimpleDropdown({
 export default function DashboardLayout() {
     const {user, authLoading, companies, activeCompanyId, setActiveCompany, logout} = useApp();
     const navigate = useNavigate();
-    const activeCompany = companies.find(c => c.id === activeCompanyId);
+    const activeCompany = activeCompanyId ? companies.find(c => c.id === activeCompanyId) : undefined;
     const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
     React.useEffect(() => {

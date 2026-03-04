@@ -22,7 +22,8 @@ export default function ClientForm() {
   const { clients, addClient, updateClient, activeCompanyId } = useApp();
   const isEdit = !!id;
 
-  const client = isEdit ? clients.find(c => c.id === id) : null;
+  const clientId = id ? Number(id) : null;
+  const client = isEdit && clientId ? clients.find(c => c.id === clientId) : null;
 
   const { register, handleSubmit, formState: { errors } } = useForm<ClientFormData>({
     defaultValues: client ? {
@@ -39,7 +40,10 @@ export default function ClientForm() {
 
   const onSubmit = async (data: ClientFormData) => {
     if (isEdit) {
-      await updateClient(id!, {
+      if (!clientId) {
+        return;
+      }
+      await updateClient(clientId, {
         name: data.name,
         email: data.email,
         address: data.address,

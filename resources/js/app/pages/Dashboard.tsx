@@ -36,8 +36,8 @@ export default function Dashboard() {
   const { companies, clients, invoices, activeCompanyId } = useApp();
 
   // Filter data for active company
-  const activeClients = clients.filter(c => c.companyId === activeCompanyId);
-  const activeInvoices = invoices.filter(i => i.companyId === activeCompanyId);
+  const activeClients = activeCompanyId ? clients.filter(c => c.companyId === activeCompanyId) : [];
+  const activeInvoices = activeCompanyId ? invoices.filter(i => i.companyId === activeCompanyId) : [];
 
   // Calculate stats
   const totalRevenue = activeInvoices.reduce((acc, inv) => acc + inv.total, 0);

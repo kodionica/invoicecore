@@ -10,10 +10,10 @@ export default function Clients() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredClients = clients
-    .filter(c => c.companyId === activeCompanyId)
+    .filter(c => (activeCompanyId ? c.companyId === activeCompanyId : false))
     .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.email.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     await deleteClient(id);
     toast.success('Klijent obrisan');
   };

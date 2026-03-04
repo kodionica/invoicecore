@@ -9,7 +9,8 @@ export default function CompanyDetails() {
     const navigate = useNavigate();
     const {companies, clients, invoices, activeCompanyId, setActiveCompany, updateCompany, deleteCompany} = useApp();
 
-    const company = companies.find(c => c.id === id);
+    const companyId = id ? Number(id) : null;
+    const company = companyId ? companies.find(c => c.id === companyId) : undefined;
     const [isEditing, setIsEditing] = useState(false);
 
     // Form state
@@ -239,7 +240,7 @@ export default function CompanyDetails() {
                         <div className="flex items-center gap-4">
                             <div className="h-16 w-16 bg-indigo-50 rounded-lg flex items-center justify-center overflow-hidden">
                                 {company.logoUrl ? (
-                                    <img src={company.logoUrl} alt={company.name} className="h-full w-full object-cover"/>
+                                    <img src={company.logoUrl} alt={company.name} className="h-full w-full"/>
                                 ) : (
                                     <Building2 className="h-8 w-8 text-indigo-600"/>
                                 )}
