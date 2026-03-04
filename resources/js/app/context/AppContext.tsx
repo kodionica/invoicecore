@@ -1,23 +1,35 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import axios from 'axios';
-import { v4 as uuidv4 } from 'uuid';
 
-// Types
 export interface Company {
   id: string;
   name: string;
-  pib: string;
+  tax_id: string;
+  registration_number: string;
   address: string;
+  city: string;
+  country: string;
+  email: string;
+  phone: string;
+  bank_account: string;
+  iban: string;
+  swift: string;
+  currency: string;
+  vat_enabled: boolean;
   logoUrl?: string;
 }
 
 export interface Client {
   id: string;
-  companyId: string; // The company that owns this client
+  companyId: string;
   name: string;
   email: string;
   address: string;
-  pib?: string;
+  tax_id?: string;
+  registration_number?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
 }
 
 export interface InvoiceItem {
@@ -27,6 +39,8 @@ export interface InvoiceItem {
   price: number;
 }
 
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
+
 export interface Invoice {
   id: string;
   companyId: string;
@@ -35,7 +49,7 @@ export interface Invoice {
   date: string;
   dueDate: string;
   items: InvoiceItem[];
-  status: 'draft' | 'sent' | 'paid' | 'overdue';
+  status: InvoiceStatus;
   total: number;
 }
 
@@ -44,6 +58,7 @@ interface User {
   name: string;
   email: string;
   avatarUrl?: string;
+  activeCompanyId?: string | null;
 }
 
 interface LoginPayload {
@@ -61,6 +76,46 @@ interface RegisterPayload {
   phone?: string;
 }
 
+interface CompanyCreatePayload {
+  name: string;
+  tax_id: string;
+  registration_number: string;
+  address: string;
+  city: string;
+  country: string;
+  email: string;
+  phone: string;
+  bank_account: string;
+  iban: string;
+  swift: string;
+  currency: string;
+  vat_enabled: boolean;
+  logoFile?: File;
+}
+
+interface CompanyUpdatePayload extends Partial<Omit<CompanyCreatePayload, 'logoFile'>> {
+  logoFile?: File;
+  remove_logo?: boolean;
+}
+
+interface ClientCreatePayload {
+  name: string;
+  email?: string;
+  address?: string;
+  tax_id?: string;
+  registration_number?: string;
+  phone?: string;
+  city?: string;
+  country?: string;
+}
+
+interface InvoiceCreatePayload {
+  clientId: string;
+  date: string;
+  dueDate: string;
+  items: { description: string; quantity: number; price: number }[];
+}
+
 interface AppContextType {
   user: User | null;
   authLoading: boolean;
@@ -73,13 +128,15 @@ interface AppContextType {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<User>) => void;
-  setActiveCompany: (id: string) => void;
-  addCompany: (company: Omit<Company, 'id'>) => void;
-  updateCompany: (id: string, data: Omit<Company, 'id'>) => void;
-  deleteCompany: (id: string) => void;
-  addClient: (client: Omit<Client, 'id'>) => void;
-  addInvoice: (invoice: Omit<Invoice, 'id' | 'total'>) => void;
-  updateInvoiceStatus: (id: string, status: Invoice['status']) => void;
+  setActiveCompany: (id: string) => Promise<void>;
+  addCompany: (company: CompanyCreatePayload) => Promise<void>;
+  updateCompany: (id: string, data: CompanyUpdatePayload) => Promise<void>;
+  deleteCompany: (id: string) => Promise<void>;
+  addClient: (client: ClientCreatePayload) => Promise<void>;
+  updateClient: (id: string, data: ClientCreatePayload) => Promise<void>;
+  deleteClient: (id: string) => Promise<void>;
+  addInvoice: (invoice: InvoiceCreatePayload) => Promise<void>;
+  updateInvoiceStatus: (id: string, status: InvoiceStatus) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -109,138 +166,291 @@ const normalizeUser = (apiUser: any): User => {
     name,
     email: apiUser?.email ?? '',
     avatarUrl: apiUser?.avatar_url ?? apiUser?.avatarUrl,
+    activeCompanyId: apiUser?.active_company_id ?? null,
   };
 };
 
-const MOCK_COMPANIES: Company[] = [
-  { id: 'c1', name: 'Tech Solutions d.o.o.', pib: '101010101', address: 'Bulevar Oslobođenja 10, Novi Sad' },
-  { id: 'c2', name: 'Marko Design PR', pib: '202020202', address: 'Kneza Miloša 5, Beograd' },
-];
+const normalizeCompany = (company: any): Company => {
+  const rawLogoPath = company.logo_path ?? company.logoUrl ?? company.logo_url;
+  const logoUrl = rawLogoPath
+    ? rawLogoPath.startsWith('http')
+      ? rawLogoPath
+      : rawLogoPath.startsWith('/')
+        ? `${window.location.origin}${rawLogoPath}`
+        : `${window.location.origin}/storage/${rawLogoPath}`
+    : undefined;
 
-const MOCK_CLIENTS: Client[] = [
-  { id: 'cl1', companyId: 'c1', name: 'Alpha Corp', email: 'contact@alpha.com', address: 'London, UK', pib: 'UK123456' },
-  { id: 'cl2', companyId: 'c1', name: 'Beta Ltd', email: 'info@beta.com', address: 'Berlin, DE', pib: 'DE987654' },
-  { id: 'cl3', companyId: 'c2', name: 'Gamma Shop', email: 'shop@gamma.com', address: 'Novi Beograd, SRB', pib: '123123123' },
-];
+  return {
+    id: String(company.id),
+    name: company.name ?? '',
+    tax_id: company.tax_id ?? '',
+    registration_number: company.registration_number ?? '',
+    address: company.address ?? '',
+    city: company.city ?? '',
+    country: company.country ?? '',
+    email: company.email ?? '',
+    phone: company.phone ?? '',
+    bank_account: company.bank_account ?? '',
+    iban: company.iban ?? '',
+    swift: company.swift ?? '',
+    currency: company.currency ?? 'RSD',
+    vat_enabled: Boolean(company.vat_enabled),
+    logoUrl,
+  };
+};
 
-const MOCK_INVOICES: Invoice[] = [
-  {
-    id: 'inv1',
-    companyId: 'c1',
-    clientId: 'cl1',
-    number: '2023-001',
-    date: '2023-10-01',
-    dueDate: '2023-10-15',
-    status: 'paid',
-    items: [{ id: 'i1', description: 'Web Development', quantity: 1, price: 1000 }],
-    total: 1000,
-  },
-  {
-    id: 'inv2',
-    companyId: 'c1',
-    clientId: 'cl2',
-    number: '2023-002',
-    date: '2023-10-20',
-    dueDate: '2023-11-04',
-    status: 'sent',
-    items: [{ id: 'i2', description: 'Consulting', quantity: 5, price: 100 }],
-    total: 500,
-  },
-   {
-    id: 'inv3',
-    companyId: 'c2',
-    clientId: 'cl3',
-    number: '2023-101',
-    date: '2023-11-01',
-    dueDate: '2023-11-15',
-    status: 'overdue',
-    items: [{ id: 'i3', description: 'Logo Design', quantity: 1, price: 300 }],
-    total: 300,
-  },
-];
+const normalizeClient = (client: any): Client => {
+  return {
+    id: String(client.id),
+    companyId: String(client.company_id ?? ''),
+    name: client.name ?? '',
+    email: client.email ?? '',
+    address: client.address ?? '',
+    tax_id: client.tax_id ?? undefined,
+    registration_number: client.registration_number ?? undefined,
+    phone: client.phone ?? undefined,
+    city: client.city ?? undefined,
+    country: client.country ?? undefined,
+  };
+};
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const normalizeInvoice = (invoice: any): Invoice => {
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  return {
+    id: String(invoice.id),
+    companyId: String(invoice.company_id ?? ''),
+    clientId: String(invoice.client_id ?? ''),
+    number: invoice.invoice_number ?? '',
+    date: invoice.issue_date ?? '',
+    dueDate: invoice.due_date ?? '',
+    status: invoice.status as InvoiceStatus,
+    total: Number(invoice.total ?? 0),
+    items: items.map((item: any) => ({
+      id: String(item.id ?? ''),
+      description: item.name ?? item.description ?? '',
+      quantity: Number(item.quantity ?? 0),
+      price: Number(item.price ?? 0),
+    })),
+  };
+};
+
+const buildCompanyFormData = (data: CompanyCreatePayload | CompanyUpdatePayload) => {
+  const form = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (key === 'logoFile') return;
+    if (key === 'vat_enabled') {
+      form.append('vat_enabled', value ? '1' : '0');
+      return;
+    }
+    if (key === 'remove_logo') {
+      if (value) form.append('remove_logo', '1');
+      return;
+    }
+    form.append(key, String(value));
+  });
+
+  const logoFile = (data as CompanyCreatePayload).logoFile || (data as CompanyUpdatePayload).logoFile;
+  if (logoFile) {
+    form.append('logo', logoFile);
+  }
+
+  return form;
+};
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [companies, setCompanies] = useState<Company[]>(MOCK_COMPANIES);
-  const [clients, setClients] = useState<Client[]>(MOCK_CLIENTS);
-  const [invoices, setInvoices] = useState<Invoice[]>(MOCK_INVOICES);
-  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(MOCK_COMPANIES[0]?.id || null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
 
   const refreshUser = async () => {
     setAuthLoading(true);
     try {
       const response = await api.get('/api/user');
-      setUser(normalizeUser(response.data));
+      const nextUser = normalizeUser(response.data);
+      setUser(nextUser);
+      setActiveCompanyId(nextUser.activeCompanyId ?? null);
     } catch (error: any) {
       if (error?.response?.status !== 401) {
         throw error;
       }
       setUser(null);
+      setActiveCompanyId(null);
     } finally {
       setAuthLoading(false);
     }
+  };
+
+  const loadCompanies = async () => {
+    const response = await api.get('/api/companies');
+    const data = Array.isArray(response.data) ? response.data : [];
+    setCompanies(data.map(normalizeCompany));
+  };
+
+  const loadClients = async () => {
+    try {
+      const response = await api.get('/api/clients');
+      const data = Array.isArray(response.data) ? response.data : [];
+      setClients(data.map(normalizeClient));
+    } catch (error: any) {
+      if (error?.response?.status === 422) {
+        setClients([]);
+        return;
+      }
+      throw error;
+    }
+  };
+
+  const loadInvoices = async () => {
+    try {
+      const response = await api.get('/api/invoices');
+      const data = Array.isArray(response.data) ? response.data : [];
+      setInvoices(data.map(normalizeInvoice));
+    } catch (error: any) {
+      if (error?.response?.status === 422) {
+        setInvoices([]);
+        return;
+      }
+      throw error;
+    }
+  };
+
+  const loadAll = async () => {
+    await Promise.all([loadCompanies(), loadClients(), loadInvoices()]);
   };
 
   useEffect(() => {
     refreshUser().catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      loadAll().catch(() => undefined);
+    } else {
+      setCompanies([]);
+      setClients([]);
+      setInvoices([]);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadClients().catch(() => undefined);
+      loadInvoices().catch(() => undefined);
+    }
+  }, [activeCompanyId, user]);
+
   const login = async (payload: LoginPayload) => {
     await ensureCsrf();
     const response = await api.post('/api/login', payload);
-    setUser(normalizeUser(response.data.user));
+    const nextUser = normalizeUser(response.data.user);
+    setUser(nextUser);
+    setActiveCompanyId(nextUser.activeCompanyId ?? null);
   };
 
   const register = async (payload: RegisterPayload) => {
     await ensureCsrf();
     const response = await api.post('/api/register', payload);
-    setUser(normalizeUser(response.data.user));
+    const nextUser = normalizeUser(response.data.user);
+    setUser(nextUser);
+    setActiveCompanyId(nextUser.activeCompanyId ?? null);
   };
 
   const logout = async () => {
     await api.post('/api/logout');
     setUser(null);
+    setActiveCompanyId(null);
+    setCompanies([]);
+    setClients([]);
+    setInvoices([]);
   };
 
   const updateUser = (updates: Partial<User>) => {
     setUser(current => (current ? { ...current, ...updates } : current));
   };
 
-  const setActiveCompany = (id: string) => {
+  const setActiveCompany = async (id: string) => {
+    await api.post('/api/companies/switch', { company_id: id });
     setActiveCompanyId(id);
   };
 
-  const addCompany = (company: Omit<Company, 'id'>) => {
-    const newCompany = { ...company, id: generateId() };
-    setCompanies([...companies, newCompany]);
-    if (!activeCompanyId) setActiveCompanyId(newCompany.id);
+  const addCompany = async (company: CompanyCreatePayload) => {
+    const form = buildCompanyFormData(company);
+    const response = await api.post('/api/companies', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    const created = normalizeCompany(response.data);
+    setCompanies(current => [...current, created]);
+    if (!activeCompanyId) {
+      setActiveCompanyId(created.id);
+    }
   };
 
-  const updateCompany = (id: string, data: Omit<Company, 'id'>) => {
-    setCompanies(companies.map(comp => comp.id === id ? { ...comp, ...data } : comp));
+  const updateCompany = async (id: string, data: CompanyUpdatePayload) => {
+    const form = buildCompanyFormData(data);
+    const response = await api.post(`/api/companies/${id}?_method=PUT`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    const updated = normalizeCompany(response.data);
+    setCompanies(current => current.map(c => (c.id === id ? updated : c)));
   };
 
-  const deleteCompany = (id: string) => {
-    setCompanies(companies.filter(comp => comp.id !== id));
-    if (activeCompanyId === id) setActiveCompanyId(null);
+  const deleteCompany = async (id: string) => {
+    await api.delete(`/api/companies/${id}`);
+    setCompanies(current => current.filter(c => c.id !== id));
+    if (activeCompanyId === id) {
+      setActiveCompanyId(null);
+    }
   };
 
-  const addClient = (client: Omit<Client, 'id'>) => {
-    const newClient = { ...client, id: generateId() };
-    setClients([...clients, newClient]);
+  const addClient = async (client: ClientCreatePayload) => {
+    const response = await api.post('/api/clients', client);
+    const created = normalizeClient(response.data);
+    setClients(current => [...current, created]);
   };
 
-  const addInvoice = (invoice: Omit<Invoice, 'id' | 'total'>) => {
-    const total = invoice.items.reduce((acc, item) => acc + (item.quantity * item.price), 0);
-    const newInvoice = { ...invoice, id: generateId(), total };
-    setInvoices([...invoices, newInvoice]);
+  const updateClient = async (id: string, data: ClientCreatePayload) => {
+    const response = await api.put(`/api/clients/${id}`, data);
+    const updated = normalizeClient(response.data);
+    setClients(current => current.map(c => (c.id === id ? updated : c)));
   };
 
-  const updateInvoiceStatus = (id: string, status: Invoice['status']) => {
-    setInvoices(invoices.map(inv => inv.id === id ? { ...inv, status } : inv));
+  const deleteClient = async (id: string) => {
+    await api.delete(`/api/clients/${id}`);
+    setClients(current => current.filter(c => c.id !== id));
+  };
+
+  const addInvoice = async (invoice: InvoiceCreatePayload) => {
+    const issueDate = new Date(invoice.date);
+    const dueDate = new Date(invoice.dueDate);
+    const msDiff = dueDate.getTime() - issueDate.getTime();
+    const dueDays = Number.isNaN(msDiff) ? 0 : Math.max(0, Math.round(msDiff / 86400000));
+
+    const payload = {
+      client_id: Number(invoice.clientId),
+      due_date: dueDays,
+      items: invoice.items.map(item => ({
+        name: item.description,
+        description: item.description,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+    };
+
+    const response = await api.post('/api/invoices', payload);
+    const created = normalizeInvoice(response.data);
+    setInvoices(current => [...current, created]);
+  };
+
+  const updateInvoiceStatus = async (id: string, status: InvoiceStatus) => {
+    const response = await api.put(`/api/invoices/${id}`, { status });
+    const updated = normalizeInvoice(response.data);
+    setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
   };
 
   return (
@@ -261,8 +471,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateCompany,
       deleteCompany,
       addClient,
+      updateClient,
+      deleteClient,
       addInvoice,
-      updateInvoiceStatus
+      updateInvoiceStatus,
     }}>
       {children}
     </AppContext.Provider>

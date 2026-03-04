@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 export default function Clients() {
-  const { clients, activeCompanyId } = useApp();
+  const { clients, activeCompanyId, deleteClient } = useApp();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -13,8 +13,8 @@ export default function Clients() {
     .filter(c => c.companyId === activeCompanyId)
     .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.email.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const handleDelete = (id: string) => {
-    // In a real app, we would call an API
+  const handleDelete = async (id: string) => {
+    await deleteClient(id);
     toast.success('Klijent obrisan');
   };
 
@@ -66,7 +66,7 @@ export default function Clients() {
                         <p className="flex items-center text-sm text-gray-500">
                            <span className="truncate">{client.email}</span>
                            <span className="mx-2 text-gray-300">&bull;</span>
-                           <span className="truncate">{client.pib || 'Nema PIB'}</span>
+                           <span className="truncate">{client.tax_id || 'Nema PIB'}</span>
                         </p>
                      </div>
                   </div>

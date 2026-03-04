@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 
 class ProfileController extends Controller {
     public function edit() {
-        return view( 'account.profile', [ 'user' => auth()->user() ] );
+        return response()->json( [ 'user' => auth()->user() ] );
     }
 
     public function update( Request $request ) {
@@ -23,9 +23,9 @@ class ProfileController extends Controller {
         $user = auth()->user();
         $user->update( $user_attributes );
 
-        return redirect()->back()->with( 'flash', [
+        return response()->json( [
             'message' => 'Profil uspešno ažuriran.',
-            'type'    => 'success',
+            'user' => $user,
         ] );
     }
 }

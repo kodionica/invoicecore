@@ -38,20 +38,17 @@ export default function InvoiceForm() {
   const watchItems = watch("items");
   const totalAmount = watchItems.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.price)), 0);
 
-  const onSubmit = (data: InvoiceFormData) => {
+  const onSubmit = async (data: InvoiceFormData) => {
     if (!activeCompanyId) {
       toast.error('Molimo izaberite aktivnu firmu');
       return;
     }
 
-    addInvoice({
-      companyId: activeCompanyId,
+    await addInvoice({
       clientId: data.clientId,
-      number: data.number,
       date: data.date,
       dueDate: data.dueDate,
-      status: 'sent', // Default to sent for demo
-      items: data.items.map((item, index) => ({ ...item, id: `item-${index}` }))
+      items: data.items.map((item) => ({ ...item }))
     });
     
     toast.success('Faktura uspešno kreirana');

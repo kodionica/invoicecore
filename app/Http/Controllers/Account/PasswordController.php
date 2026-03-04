@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 
 class PasswordController extends Controller {
     public function edit() {
-        return view( 'account.password', [ 'user' => auth()->user() ] );
+        return response()->json( [ 'user' => auth()->user() ] );
     }
 
     public function update( Request $request ) {
@@ -36,9 +36,8 @@ class PasswordController extends Controller {
             ]
         );
 
-        return redirect()->back()->with( 'flash', [
+        return response()->json( [
             'message' => 'Šifra uspešno promenjena.',
-            'type'    => 'success',
         ] );
     }
 }

@@ -15,8 +15,8 @@ export default function Invoices() {
     .filter(inv => inv.companyId === activeCompanyId)
     .filter(inv => inv.number.includes(searchTerm) || clients.find(c => c.id === inv.clientId)?.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const handleStatusChange = (id: string, newStatus: string) => {
-    updateInvoiceStatus(id, newStatus as any);
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    await updateInvoiceStatus(id, newStatus as any);
     toast.success('Status promenjen');
   };
 

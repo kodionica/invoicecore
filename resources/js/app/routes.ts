@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Clients from "./pages/Clients";
 import ClientForm from "./pages/ClientForm";
 import Companies from "./pages/Companies";
+import CompanyForm from "./pages/CompanyForm";
 import CompanyDetails from "./pages/CompanyDetails";
 import Invoices from "./pages/Invoices";
 import InvoiceForm from "./pages/InvoiceForm";
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
       { path: "invoices/new", Component: InvoiceForm },
       { path: "invoices/:id", Component: InvoiceDetails },
       { path: "companies", Component: Companies },
+      { path: "companies/new", Component: CompanyForm },
       { path: "companies/:id", Component: CompanyDetails },
       { path: "settings", Component: Settings },
     ],

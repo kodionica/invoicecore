@@ -8,15 +8,18 @@ import { ArrowLeft } from 'lucide-react';
 interface ClientFormData {
   name: string;
   email: string;
-  pib: string;
+  tax_id: string;
+  registration_number: string;
   address: string;
   phone: string;
+  city: string;
+  country: string;
 }
 
 export default function ClientForm() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { clients, addClient, activeCompanyId } = useApp();
+  const { clients, addClient, updateClient, activeCompanyId } = useApp();
   const isEdit = !!id;
 
   const client = isEdit ? clients.find(c => c.id === id) : null;
@@ -25,27 +28,42 @@ export default function ClientForm() {
     defaultValues: client ? {
       name: client.name,
       email: client.email,
-      pib: client.pib,
+      tax_id: client.tax_id || '',
+      registration_number: client.registration_number || '',
       address: client.address,
-      phone: '', // Not in interface yet, mock only
+      phone: client.phone || '',
+      city: client.city || '',
+      country: client.country || '',
     } : {}
   });
 
-  const onSubmit = (data: ClientFormData) => {
+  const onSubmit = async (data: ClientFormData) => {
     if (isEdit) {
-      // Edit logic would go here (update context)
+      await updateClient(id!, {
+        name: data.name,
+        email: data.email,
+        address: data.address,
+        tax_id: data.tax_id || undefined,
+        registration_number: data.registration_number || undefined,
+        phone: data.phone || undefined,
+        city: data.city || undefined,
+        country: data.country || undefined,
+      });
       toast.success('Klijent uspešno izmenjen');
     } else {
       if (!activeCompanyId) {
         toast.error('Molimo izaberite aktivnu firmu');
         return;
       }
-      addClient({
-        companyId: activeCompanyId,
+      await addClient({
         name: data.name,
-        email: data.email,
-        address: data.address,
-        pib: data.pib
+        email: data.email || undefined,
+        address: data.address || undefined,
+        tax_id: data.tax_id || undefined,
+        registration_number: data.registration_number || undefined,
+        phone: data.phone || undefined,
+        city: data.city || undefined,
+        country: data.country || undefined,
       });
       toast.success('Novi klijent uspešno dodat');
     }
@@ -107,6 +125,34 @@ export default function ClientForm() {
             </div>
 
             <div className="sm:col-span-3">
+              <label htmlFor="tax_id" className="block text-sm font-medium text-gray-700">
+                PIB
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  id="tax_id"
+                  {...register("tax_id")}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="registration_number" className="block text-sm font-medium text-gray-700">
+                Matični broj
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  id="registration_number"
+                  {...register("registration_number")}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
                 Telefon
               </label>
@@ -115,20 +161,6 @@ export default function ClientForm() {
                   type="text"
                   id="phone"
                   {...register("phone")}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
-                />
-              </div>
-            </div>
-
-            <div className="sm:col-span-3">
-              <label htmlFor="pib" className="block text-sm font-medium text-gray-700">
-                PIB
-              </label>
-              <div className="mt-1">
-                <input
-                  type="text"
-                  id="pib"
-                  {...register("pib")}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                 />
               </div>
@@ -143,6 +175,34 @@ export default function ClientForm() {
                   id="address"
                   rows={3}
                   {...register("address")}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="city" className="block text-sm font-medium text-gray-700">
+                Grad
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  id="city"
+                  {...register("city")}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-3">
+              <label htmlFor="country" className="block text-sm font-medium text-gray-700">
+                Država
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  id="country"
+                  {...register("country")}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                 />
               </div>

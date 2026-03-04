@@ -34,8 +34,8 @@ export default function InvoiceDetails() {
     window.print();
   };
 
-  const handleStatusChange = (status: 'paid' | 'sent' | 'draft' | 'overdue') => {
-    updateInvoiceStatus(invoice.id, status);
+  const handleStatusChange = async (status: 'paid' | 'sent' | 'draft' | 'overdue' | 'cancelled') => {
+    await updateInvoiceStatus(invoice.id, status);
     toast.success(`Status fakture promenjen u ${status}`);
   };
 
@@ -120,8 +120,8 @@ export default function InvoiceDetails() {
                </div>
                <h2 className="text-xl font-bold text-gray-900">{company.name}</h2>
                <div className="text-gray-500 text-sm mt-2 space-y-1">
-                 <p>{company.address}</p>
-                 <p>PIB: {company.pib}</p>
+                 <p>{company.address}, {company.city}</p>
+                 <p>PIB: {company.tax_id}</p>
                </div>
             </div>
             <div className="text-right sm:text-right">
@@ -148,7 +148,7 @@ export default function InvoiceDetails() {
               <div className="text-gray-500 text-sm mt-1 space-y-1">
                 <p>{client.address}</p>
                 <p>{client.email}</p>
-                {client.pib && <p>PIB: {client.pib}</p>}
+                {client.tax_id && <p>PIB: {client.tax_id}</p>}
               </div>
             </div>
           </div>

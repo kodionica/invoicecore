@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreClientRequest;
 use App\Http\Requests\UpdateClientRequest;
 use App\Models\Client;
-use App\Models\Company;
 use Illuminate\Http\Request;
 
 class ClientController extends Controller {
@@ -17,22 +16,14 @@ class ClientController extends Controller {
         $company = auth()->user()->activeCompany;
 
         if ( ! $company ) {
-            return redirect()->route( 'companies.create' )->with( 'flash', [
+            return response()->json( [
                 'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi se mogao dodati klijent.',
-                'type'    => 'error',
-            ] );
+            ], 422 );
         }
 
         $clients = $company->clients()->get();
 
-        return view( 'clients.index', compact( 'clients' ) );
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create() {
-        return view( 'clients.create' );
+        return response()->json( $clients );
     }
 
     /**
@@ -44,38 +35,30 @@ class ClientController extends Controller {
         $active_company = auth()->user()->activeCompany;
 
         if ( ! $active_company ) {
-            return redirect()->route( 'companies.create' )->with( 'flash', [
+            return response()->json( [
                 'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi se mogao dodati klijent.',
-                'type'    => 'error',
-            ] );
+            ], 422 );
         }
 
-        $active_company->clients()->create( $data );
+        $client = $active_company->clients()->create( $data );
 
-        return redirect()->route( 'clients.index' )->with( 'flash', [
-            'message' => 'Novi klijent je kreiran.',
-            'type'    => 'success',
-        ] );
+        return response()->json( $client, 201 );
     }
 
     /**
      * Display the specified resource.
      */
     public function show( Client $client ) {
-        return view( 'clients.show', compact( 'client' ) );
-    }
+        $this->authorizeClient( $client );
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit( Client $client ) {
-        return view( 'clients.edit', compact( 'client' ) );
+        return response()->json( $client );
     }
 
     /**
      * Update the specified resource in storage.
      */
     public function update( UpdateClientRequest $request, Client $client ) {
+        $this->authorizeClient( $client );
         $data = $request->validated();
 
         $client->fill( $data );
@@ -85,16 +68,23 @@ class ClientController extends Controller {
             $client->save();
         }
 
-        return redirect()->route( 'clients.edit', $client )->with( 'flash', [
-            'message' => 'Klijent je ažuriran.',
-            'type'    => 'success',
-        ] );
+        return response()->json( $client );
     }
 
     /**
      * Remove the specified resource from storage.
      */
     public function destroy( Client $client ) {
-        //
+        $this->authorizeClient( $client );
+
+        $client->delete();
+
+        return response()->noContent();
+    }
+
+    private function authorizeClient( Client $client ): void {
+        if ( $client->company?->user_id !== auth()->id() ) {
+            abort( 404 );
+        }
     }
 }

@@ -17,7 +17,7 @@ export default function Companies() {
         </div>
         <div className="mt-4 sm:mt-0">
           <button
-            onClick={() => toast.info('Funkcionalnost dodavanja firme bi bila ovde')}
+            onClick={() => navigate('/dashboard/companies/new')}
             className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -48,11 +48,11 @@ export default function Companies() {
                <h3 className="text-lg font-medium text-gray-900">{company.name}</h3>
                <div className="mt-2 flex items-center text-sm text-gray-500">
                   <FileText className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                  <p>PIB: {company.pib}</p>
+                  <p>PIB: {company.tax_id}</p>
                </div>
                <div className="mt-1 flex items-center text-sm text-gray-500">
                   <MapPin className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                  <p>{company.address}</p>
+                  <p>{company.address}, {company.city}</p>
                </div>
             </div>
 

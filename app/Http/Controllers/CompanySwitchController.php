@@ -19,9 +19,9 @@ class CompanySwitchController extends Controller {
                                     'active_company_id' => $company->id,
                                 ] );
 
-        return back()->with( 'flash', [
+        return response()->json( [
             'message' => 'Izabrana firma je promenjena.',
-            'type'    => 'success',
+            'active_company_id' => $company->id,
         ] );
     }
 }

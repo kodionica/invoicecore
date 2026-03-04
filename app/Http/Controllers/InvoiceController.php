@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Validation\Rule;
 use Spatie\LaravelPdf\Enums\Format;
 use Spatie\LaravelPdf\Facades\Pdf;
 
@@ -17,29 +18,20 @@ class InvoiceController extends Controller {
      * Display a listing of the resource.
      */
     public function index() {
-        $invoices = auth()->user()->activeCompany?->invoices()->latest()->get();
-
-        return view( 'invoices.index', compact( 'invoices' ) );
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create() {
         $active_company = auth()->user()->activeCompany;
 
         if ( ! $active_company ) {
-            return redirect()->route( 'companies.create' )->with( 'flash', [
-                'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi se mogao dodati klijent.',
-                'type'    => 'error',
-            ] );
+            return response()->json( [
+                'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi mogao videti fakture.',
+            ], 422 );
         }
 
-        $clients       = $active_company->clients->pluck( 'name', 'id' )->toArray();
-        $currencies    = get_currencies();
-        $payment_types = config( 'payment' );
+        $invoices = $active_company->invoices()
+            ->with( [ 'client', 'items' ] )
+            ->latest()
+            ->get();
 
-        return view( 'invoices.create', compact( 'clients', 'currencies', 'payment_types', 'active_company' ) );
+        return response()->json( $invoices );
     }
 
     /**
@@ -48,18 +40,24 @@ class InvoiceController extends Controller {
      * @throws \Throwable
      */
     public function store( StoreInvoiceRequest $request ) {
-        $invoice = DB::transaction( static function () use ( $request ) {
-            $now            = now();
-            $attrs          = $request->validated();
-            $user           = auth()->user();
-            $active_company = $user->activeCompany;
+        $attrs          = $request->validated();
+        $user           = auth()->user();
+        $active_company = $user->activeCompany;
 
-            if ( ! $active_company ) {
-                return redirect()->route( 'companies.create' )->with( 'flash', [
-                    'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi mogao praviti fakture.',
-                    'type'    => 'error',
-                ] );
-            }
+        if ( ! $active_company ) {
+            return response()->json( [
+                'message' => 'Korisnik nema aktivnu firmu. Napravi firmu da bi mogao praviti fakture.',
+            ], 422 );
+        }
+
+        if ( ! $active_company->clients()->whereKey( $attrs[ 'client_id' ] )->exists() ) {
+            return response()->json( [
+                'message' => 'Izabrani klijent ne pripada aktivnoj firmi.',
+            ], 422 );
+        }
+
+        $invoice = DB::transaction( static function () use ( $attrs, $active_company ) {
+            $now = now();
 
             $attrs[ 'company_id' ]     = $active_company->id;
             $sequence                  = $active_company
@@ -98,27 +96,20 @@ class InvoiceController extends Controller {
             return $invoice;
         } );
 
-        return redirect()
-            ->route( 'invoices.index' )
-            ->with(
-                'status',
-                [
-                    'type'    => 'success',
-                    'message' => 'Faktura je napravljena.',
-                ]
-            );
+        return response()->json( $invoice->load( [ 'items', 'client' ] ), 201 );
     }
 
     /**
      * Display the specified resource.
      */
     public function show( Invoice $invoice ) {
+        $this->authorizeInvoice( $invoice );
         $user          = auth()->user();
         $invoice_items = $invoice->items;
         $company       = $invoice->company;
         $client        = $invoice->client;
 
-        return view( 'invoices.show', compact( 'invoice', 'user', 'invoice_items', 'company', 'client' ) );
+        return response()->json( compact( 'invoice', 'user', 'invoice_items', 'company', 'client' ) );
     }
 
     /**
@@ -129,6 +120,7 @@ class InvoiceController extends Controller {
      * @return \Illuminate\Http\RedirectResponse
      */
     public function generatePDF( Invoice $invoice ) {
+        $this->authorizeInvoice( $invoice );
         $user          = auth()->user() ?? $invoice->company->user;
         $invoice_items = $invoice->items;
         $company       = $invoice->company;
@@ -145,15 +137,9 @@ class InvoiceController extends Controller {
 
         $invoice->update( [ 'pdf_path' => $relative_path ] );
 
-        return redirect()
-            ->route( 'invoices.show', compact( 'invoice', 'user', 'invoice_items' ) )
-            ->with(
-                'status',
-                [
-                    'type'    => 'success',
-                    'message' => 'PDF fakture je napravljen.',
-                ]
-            );
+        return response()->json( [
+            'pdf_path' => $relative_path,
+        ] );
     }
 
     /**
@@ -167,13 +153,38 @@ class InvoiceController extends Controller {
      * Update the specified resource in storage.
      */
     public function update( Request $request, Invoice $invoice ) {
-        //
+        $this->authorizeInvoice( $invoice );
+
+        $data = $request->validate( [
+            'status'         => [ 'sometimes', Rule::in( array_map( static fn( $case ) => $case->value, InvoiceStatus::cases() ) ) ],
+            'due_date'       => [ 'sometimes', 'date' ],
+            'payment_method' => [ 'sometimes', 'string' ],
+            'note'           => [ 'sometimes', 'string', 'nullable' ],
+        ] );
+
+        $invoice->fill( $data );
+
+        if ( $invoice->isDirty() ) {
+            $invoice->save();
+        }
+
+        return response()->json( $invoice->load( [ 'items', 'client' ] ) );
     }
 
     /**
      * Remove the specified resource from storage.
      */
     public function destroy( Invoice $invoice ) {
-        //
+        $this->authorizeInvoice( $invoice );
+
+        $invoice->delete();
+
+        return response()->noContent();
+    }
+
+    private function authorizeInvoice( Invoice $invoice ): void {
+        if ( $invoice->company?->user_id !== auth()->id() ) {
+            abort( 404 );
+        }
     }
 }
