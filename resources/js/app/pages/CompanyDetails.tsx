@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {useParams, useNavigate} from 'react-router';
+import {useParams, useNavigate, Link} from 'react-router';
 import {useApp} from '../context/AppContext';
 import {ArrowLeft, Building2, Save, Trash2, CheckCircle, Users, FileText, Calculator, X} from 'lucide-react';
 import {toast} from 'sonner';
@@ -597,19 +597,21 @@ export default function CompanyDetails() {
                         <div className="flex items-center justify-between text-sm">
                             <span className="text-gray-600">Poslednja faktura</span>
                             <span className="font-medium text-gray-900">
-                {companyInvoices.length > 0 ? `#${companyInvoices[companyInvoices.length - 1].number}` : 'Nema faktura'}
+                {companyInvoices.length > 0 ?
+                    <Link to={`/dashboard/invoices/${companyInvoices[companyInvoices.length - 1].id}`}>#{companyInvoices[companyInvoices.length - 1].number}</Link> :
+                    'Nema faktura'}
               </span>
                         </div>
                         <div className="flex items-center justify-between text-sm">
                             <span className="text-gray-600">Ukupno plaćenih faktura</span>
                             <span className="font-medium text-gray-900">{paidInvoices.length}</span>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-600">Status</span>
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                Aktivna
-              </span>
-                        </div>
+              {/*          <div className="flex items-center justify-between text-sm">*/}
+              {/*              <span className="text-gray-600">Status</span>*/}
+              {/*              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">*/}
+              {/*  Aktivna*/}
+              {/*</span>*/}
+              {/*          </div>*/}
                     </div>
                 </div>
             </div>

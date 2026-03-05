@@ -28,8 +28,8 @@ export default function Companies() {
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {companies.map((company) => (
-          <div 
-            key={company.id} 
+          <div
+            key={company.id}
             className={`relative rounded-lg border bg-white px-6 py-5 shadow-sm flex flex-col space-y-4 hover:shadow-md transition-shadow cursor-pointer ${activeCompanyId === company.id ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-300'}`}
             onClick={() => navigate(`/dashboard/companies/${company.id}`)}
           >
@@ -46,10 +46,14 @@ export default function Companies() {
 
             <div className="flex-1">
                <h3 className="text-lg font-medium text-gray-900">{company.name}</h3>
-               <div className="mt-2 flex items-center text-sm text-gray-500">
-                  <FileText className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
-                  <p>PIB: {company.tax_id}</p>
-               </div>
+                <div className="mt-2 flex items-center text-sm text-gray-500">
+                    <FileText className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
+                    <p>PIB: {company.tax_id}</p>
+                </div>
+                <div className="mt-2 flex items-center text-sm text-gray-500">
+                    <FileText className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
+                    <p>MB: {company.registration_number}</p>
+                </div>
                <div className="mt-1 flex items-center text-sm text-gray-500">
                   <MapPin className="flex-shrink-0 mr-1.5 h-4 w-4 text-gray-400" />
                   <p>{company.address}, {company.city}</p>
@@ -57,7 +61,7 @@ export default function Companies() {
             </div>
 
             <div className="border-t border-gray-100 pt-4 flex justify-between items-center">
-               <button 
+               <button
                  onClick={(e) => {
                    e.stopPropagation();
                    setActiveCompany(company.id);
@@ -68,7 +72,7 @@ export default function Companies() {
                  {activeCompanyId === company.id ? 'Trenutno izabrana' : 'Postavi kao aktivnu'}
                </button>
                <div className="flex gap-2">
-                 <button 
+                 <button
                    onClick={(e) => {
                      e.stopPropagation();
                      navigate(`/dashboard/companies/${company.id}`);
