@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp, Client } from '../context/AppContext';
 import { Plus, Search, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import {Link, useNavigate} from 'react-router';
 import { toast } from 'sonner';
 
 export default function Clients() {
@@ -51,7 +51,7 @@ export default function Clients() {
             />
           </div>
         </div>
-        
+
         <ul role="list" className="divide-y divide-gray-200">
           {filteredClients.length > 0 ? (
             filteredClients.map((client) => (
@@ -62,7 +62,9 @@ export default function Clients() {
                         {client.name.substring(0, 2).toUpperCase()}
                      </div>
                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-indigo-600 truncate">{client.name}</p>
+                        <p className="text-sm font-medium text-indigo-600 truncate">
+                            <Link to={`/dashboard/clients/${client.id}`}>{client.name}</Link>
+                        </p>
                         <p className="flex items-center text-sm text-gray-500">
                            <span className="truncate">{client.email}</span>
                            <span className="mx-2 text-gray-300">&bull;</span>
@@ -71,13 +73,13 @@ export default function Clients() {
                      </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button 
+                    <button
                       onClick={() => navigate(`/dashboard/clients/${client.id}`)}
                       className="p-2 text-gray-400 hover:text-indigo-600 rounded-full hover:bg-indigo-50 transition-colors"
                     >
                       <Edit className="h-4 w-4" />
                     </button>
-                     <button 
+                     <button
                       onClick={() => handleDelete(client.id)}
                       className="p-2 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50 transition-colors"
                     >
