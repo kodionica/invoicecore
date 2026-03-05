@@ -8,7 +8,7 @@ import {
     ArrowDownRight,
     DollarSign
 } from 'lucide-react';
-import {useApp} from '../context/AppContext';
+import {Client, Invoice, useApp} from '../context/AppContext';
 import {BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell} from 'recharts';
 import {formatCurrency} from "../utils/format";
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusBadgeClass} from '../utils/invoiceStatus';
@@ -76,7 +76,8 @@ export default function Dashboard() {
     // Calculate stats
     const totalRevenue = activeInvoices.reduce((acc, inv) => acc + inv.total, 0);
     const paidRevenue = activeInvoices.filter(i => i.status === 'paid').reduce((acc, inv) => acc + inv.total, 0);
-    const pendingRevenue = activeInvoices.filter(i => i.status !== 'paid').reduce((acc, inv) => acc + inv.total, 0);
+    const pendingRevenue = activeInvoices.filter(i => i.status === 'draft' || i.status === 'sent').reduce((acc, inv) => acc + inv.total, 0);
+    const overdueRevenue = activeInvoices.filter(i => i.status === 'overdue').reduce((acc, inv) => acc + inv.total, 0);
 
     const data = [
         {name: 'Jan', uv: 4000, pv: 2400, amt: 2400},
@@ -91,8 +92,9 @@ export default function Dashboard() {
     const pieData = [
         {name: 'Plaćeno', value: paidRevenue},
         {name: 'Neplaćeno', value: pendingRevenue},
+        {name: 'Kasni', value: overdueRevenue},
     ];
-    const COLORS = ['#10b981', '#f59e0b'];
+    const COLORS = ['#10b981', '#f59e0b', '#fb2c36'];
     const statusOptions = getInvoiceStatusOptions(meta?.invoice_statuses);
     const statusLabelMap = getInvoiceStatusLabelMap(statusOptions);
 
@@ -163,7 +165,8 @@ export default function Dashboard() {
                                     cy="50%"
                                     innerRadius={60}
                                     outerRadius={80}
-                                    paddingAngle={5}
+                                    paddingAngle={3}
+                                    minAngle={3}
                                     dataKey="value"
                                 >
                                     {pieData.map((entry, index) => (
@@ -175,14 +178,18 @@ export default function Dashboard() {
                         </ResponsiveContainer>
                     </div>
                     <div className="mt-4 space-y-2">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="flex items-center"><span className="w-3 h-3 bg-emerald-500 rounded-full mr-2"></span>Plaćeno</span>
-                            <span className="font-bold">€{paidRevenue.toLocaleString()}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="flex items-center"><span className="w-3 h-3 bg-amber-500 rounded-full mr-2"></span>Neplaćeno</span>
-                            <span className="font-bold">€{pendingRevenue.toLocaleString()}</span>
-                        </div>
+                        {pieData.map((entry, index) => (
+                            <div key={entry.name} className="flex justify-between items-center text-sm">
+                                <span className="flex items-center">
+                                    <span
+                                        className="w-3 h-3 rounded-full mr-2"
+                                        style={{backgroundColor: COLORS[index % COLORS.length]}}
+                                    ></span>
+                                    {entry.name}
+                                </span>
+                                <span className="font-bold">€{entry.value.toLocaleString()}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
