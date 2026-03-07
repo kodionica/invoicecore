@@ -4,6 +4,7 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
+        "build:ssr": "vite build --ssr",
         "dev": "vite",
         "watch": "vite build --watch"
     },

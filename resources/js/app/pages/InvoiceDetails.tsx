@@ -1,18 +1,20 @@
-import React, {useRef} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {useParams, useNavigate} from 'react-router';
 import {useApp, type InvoiceStatus} from '../context/AppContext';
-import {formatCurrency} from '../utils/format';
-import {ArrowLeft, Printer, Download, Mail, Trash2, Edit, CheckCircle, XCircle, Send} from 'lucide-react';
-import {format} from 'date-fns';
-import {srLatn} from 'date-fns/locale';
+import {ArrowLeft, Printer, Download, Mail, Trash2} from 'lucide-react';
 import {toast} from 'sonner';
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusSelectClass} from '../utils/invoiceStatus';
+import InvoiceDocument from '../components/InvoiceDocument';
 
 export default function InvoiceDetails() {
     const {id} = useParams();
     const navigate = useNavigate();
-    const {invoices, clients, companies, updateInvoiceStatus, meta} = useApp();
+    const {invoices, clients, companies, updateInvoiceStatus, deleteInvoice, downloadInvoicePdf, sendInvoiceEmail, meta} = useApp();
     const printRef = useRef<HTMLDivElement>(null);
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
+    const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
+    const pdfMenuRef = useRef<HTMLDivElement>(null);
 
     const invoiceId = id ? Number(id) : null;
     const invoice = invoiceId ? invoices.find(i => i.id === invoiceId) : undefined;
@@ -20,6 +22,26 @@ export default function InvoiceDetails() {
     const company = companies.find(c => c.id === invoice?.companyId);
     const statusOptions = getInvoiceStatusOptions(meta?.invoice_statuses);
     const statusLabelMap = getInvoiceStatusLabelMap(statusOptions);
+
+    useEffect(() => {
+        if (!pdfMenuOpen) return;
+        const handleClick = (event: MouseEvent) => {
+            if (!pdfMenuRef.current) return;
+            if (pdfMenuRef.current.contains(event.target as Node)) return;
+            setPdfMenuOpen(false);
+        };
+        const handleKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setPdfMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        document.addEventListener('keydown', handleKey);
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('keydown', handleKey);
+        };
+    }, [pdfMenuOpen]);
 
     if (!invoice || !client || !company) {
         return (
@@ -39,15 +61,61 @@ export default function InvoiceDetails() {
         window.print();
     };
 
+    const handleDownloadPdf = async () => {
+        if (downloadingPdf) return;
+        setDownloadingPdf(true);
+        try {
+            await downloadInvoicePdf(invoice.id, invoice.number);
+            toast.success('PDF je preuzet');
+        } catch (error: any) {
+            const message = error?.response?.data?.message ?? 'Neuspešno preuzimanje PDF-a.';
+            toast.error(message);
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
+
+    const handleRegeneratePdf = async () => {
+        if (downloadingPdf) return;
+        setDownloadingPdf(true);
+        try {
+            await downloadInvoicePdf(invoice.id, invoice.number, {force: true});
+            toast.success('PDF je ponovo generisan i preuzet');
+        } catch (error: any) {
+            const message = error?.response?.data?.message ?? 'Neuspešno generisanje PDF-a.';
+            toast.error(message);
+        } finally {
+            setDownloadingPdf(false);
+        }
+    };
+
+    const handleSendEmail = async () => {
+        if (sendingEmail) return;
+        setSendingEmail(true);
+        try {
+            await sendInvoiceEmail(invoice.id);
+            if (invoice.status !== 'sent') {
+                await updateInvoiceStatus(invoice.id, 'sent');
+            }
+            toast.success(`Email je poslat na ${client.email}`);
+        } catch (error: any) {
+            const message = error?.response?.data?.message ?? 'Neuspešno slanje emaila.';
+            toast.error(message);
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
     const handleStatusChange = async (status: InvoiceStatus) => {
         await updateInvoiceStatus(invoice.id, status);
         const label = statusLabelMap[status] ?? status;
         toast.success(`Status fakture promenjen u ${label}`);
     };
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (confirm('Da li ste sigurni da želite da obrišete ovu fakturu?')) {
-            // In a real app we would have a deleteInvoice function in context
+            await deleteInvoice(invoice.id)
+
             toast.success('Faktura obrisana');
             navigate('/dashboard/invoices');
         }
@@ -84,10 +152,12 @@ export default function InvoiceDetails() {
                 {/* Action buttons */}
                 <div className="flex flex-wrap gap-2 pl-14">
                     <button
-                        className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                        onClick={handleSendEmail}
+                        disabled={sendingEmail}
+                        className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 ${sendingEmail ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         <Mail className="h-4 w-4 mr-2"/>
-                        Pošalji Emailom
+                        {sendingEmail ? 'Slanje...' : 'Pošalji Emailom'}
                     </button>
                     <button
                         onClick={handlePrint}
@@ -96,12 +166,40 @@ export default function InvoiceDetails() {
                         <Printer className="h-4 w-4 mr-2"/>
                         Štampaj
                     </button>
-                    <button
-                        className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                    >
-                        <Download className="h-4 w-4 mr-2"/>
-                        PDF
-                    </button>
+                    <div className="relative" ref={pdfMenuRef}>
+                        <button
+                            onClick={() => setPdfMenuOpen(open => !open)}
+                            disabled={downloadingPdf}
+                            className={`inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 ${downloadingPdf ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        >
+                            <Download className="h-4 w-4 mr-2"/>
+                            {downloadingPdf ? 'Preuzimanje...' : 'PDF'}
+                        </button>
+                        {pdfMenuOpen && (
+                            <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black/5 z-10">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPdfMenuOpen(false);
+                                        handleDownloadPdf();
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                    Preuzmi postojeći PDF
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPdfMenuOpen(false);
+                                        handleRegeneratePdf();
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                    Generiši novi PDF
+                                </button>
+                            </div>
+                        )}
+                    </div>
                     <button
                         onClick={handleDelete}
                         className="inline-flex items-center px-4 py-2 border border-red-200 shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100"
@@ -113,128 +211,8 @@ export default function InvoiceDetails() {
             </div>
 
             {/* Invoice Document */}
-            <div className="bg-white shadow-lg rounded-lg overflow-hidden print:shadow-none" ref={printRef}>
-                <div className="p-8 sm:p-12">
-
-                    {/* Header */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-8 border-b border-gray-100 pb-8 mb-8">
-                        <div>
-
-                            {company.logoUrl ? <img src={company.logoUrl} alt="logo" className="h-12 w-12"/> :
-                                <div className="h-12 w-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4"><span className="font-bold text-2xl text-white">{company.name.substring(0, 1)}</span></div>}
-                            <h2 className="text-xl font-bold text-gray-900">{company.name}</h2>
-                            <div className="text-gray-500 text-sm mt-2 space-y-1">
-                                <p>{company.address}, {company.city}</p>
-                                <p>PIB: {company.tax_id}</p>
-                                <p>MB: {company.registration_number}</p>
-                                <p>IBAN: {company.iban}</p>
-                                <p>SWIFT: {company.swift}</p>
-                                <p>Email: {company.email}</p>
-                                <p>Telefon: {company.phone}</p>
-                            </div>
-                        </div>
-                        <div className="text-right sm:text-right">
-                            <h1 className="text-3xl font-bold text-gray-900 mb-2">FAKTURA</h1>
-                            <p className="text-lg font-medium text-gray-600">#{invoice.number}</p>
-                            <div className="mt-4 space-y-1 text-sm text-gray-500">
-                                <div className="flex justify-between gap-8">
-                                    <span>Datum izdavanja:</span>
-                                    <span className="font-medium text-gray-900">{format(new Date(invoice.date), 'dd. MMM yyyy', {locale: srLatn})}</span>
-                                </div>
-                                <div className="flex justify-between gap-8">
-                                    <span>Rok plaćanja:</span>
-                                    <span className="font-medium text-gray-900">{format(new Date(invoice.dueDate), 'dd. MMM yyyy', {locale: srLatn})}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Client Info */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-8">
-                        <div>
-                            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Za klijenta:</h3>
-                            <div className="text-gray-900 font-medium text-lg">{client.name}</div>
-                            <div className="text-gray-500 text-sm mt-1 space-y-1">
-                                <p>{client.address}, {client.city}, {client.country}</p>
-                                <p>{client.email}</p>
-                                {client.phone && <p>{client.phone}</p>}
-                                {client.tax_id && <p>PIB: {client.tax_id}</p>}
-                                {client.registration_number && <p>MB: {client.registration_number}</p>}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Items Table */}
-                    <div className="mt-8">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead>
-                            <tr>
-                                <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">Opis</th>
-                                <th scope="col" className="py-3.5 px-3 text-right text-sm font-semibold text-gray-900">Količina</th>
-                                <th scope="col" className="py-3.5 px-3 text-right text-sm font-semibold text-gray-900">Cena</th>
-                                <th scope="col" className="py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-0">Ukupno</th>
-                            </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200">
-                            {invoice.items.map((item) => (
-                                <tr key={item.id}>
-                                    <td className="py-4 pl-4 pr-3 text-sm sm:pl-0">
-                                        <div className="font-medium text-gray-900">{item.description}</div>
-                                    </td>
-                                    <td className="py-4 px-3 text-sm text-right text-gray-500">{item.quantity}</td>
-                                    <td className="py-4 px-3 text-sm text-right text-gray-500">{formatCurrency(item.price, currency)}</td>
-                                    <td className="py-4 pl-3 pr-4 text-sm text-right text-gray-900 font-medium sm:pr-0">
-                                        {formatCurrency(item.quantity * item.price, currency)}
-                                    </td>
-                                </tr>
-                            ))}
-                            </tbody>
-                            <tfoot>
-                            <tr>
-                                <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">
-                                    Međuzbir
-                                </th>
-                                <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">
-                                    Međuzbir
-                                </th>
-                                <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
-                                    {formatCurrency(invoice.total, currency)}
-                                </td>
-                            </tr>
-                            {company.vat_enabled &&
-                                <tr>
-                                    <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">
-                                        PDV (20%)
-                                    </th>
-                                    <th scope="row" className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden">
-                                        PDV (20%)
-                                    </th>
-                                    <td className="pl-3 pr-4 pt-4 text-right text-sm text-gray-500 sm:pr-0">
-                                        {formatCurrency(invoice.total * 0.2, currency)}
-                                    </td>
-                                </tr>
-                            }
-                            <tr>
-                                <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-base font-bold text-gray-900 sm:table-cell sm:pl-0">
-                                    Ukupno za plaćanje
-                                </th>
-                                <th scope="row" className="pl-4 pr-3 pt-4 text-left text-base font-bold text-gray-900 sm:hidden">
-                                    Ukupno
-                                </th>
-                                <td className="pl-3 pr-4 pt-4 text-right text-base font-bold text-gray-900 sm:pr-0">
-                                    {formatCurrency(company.vat_enabled ? (invoice.total * 1.2) : invoice.total, currency)}
-                                </td>
-                            </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-
-                    <div className="mt-12 pt-8 border-t border-gray-100">
-                        <p className="text-gray-500 text-sm">
-                            Hvala vam na poslovanju! Molimo vas da iznos uplatite u roku od {format(new Date(invoice.dueDate), 'dd. MMM yyyy', {locale: srLatn})}.
-                        </p>
-                    </div>
-                </div>
+            <div ref={printRef}>
+                <InvoiceDocument invoice={invoice} client={client} company={company} currency={currency} meta={meta}/>
             </div>
         </div>
     );

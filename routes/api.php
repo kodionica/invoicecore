@@ -33,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('invoices/next-number', [InvoiceController::class, 'nextNumber']);
     Route::apiResource('invoices', InvoiceController::class);
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'generatePDF']);
+    Route::post('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail']);
 
     Route::put('profile', [ProfileController::class, 'update']);
     Route::put('password', [PasswordController::class, 'update']);

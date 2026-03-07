@@ -4,15 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Enums\InvoiceStatus;
 use App\Http\Requests\StoreInvoiceRequest;
+use App\Mail\InvoiceMail;
 use App\Models\Invoice;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Spatie\Browsershot\Browsershot;
 use Spatie\LaravelPdf\Enums\Format;
 use Spatie\LaravelPdf\Facades\Pdf;
+use Symfony\Component\Process\Process;
 
 class InvoiceController extends Controller {
     /**
@@ -190,32 +194,40 @@ class InvoiceController extends Controller {
     }
 
     /**
-     * TODO: Create rest api route to generate pdf and download
      *
      * @param \App\Models\Invoice $invoice
      *
-     * @return \Illuminate\Http\RedirectResponse
+     * @return \Symfony\Component\HttpFoundation\StreamedResponse
      */
-    public function generatePDF( Invoice $invoice ) {
+    public function generatePDF( Request $request, Invoice $invoice ) {
         $this->authorizeInvoice( $invoice );
-        $user          = auth()->user() ?? $invoice->company->user;
-        $invoice_items = $invoice->items;
-        $company       = $invoice->company;
-        $client        = $invoice->client;
-        $date          = $invoice->issue_date instanceof Carbon ? $invoice->issue_date : Carbon::parse( $invoice->issue_date );
-        $relative_path = "invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf";
+        $force_refresh = $request->boolean( 'refresh' );
+        $relative_path = $this->ensureInvoicePdf( $invoice, $force_refresh );
+        $file_name     = "faktura-{$invoice->invoice_number}.pdf";
 
-        File::ensureDirectoryExists( dirname( $relative_path ) );
+        return Storage::disk( 'local' )->download( $relative_path, $file_name );
+    }
 
-        Pdf::view( 'invoices.show-pdf', compact( 'invoice', 'user', 'invoice_items', 'company', 'client' ) )
-            ->format( Format::A4 )
-            ->disk( 'local' )
-            ->save( $relative_path );
+    public function sendEmail( Invoice $invoice ) {
+        $this->authorizeInvoice( $invoice );
 
-        $invoice->update( [ 'pdf_path' => $relative_path ] );
+        $client = $invoice->client;
+        if ( ! $client?->email ) {
+            return response()->json( [
+                'message' => 'Klijent nema email adresu.',
+            ], 422 );
+        }
+
+        $relative_path = $this->ensureInvoicePdf( $invoice );
+
+        Mail::to( $client->email )->send( new InvoiceMail( $invoice, $relative_path ) );
+
+        if ( $invoice->status !== InvoiceStatus::SENT ) {
+            $invoice->update( [ 'status' => InvoiceStatus::SENT ] );
+        }
 
         return response()->json( [
-            'pdf_path' => $relative_path,
+            'message' => 'Email je poslat.',
         ] );
     }
 
@@ -263,5 +275,191 @@ class InvoiceController extends Controller {
         if ( $invoice->company?->user_id !== auth()->id() ) {
             abort( 404 );
         }
+    }
+
+    private function ensureInvoicePdf( Invoice $invoice, bool $force_refresh = false ): string {
+        $existing_path = $invoice->pdf_path;
+        if ( $force_refresh && $existing_path && Storage::disk( 'local' )->exists( $existing_path ) ) {
+            Storage::disk( 'local' )->delete( $existing_path );
+            $invoice->update( [ 'pdf_path' => null ] );
+            $existing_path = null;
+        }
+
+        if ( $existing_path && Storage::disk( 'local' )->exists( $existing_path ) ) {
+            return $existing_path;
+        }
+
+        $invoice_items = $invoice->items;
+        $company       = $invoice->company;
+        $client        = $invoice->client;
+        $date          = $invoice->issue_date instanceof Carbon ? $invoice->issue_date : Carbon::parse( $invoice->issue_date );
+        $relative_path = "invoices/{$date->format('Y')}/{$date->format('m')}/faktura-{$invoice->invoice_number}.pdf";
+
+        Storage::disk( 'local' )->makeDirectory( dirname( $relative_path ) );
+
+        $html = $this->renderInvoicePdfHtml( $invoice, $company, $client, $invoice_items );
+
+        Pdf::html( $html )
+            ->format( Format::A4 )
+            ->withBrowsershot( function ( Browsershot $browsershot ) {
+                $browsershot->setOption( 'args', [ '--no-sandbox' ] );
+            })
+            ->disk( 'local' )
+            ->save( $relative_path );
+
+        $invoice->update( [ 'pdf_path' => $relative_path ] );
+
+        return $relative_path;
+    }
+
+    private function renderInvoicePdfHtml(
+        Invoice $invoice,
+        $company,
+        $client,
+        $invoice_items
+    ): string {
+        $payload = $this->buildInvoiceDocumentPayload( $invoice, $company, $client, $invoice_items );
+        $document_html = $this->renderInvoiceDocumentWithSsr( $payload );
+        $css = $this->resolveViteCssContents( 'resources/js/main.tsx' );
+
+        $title = 'Faktura ' . $invoice->invoice_number;
+
+        return '<!DOCTYPE html>'
+            . '<html lang="' . e( str_replace( '_', '-', app()->getLocale() ) ) . '">'
+            . '<head>'
+            . '<meta charset="utf-8">'
+            . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            . '<title>' . e( $title ) . '</title>'
+            . '<style>' . $css . '</style>'
+            . '</head>'
+            . '<body class="invoices-pdf">'
+            . $document_html
+            . '</body>'
+            . '</html>';
+    }
+
+    private function buildInvoiceDocumentPayload(
+        Invoice $invoice,
+        $company,
+        $client,
+        $invoice_items
+    ): array {
+        $logo_url = null;
+        if ( $company?->logo_path ) {
+            $logo_path = (string) $company->logo_path;
+            if ( str_starts_with( $logo_path, 'http://' ) || str_starts_with( $logo_path, 'https://' ) ) {
+                $logo_url = $logo_path;
+            } else {
+                $disk = Storage::disk( 'public' );
+                $relative_path = ltrim( $logo_path, '/' );
+
+                if ( $disk->exists( $relative_path ) ) {
+                    $file_contents = $disk->get( $relative_path );
+                    $mime = $disk->mimeType( $relative_path ) ?: 'application/octet-stream';
+                    $logo_url = 'data:' . $mime . ';base64,' . base64_encode( $file_contents );
+                } else {
+                    $public_url = $disk->url( $relative_path );
+                    $logo_url = url( $public_url );
+                }
+            }
+        }
+
+        return [
+            'invoice' => [
+                'id'       => $invoice->id,
+                'number'   => (string) $invoice->invoice_number,
+                'date'     => (string) $invoice->issue_date,
+                'dueDate'  => (string) $invoice->due_date,
+                'currency' => $invoice->currency,
+                'total'    => (float) $invoice->total,
+                'items'    => $invoice_items->map( static function ( $item ) {
+                    return [
+                        'id'          => $item->id,
+                        'description' => (string) ( $item->description ?? $item->name ?? '' ),
+                        'quantity'    => (float) $item->quantity,
+                        'price'       => (float) $item->price,
+                    ];
+                } )->values()->all(),
+            ],
+            'company' => [
+                'id'                   => $company->id,
+                'name'                 => $company->name,
+                'tax_id'               => $company->tax_id,
+                'registration_number'  => $company->registration_number,
+                'address'              => $company->address,
+                'city'                 => $company->city,
+                'country'              => $company->country,
+                'email'                => $company->email,
+                'phone'                => $company->phone,
+                'iban'                 => $company->iban,
+                'swift'                => $company->swift,
+                'currency'             => $company->currency,
+                'vat_enabled'          => (bool) $company->vat_enabled,
+                'logoUrl'              => $logo_url,
+            ],
+            'client' => [
+                'id'                  => $client->id,
+                'name'                => $client->name,
+                'email'               => $client->email,
+                'address'             => $client->address,
+                'city'                => $client->city,
+                'country'             => $client->country,
+                'phone'               => $client->phone,
+                'tax_id'              => $client->tax_id,
+                'registration_number' => $client->registration_number,
+            ],
+            'currency' => $invoice->currency ?: $company->currency,
+        ];
+    }
+
+    private function renderInvoiceDocumentWithSsr( array $payload ): string {
+        $script_path = base_path( 'scripts/render-invoice-ssr.mjs' );
+        $bundle_path = base_path( 'bootstrap/ssr/renderInvoiceDocument.js' );
+
+        if ( ! file_exists( $script_path ) || ! file_exists( $bundle_path ) ) {
+            throw new \RuntimeException( 'SSR bundle not found. Run \"npm run build:ssr\" before generating PDFs.' );
+        }
+
+        $process = new Process( [ 'node', $script_path ], base_path(), null, json_encode( $payload ), 20 );
+        $process->run();
+
+        if ( ! $process->isSuccessful() ) {
+            $error = trim( $process->getErrorOutput() ?: $process->getOutput() );
+            throw new \RuntimeException( $error ?: 'SSR render failed.' );
+        }
+
+        return $process->getOutput();
+    }
+
+    private function resolveViteCssContents( string $entry ): string {
+        $manifest_path = public_path( 'build/manifest.json' );
+        if ( ! file_exists( $manifest_path ) ) {
+            throw new \RuntimeException( 'Vite manifest not found. Run \"npm run build\" before generating PDFs.' );
+        }
+
+        $manifest = json_decode( (string) file_get_contents( $manifest_path ), true );
+        if ( ! is_array( $manifest ) ) {
+            throw new \RuntimeException( 'Invalid Vite manifest.' );
+        }
+
+        $entry_data = $manifest[ $entry ] ?? null;
+        if ( ! is_array( $entry_data ) ) {
+            throw new \RuntimeException( "Vite entry {$entry} not found in manifest." );
+        }
+
+        $css_files = $entry_data['css'] ?? [];
+        if ( ! is_array( $css_files ) || $css_files === [] ) {
+            return '';
+        }
+
+        $css = '';
+        foreach ( $css_files as $file ) {
+            $path = public_path( 'build/' . ltrim( (string) $file, '/' ) );
+            if ( file_exists( $path ) ) {
+                $css .= (string) file_get_contents( $path );
+            }
+        }
+
+        return $css;
     }
 }

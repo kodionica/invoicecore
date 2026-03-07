@@ -1,0 +1,5 @@
+{
+  "resources/js/app/components/InvoiceDocument.tsx": [],
+  "resources/js/app/utils/format.ts": [],
+  "resources/js/ssr/renderInvoiceDocument.tsx": []
+}

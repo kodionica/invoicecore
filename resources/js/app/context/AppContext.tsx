@@ -55,6 +55,7 @@ export interface Invoice {
     currency: string;
     items: InvoiceItem[];
     status: InvoiceStatus;
+    paymentMethod: string;
     total: number;
 }
 
@@ -125,7 +126,7 @@ interface InvoiceCreatePayload {
     items: { description: string; quantity: number; price: number }[];
 }
 
-interface MetaData {
+export interface MetaData {
     countries: Record<string, string> | Array<{ code: string; name: string }>;
     currencies: Record<string, { name: string; symbol?: string }> | Array<{ code: string; name: string; symbol?: string }>;
     payment_methods: Record<string, string> | Array<{ key: string; label: string }>;
@@ -154,8 +155,11 @@ interface AppContextType {
     updateClient: (id: number, data: ClientCreatePayload) => Promise<void>;
     deleteClient: (id: number) => Promise<void>;
     addInvoice: (invoice: InvoiceCreatePayload) => Promise<void>;
+    deleteInvoice: (id: number) => Promise<void>;
     getNextInvoiceNumber: () => Promise<string>;
     updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
+    downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
+    sendInvoiceEmail: (id: number) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -246,6 +250,7 @@ const normalizeInvoice = (invoice: any): Invoice => {
         dueDate: invoice.due_date ?? '',
         currency: invoice.currency ?? 'RSD',
         status: invoice.status as InvoiceStatus,
+        paymentMethod: invoice.payment_method,
         total: Number(invoice.total ?? 0),
         items: items.map((item: any) => ({
             id: Number(item.id ?? 0),
@@ -486,6 +491,11 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         setInvoices(current => [...current, created]);
     };
 
+    const deleteInvoice = async (id: number) => {
+        await api.delete(`/api/invoices/${id}`);
+        setInvoices(current => current.filter(c => c.id !== id));
+    };
+
     const getNextInvoiceNumber = async () => {
         const response = await api.get('/api/invoices/next-number');
         return response.data?.invoice_number ?? '';
@@ -495,6 +505,29 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         const response = await api.put(`/api/invoices/${id}`, {status});
         const updated = normalizeInvoice(response.data);
         setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+    };
+
+    const downloadInvoicePdf = async (id: number, invoiceNumber?: string, options?: { force?: boolean }) => {
+        const response = await api.get(`/api/invoices/${id}/pdf`, {
+            responseType: 'blob',
+            params: options?.force ? {refresh: 1} : undefined,
+        });
+        const contentDisposition = response.headers?.['content-disposition'] as string | undefined;
+        const match = contentDisposition?.match(/filename=\"?([^\";]+)\"?/i);
+        const filename = match?.[1] || `faktura-${invoiceNumber ?? id}.pdf`;
+        const blob = new Blob([response.data], {type: 'application/pdf'});
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+    };
+
+    const sendInvoiceEmail = async (id: number) => {
+        await api.post(`/api/invoices/${id}/email`);
     };
 
     return (
@@ -520,8 +553,11 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             updateClient,
             deleteClient,
             addInvoice,
+            deleteInvoice,
             getNextInvoiceNumber,
             updateInvoiceStatus,
+            downloadInvoicePdf,
+            sendInvoiceEmail,
         }}>
             {children}
         </AppContext.Provider>

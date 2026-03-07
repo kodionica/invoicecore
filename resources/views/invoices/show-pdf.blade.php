@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ config('app.name', 'Laravel') }}</title>
 
-    @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
-        @vite('resources/css/invoice.scss')
+    @if (!empty($pdf_css_inline))
+        <style>
+            {!! $pdf_css_inline !!}
+        </style>
+    @elseif (!empty($pdf_css_url))
+        <link rel="stylesheet" href="{{ $pdf_css_url }}">
     @endif
 </head>
-<body class="{{ $body_class ?? '' }}">
+<body class="invoices-pdf {{ $body_class ?? '' }}">
 <div class="invoice-view">
     @include('invoices.partials.invoice-header', compact('company', 'client', 'invoice'))
 

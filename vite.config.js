@@ -6,7 +6,8 @@ import laravel from 'laravel-vite-plugin';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/js/main.tsx'],
+            input: ['resources/js/main.tsx', 'resources/css/invoice.scss'],
+            ssr: 'resources/js/ssr/renderInvoiceDocument.tsx',
             refresh: true,
         }),
         react(),
