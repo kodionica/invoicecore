@@ -1,5 +1,0 @@
-@props(['error' => ''])
-
-@if ($error)
-    <div class="invalid-feedback">{{ $error }}</div>
-@endif

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { useApp } from '../context/AppContext';
@@ -17,9 +17,15 @@ type AuthFormValues = {
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login, register: registerUser } = useApp();
+  const { login, register: registerUser, user, authLoading } = useApp();
   const navigate = useNavigate();
   const { register, handleSubmit, formState: { errors } } = useForm<AuthFormValues>();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   const onSubmit = async (data: AuthFormValues) => {
     try {
@@ -49,6 +55,14 @@ export default function Auth() {
       setIsSubmitting(false);
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
+        Učitavanje...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
