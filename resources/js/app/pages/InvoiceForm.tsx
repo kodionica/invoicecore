@@ -19,11 +19,12 @@ export default function InvoiceForm() {
     const {clients, addInvoice, activeCompanyId, companies, meta, getNextInvoiceNumber} = useApp();
     const navigate = useNavigate();
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
+    const todayString = new Date().toISOString().split('T')[0];
 
     const {register, control, handleSubmit, watch, setValue, formState: {errors, dirtyFields}} = useForm<InvoiceFormData>({
         defaultValues: {
             number: '',
-            date: new Date().toISOString().split('T')[0],
+            date: todayString,
             dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             currency: '',
             paymentMethod: '',
@@ -93,17 +94,20 @@ export default function InvoiceForm() {
     useEffect(() => {
         if (!activeCompany?.payment_due_days) return;
         if (!watchDate) return;
+        if (dirtyFields.dueDate) return;
         const baseDate = new Date(watchDate);
         if (Number.isNaN(baseDate.getTime())) return;
         const dueDate = new Date(baseDate.getTime() + activeCompany.payment_due_days * 24 * 60 * 60 * 1000);
-        setValue('dueDate', dueDate.toISOString().split('T')[0], {shouldDirty: true});
-    }, [activeCompany?.payment_due_days, setValue, watchDate]);
+        setValue('dueDate', dueDate.toISOString().split('T')[0], {shouldDirty: false});
+    }, [activeCompany?.payment_due_days, dirtyFields.dueDate, setValue, watchDate]);
 
     const onSubmit = async (data: InvoiceFormData) => {
         if (!activeCompanyId) {
             toast.error('Molimo izaberite aktivnu firmu');
             return;
         }
+
+        console.log(data)
 
         await addInvoice({
             clientId: Number(data.clientId),
@@ -173,10 +177,14 @@ export default function InvoiceForm() {
                             </div>
                             <input
                                 type="date"
-                                {...register("date", {required: true})}
+                                {...register("date", {
+                                    required: true,
+                                    validate: value => value >= todayString || 'Datum izdavanja ne može biti pre današnjeg datuma',
+                                })}
                                 className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border"
                             />
                         </div>
+                        {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date.message}</p>}
                     </div>
 
                     <div>
@@ -187,10 +195,17 @@ export default function InvoiceForm() {
                             </div>
                             <input
                                 type="date"
-                                {...register("dueDate", {required: true})}
+                                {...register("dueDate", {
+                                    required: true,
+                                    validate: value => {
+                                        if (!watchDate) return true;
+                                        return value >= watchDate || 'Rok plaćanja ne može biti pre datuma izdavanja';
+                                    },
+                                })}
                                 className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border"
                             />
                         </div>
+                        {errors.dueDate && <p className="mt-1 text-sm text-red-600">{errors.dueDate.message}</p>}
                     </div>
 
                     <div>

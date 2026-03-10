@@ -525,15 +525,11 @@ export function AppProvider({children}: { children: React.ReactNode }) {
     };
 
     const addInvoice = async (invoice: InvoiceCreatePayload) => {
-        const issueDate = new Date(invoice.date);
-        const dueDate = new Date(invoice.dueDate);
-        const msDiff = dueDate.getTime() - issueDate.getTime();
-        const dueDays = Number.isNaN(msDiff) ? 0 : Math.max(0, Math.round(msDiff / 86400000));
-
         const payload = {
             client_id: invoice.clientId,
             invoice_number: invoice.number,
-            due_date: dueDays,
+            issue_date: invoice.date || undefined,
+            due_date: invoice.dueDate || undefined,
             currency: invoice.currency,
             payment_method: invoice.paymentMethod,
             note: invoice.note,

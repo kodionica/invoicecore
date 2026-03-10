@@ -146,8 +146,14 @@ class InvoiceController extends Controller {
                 ? trim( (string) $attrs[ 'invoice_number' ] )
                 : null;
             $attrs[ 'invoice_number' ] = $providedNumber ?: sprintf( '%d-%02d-%03d', $year, $month, $sequence );
-            $attrs[ 'issue_date' ]     = $now->toDateString();
-            $attrs[ 'due_date' ]       = $now->addDays( (int) $attrs[ 'due_date' ] )->toDateString();
+            $issueDate = isset( $attrs[ 'issue_date' ] ) && $attrs[ 'issue_date' ]
+                ? Carbon::parse( $attrs[ 'issue_date' ] )
+                : $now->copy();
+            $dueDate = isset( $attrs[ 'due_date' ] ) && $attrs[ 'due_date' ]
+                ? Carbon::parse( $attrs[ 'due_date' ] )
+                : $issueDate->copy()->addDays( (int) ( $active_company->payment_due_days ?? 0 ) );
+            $attrs[ 'issue_date' ]     = $issueDate->toDateString();
+            $attrs[ 'due_date' ]       = $dueDate->toDateString();
             $attrs[ 'currency' ]       = $attrs[ 'currency' ] ?? $active_company->currency ?? 'RSD';
             $attrs[ 'total' ]          = 0;
             $attrs[ 'status' ]         = InvoiceStatus::DRAFT;

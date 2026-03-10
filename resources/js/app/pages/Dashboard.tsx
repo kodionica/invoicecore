@@ -13,12 +13,15 @@ import {BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 import {formatCurrency} from "../utils/format";
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusBadgeClass} from '../utils/invoiceStatus';
 
-function StatsCard({title, value, icon: Icon, trend, trendValue}: { title: string, value: string, icon: any, trend?: 'up' | 'down', trendValue?: string }) {
+function StatsCard({title, value, subValue, icon: Icon, trend, trendValue}: { title: string, value: string, subValue?: string, icon: any, trend?: 'up' | 'down', trendValue?: string }) {
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-start justify-between">
             <div>
                 <p className="text-sm font-medium text-gray-500">{title}</p>
                 <h3 className="text-2xl font-bold text-gray-900 mt-2">{value}</h3>
+                {subValue && (
+                    <p className="text-xs text-gray-500 mt-2">{subValue}</p>
+                )}
                 {trend && (
                     <div className={`flex items-center mt-2 text-sm ${trend === 'up' ? 'text-green-600' : 'text-red-600'}`}>
                         {trend === 'up' ? <ArrowUpRight className="h-4 w-4 mr-1"/> : <ArrowDownRight className="h-4 w-4 mr-1"/>}
@@ -39,8 +42,11 @@ export default function Dashboard() {
     const today = new Date();
 
     // Filter data for active company
+    const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
+    const defaultCurrency = activeCompany?.currency ?? 'RSD';
     const activeClients: Client[] = activeCompanyId ? clients.filter(c => c.companyId === activeCompanyId) : [];
     const activeInvoices: Invoice[] = activeCompanyId ? invoices.filter(i => i.companyId === activeCompanyId) : [];
+    const defaultCurrencyInvoices = activeInvoices.filter(invoice => (invoice.currency ?? defaultCurrency) === defaultCurrency);
 
     const startOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
@@ -73,11 +79,45 @@ export default function Dashboard() {
     const showClientTrend = currentMonthClientsCount > 0 || previousMonthClientsCount > 0;
     const clientTrendValue = `${clientPercentChange >= 0 ? '+' : ''}${clientPercentChange.toFixed(1)}%`;
 
+    const currentMonthSentInvoicesCount = activeInvoices.filter(invoice =>
+        invoice.status === 'sent' && isWithinRange(invoice.date, startOfCurrentMonth, startOfNextMonth)
+    ).length;
+    const previousMonthSentInvoicesCount = activeInvoices.filter(invoice =>
+        invoice.status === 'sent' && isWithinRange(invoice.date, startOfPreviousMonth, startOfCurrentMonth)
+    ).length;
+    const sentInvoicesPercentChange = getPercentChange(currentMonthSentInvoicesCount, previousMonthSentInvoicesCount);
+    const sentInvoicesTrend: 'up' | 'down' = sentInvoicesPercentChange >= 0 ? 'up' : 'down';
+    const showSentInvoicesTrend = currentMonthSentInvoicesCount > 0 || previousMonthSentInvoicesCount > 0;
+    const sentInvoicesTrendValue = `${sentInvoicesPercentChange >= 0 ? '+' : ''}${sentInvoicesPercentChange.toFixed(1)}%`;
+
     // Calculate stats
-    const totalRevenue = activeInvoices.reduce((acc, inv) => acc + inv.total, 0);
-    const paidRevenue = activeInvoices.filter(i => i.status === 'paid').reduce((acc, inv) => acc + inv.total, 0);
-    const pendingRevenue = activeInvoices.filter(i => i.status === 'draft' || i.status === 'sent').reduce((acc, inv) => acc + inv.total, 0);
-    const overdueRevenue = activeInvoices.filter(i => i.status === 'overdue').reduce((acc, inv) => acc + inv.total, 0);
+    const currentMonthRevenue = defaultCurrencyInvoices
+        .filter(invoice => isWithinRange(invoice.date, startOfCurrentMonth, startOfNextMonth))
+        .reduce((acc, inv) => acc + inv.total, 0);
+    const previousMonthRevenue = defaultCurrencyInvoices
+        .filter(invoice => isWithinRange(invoice.date, startOfPreviousMonth, startOfCurrentMonth))
+        .reduce((acc, inv) => acc + inv.total, 0);
+    const revenuePercentChange = getPercentChange(currentMonthRevenue, previousMonthRevenue);
+    const revenueTrend: 'up' | 'down' = revenuePercentChange >= 0 ? 'up' : 'down';
+    const showRevenueTrend = currentMonthRevenue > 0 || previousMonthRevenue > 0;
+    const revenueTrendValue = `${revenuePercentChange >= 0 ? '+' : ''}${revenuePercentChange.toFixed(1)}%`;
+
+    const paidRevenue = defaultCurrencyInvoices.filter(i => i.status === 'paid').reduce((acc, inv) => acc + inv.total, 0);
+    const pendingRevenue = defaultCurrencyInvoices.filter(i => i.status === 'draft' || i.status === 'sent').reduce((acc, inv) => acc + inv.total, 0);
+    const overdueRevenue = defaultCurrencyInvoices.filter(i => i.status === 'overdue').reduce((acc, inv) => acc + inv.total, 0);
+
+    const otherCurrencyTotals = activeInvoices
+        .filter(invoice => isWithinRange(invoice.date, startOfCurrentMonth, startOfNextMonth))
+        .reduce<Record<string, number>>((acc, invoice) => {
+        const currency = invoice.currency ?? defaultCurrency;
+        if (currency === defaultCurrency) return acc;
+        acc[currency] = (acc[currency] ?? 0) + invoice.total;
+        return acc;
+    }, {});
+    const otherCurrencySummary = Object.entries(otherCurrencyTotals)
+        .map(([currency, total]) => formatCurrency(total, currency))
+        .join(' • ');
+    const hasOtherCurrencies = otherCurrencySummary.length > 0;
 
     const data = [
         {name: 'Jan', uv: 4000, pv: 2400, amt: 2400},
@@ -123,15 +163,18 @@ export default function Dashboard() {
                 />
                 <StatsCard
                     title="Ukupan Prihod"
-                    value={`€${totalRevenue.toLocaleString()}`}
+                    value={formatCurrency(currentMonthRevenue, defaultCurrency)}
+                    subValue={hasOtherCurrencies ? `Ostale valute (ovaj mesec): ${otherCurrencySummary}` : undefined}
                     icon={DollarSign}
-                    trend="up"
-                    trendValue="+8.2%"
+                    trend={showRevenueTrend ? revenueTrend : undefined}
+                    trendValue={showRevenueTrend ? revenueTrendValue : undefined}
                 />
                 <StatsCard
                     title="Poslate Fakture"
-                    value={activeInvoices.length.toString()}
+                    value={currentMonthSentInvoicesCount.toString()}
                     icon={FileText}
+                    trend={showSentInvoicesTrend ? sentInvoicesTrend : undefined}
+                    trendValue={showSentInvoicesTrend ? sentInvoicesTrendValue : undefined}
                 />
             </div>
 
@@ -145,7 +188,11 @@ export default function Dashboard() {
                             <BarChart data={data}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false}/>
                                 <XAxis dataKey="name" axisLine={false} tickLine={false}/>
-                                <YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `€${value}`}/>
+                                <YAxis
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tickFormatter={(value) => formatCurrency(Number(value), defaultCurrency)}
+                                />
                                 <Tooltip/>
                                 <Bar dataKey="pv" fill="#4f46e5" radius={[4, 4, 0, 0]}/>
                             </BarChart>
@@ -187,9 +234,14 @@ export default function Dashboard() {
                                     ></span>
                                     {entry.name}
                                 </span>
-                                <span className="font-bold">€{entry.value.toLocaleString()}</span>
+                                <span className="font-bold">{formatCurrency(entry.value, defaultCurrency)}</span>
                             </div>
                         ))}
+                        {hasOtherCurrencies && (
+                            <div className="text-xs text-gray-500 pt-2 border-t border-gray-100">
+                                Ostale valute nisu uključene: {otherCurrencySummary}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

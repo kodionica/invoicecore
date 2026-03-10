@@ -156,10 +156,10 @@ export default function Invoices() {
                                         {client?.id && <Link to={`/dashboard/clients/${client.id}`}>{client.name || 'Nepoznat'}</Link>}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {format(new Date(invoice.date), 'dd. MMM yyyy', {locale: srLatn})}
+                                        {format(new Date(invoice.date), 'dd. M. yyyy', {locale: srLatn})}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {format(new Date(invoice.dueDate), 'dd. MMM yyyy', {locale: srLatn})}
+                                        {format(new Date(invoice.dueDate), 'dd. M. yyyy', {locale: srLatn})}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                                         {formatCurrency(invoice.total, invoice.currency)}
