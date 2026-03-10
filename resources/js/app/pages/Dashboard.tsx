@@ -3,13 +3,12 @@ import {
     Building2,
     Users,
     FileText,
-    TrendingUp,
     ArrowUpRight,
     ArrowDownRight,
     DollarSign
 } from 'lucide-react';
 import {Client, Invoice, useApp} from '../context/AppContext';
-import {BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell} from 'recharts';
+import {BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend} from 'recharts';
 import {formatCurrency} from "../utils/format";
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusBadgeClass} from '../utils/invoiceStatus';
 
@@ -57,6 +56,17 @@ export default function Dashboard() {
         const parsed = new Date(dateValue);
         if (Number.isNaN(parsed.getTime())) return false;
         return parsed >= start && parsed < end;
+    };
+
+    const buildLastMonths = (count: number) => {
+        const months: Array<{ key: string; name: string; date: Date }> = [];
+        for (let i = count - 1; i >= 0; i -= 1) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const name = d.toLocaleString('sr-RS', {month: 'short'});
+            months.push({key, name, date: d});
+        }
+        return months;
     };
 
     const currentMonthClientsCount = activeClients.filter(client =>
@@ -119,15 +129,28 @@ export default function Dashboard() {
         .join(' • ');
     const hasOtherCurrencies = otherCurrencySummary.length > 0;
 
-    const data = [
-        {name: 'Jan', uv: 4000, pv: 2400, amt: 2400},
-        {name: 'Feb', uv: 3000, pv: 1398, amt: 2210},
-        {name: 'Mar', uv: 2000, pv: 9800, amt: 2290},
-        {name: 'Apr', uv: 2780, pv: 3908, amt: 2000},
-        {name: 'May', uv: 1890, pv: 4800, amt: 2181},
-        {name: 'Jun', uv: 2390, pv: 3800, amt: 2500},
-        {name: 'Jul', uv: 3490, pv: 4300, amt: 2100},
-    ];
+    const monthBuckets = buildLastMonths(12);
+    const currencyCodes = Array.from(new Set(activeInvoices.map(inv => inv.currency ?? defaultCurrency))).sort();
+    const revenueByMonth = monthBuckets.map(bucket => {
+        const row: Record<string, string | number> = {name: bucket.name, key: bucket.key};
+        currencyCodes.forEach(code => {
+            row[code] = 0;
+        });
+        return row;
+    });
+    const monthIndexMap = new Map(monthBuckets.map((bucket, index) => [bucket.key, index]));
+    activeInvoices.forEach(invoice => {
+        if (!invoice.date) return;
+        const parsed = new Date(invoice.date);
+        if (Number.isNaN(parsed.getTime())) return;
+        const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        const index = monthIndexMap.get(key);
+        if (index === undefined) return;
+        const currency = invoice.currency ?? defaultCurrency;
+        const current = Number(revenueByMonth[index][currency] ?? 0);
+        revenueByMonth[index][currency] = current + invoice.total;
+    });
+    const currencyColors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#22c55e', '#f97316'];
 
     const pieData = [
         {name: 'Plaćeno', value: paidRevenue},
@@ -185,16 +208,27 @@ export default function Dashboard() {
                     <h3 className="text-lg font-bold text-gray-900 mb-4">Prihod kroz vreme</h3>
                     <div className="h-80 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={data}>
+                            <BarChart data={revenueByMonth}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false}/>
                                 <XAxis dataKey="name" axisLine={false} tickLine={false}/>
                                 <YAxis
                                     axisLine={false}
                                     tickLine={false}
-                                    tickFormatter={(value) => formatCurrency(Number(value), defaultCurrency)}
+                                    tickFormatter={(value) => Number(value).toLocaleString('sr-RS')}
                                 />
-                                <Tooltip/>
-                                <Bar dataKey="pv" fill="#4f46e5" radius={[4, 4, 0, 0]}/>
+                                <Tooltip
+                                    formatter={(value: number, name: string) => formatCurrency(Number(value), name)}
+                                />
+                                <Legend />
+                                {currencyCodes.map((code, index) => (
+                                    <Bar
+                                        key={code}
+                                        dataKey={code}
+                                        stackId="total"
+                                        fill={currencyColors[index % currencyColors.length]}
+                                        radius={[4, 4, 0, 0]}
+                                    />
+                                ))}
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
