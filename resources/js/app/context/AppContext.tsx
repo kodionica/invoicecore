@@ -1,7 +1,9 @@
 import React, {createContext, useContext, useEffect, useState} from 'react';
 import axios from 'axios';
+import {toast} from 'sonner';
 import {createAvatar} from "@dicebear/core";
 import {glass} from "@dicebear/collection";
+import {id} from "date-fns/locale";
 
 export interface Company {
     id: number;
@@ -61,7 +63,11 @@ export interface Invoice {
 
 interface User {
     id: number;
+    first_name: string;
+    last_name: string;
     name: string;
+    username: string;
+    phone: string;
     email: string;
     avatarUrl?: string;
     activeCompanyId?: number | null;
@@ -71,6 +77,12 @@ interface LoginPayload {
     login: string;
     password: string;
     remember?: boolean;
+}
+
+interface PasswordPayload {
+    current_password: string;
+    password: string;
+    password_confirmation: string;
 }
 
 interface RegisterPayload {
@@ -146,7 +158,8 @@ interface AppContextType {
     register: (payload: RegisterPayload) => Promise<void>;
     logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
-    updateUser: (updates: Partial<User>) => void;
+    updateUser: (updates: Partial<User>) => Promise<void>;
+    resetPassword: (payload: PasswordPayload) => Promise<any>;
     setActiveCompany: (id: number) => Promise<void>;
     addCompany: (company: CompanyCreatePayload) => Promise<void>;
     updateCompany: (id: number, data: CompanyUpdatePayload) => Promise<void>;
@@ -186,7 +199,11 @@ const normalizeUser = (apiUser: any): User => {
 
     return {
         id: Number(apiUser?.id ?? 0),
+        first_name: apiUser?.first_name,
+        last_name: apiUser?.last_name,
         name,
+        username: apiUser.username,
+        phone: apiUser.phone,
         email: apiUser?.email ?? '',
         avatarUrl: apiUser?.avatar_url ?? apiUser?.avatarUrl ?? createAvatar(glass, {seed: apiUser.id}).toDataUri(),
         activeCompanyId: apiUser?.active_company_id ? Number(apiUser.active_company_id) : null,
@@ -408,8 +425,11 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         setInvoices([]);
     };
 
-    const updateUser = (updates: Partial<User>) => {
-        setUser(current => (current ? {...current, ...updates} : current));
+    const updateUser = async (updates: Partial<User>) => {
+        const response = await api.put('/api/profile', updates);
+        const updatedUser = normalizeUser(response.data.user);
+
+        setUser(current => (current ? {...current, ...updatedUser} : updatedUser));
     };
 
     const setActiveCompany = async (id: number) => {
@@ -530,6 +550,25 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         await api.post(`/api/invoices/${id}/email`);
     };
 
+    const resetPassword = async (payload: PasswordPayload) => {
+        try {
+            const response = await api.put('/api/password/', payload);
+            const message = response.data?.message || 'Lozinka uspešno promenjena.';
+            toast.success(message);
+            return response.data;
+        } catch (err: any) {
+            const apiData = err?.response?.data;
+            const fieldErrors = apiData?.errors ? Object.values(apiData.errors).flat() : [];
+            const message =
+                apiData?.message ||
+                apiData?.error ||
+                fieldErrors[0] ||
+                'Došlo je do greške. Pokušaj ponovo.';
+            toast.error(message);
+            throw err;
+        }
+    };
+
     return (
         <AppContext.Provider value={{
             user,
@@ -545,6 +584,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             logout,
             refreshUser,
             updateUser,
+            resetPassword,
             setActiveCompany,
             addCompany,
             updateCompany,

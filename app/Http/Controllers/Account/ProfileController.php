@@ -17,6 +17,7 @@ class ProfileController extends Controller {
                 'first_name' => 'required|string|max:255',
                 'last_name'  => 'required|string|max:255',
                 'phone'      => 'string',
+                'username'   => 'required|string',
             ]
         );
 
@@ -24,8 +25,8 @@ class ProfileController extends Controller {
         $user->update( $user_attributes );
 
         return response()->json( [
-            'message' => 'Profil uspešno ažuriran.',
-            'user' => $user,
-        ] );
+                                     'message' => 'Profil uspešno ažuriran.',
+                                     'user'    => $user,
+                                 ] );
     }
 }

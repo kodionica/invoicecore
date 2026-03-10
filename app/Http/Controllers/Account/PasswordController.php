@@ -23,11 +23,9 @@ class PasswordController extends Controller {
         $user = auth()->user();
 
         if ( ! Hash::check( $passwords[ 'current_password' ], $user->password ) ) {
-            throw ValidationException::withMessages(
-                [
-                    'current_password' => 'Pogrešna trenutna šifra.',
-                ]
-            );
+            return response()->json( [
+                'message' => 'Trenutna lozinka nije ispravna.',
+            ], 422 );
         }
 
         $user->update(
@@ -37,7 +35,7 @@ class PasswordController extends Controller {
         );
 
         return response()->json( [
-            'message' => 'Šifra uspešno promenjena.',
-        ] );
+            'message' => 'Lozinka uspešno promenjena.',
+        ], 200 );
     }
 }
