@@ -106,6 +106,7 @@ class Company extends Model {
         'default_tax_percent'  => 'integer',
         'payment_due_days'     => 'integer',
         'vat_enabled'          => 'boolean',
+        'other_settings'       => 'array',
     ];
     protected $attributes = [
         'invoice_prefix'       => 'INV',

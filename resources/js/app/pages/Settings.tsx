@@ -1,11 +1,27 @@
-import React from 'react';
+import React, {useEffect} from 'react';
 import {useForm} from 'react-hook-form';
 import {useApp} from '../context/AppContext';
 import {toast} from 'sonner';
-import {User, Lock, Bell, Globe, Save, Camera} from 'lucide-react';
+import {User, Lock, Globe, Save} from 'lucide-react';
+
+type PreferencesFormValues = {
+    language: string;
+    notifications: {
+        invoices: boolean;
+        clients: boolean;
+    };
+};
+
+const defaultPreferences: PreferencesFormValues = {
+    language: 'sr-Latn',
+    notifications: {
+        invoices: true,
+        clients: false,
+    },
+};
 
 export default function Settings() {
-    const {user, updateUser, resetPassword} = useApp();
+    const {user, updateUser, resetPassword, appSettings, appSettingsLoading, saveAppSettings} = useApp();
 
     const {register: registerProfile, handleSubmit: handleProfileSubmit} = useForm({
         defaultValues: {
@@ -19,6 +35,19 @@ export default function Settings() {
     });
 
     const {register: registerSecurity, handleSubmit: handleSecuritySubmit, reset: resetSecurity} = useForm();
+    const {
+        register: registerPreferences,
+        handleSubmit: handlePreferencesSubmit,
+        reset: resetPreferences,
+    } = useForm<PreferencesFormValues>({
+        defaultValues: defaultPreferences,
+    });
+
+    useEffect(() => {
+        if (appSettings) {
+            resetPreferences(appSettings);
+        }
+    }, [appSettings, resetPreferences]);
 
     const onProfileSubmit = (data: any) => {
         updateUser(data)
@@ -39,6 +68,14 @@ export default function Settings() {
             resetSecurity();
         } catch {
             // resetPassword already shows a toast with the error message.
+        }
+    };
+
+    const onPreferencesSubmit = async (data: PreferencesFormValues) => {
+        try {
+            await saveAppSettings(data);
+        } catch {
+            // saveAppSettings already shows a toast with the error message.
         }
     };
 
@@ -187,13 +224,17 @@ export default function Settings() {
                     </div>
                 </div>
 
-                <div className="p-6 space-y-6">
+                <form id="preferences-form" onSubmit={handlePreferencesSubmit(onPreferencesSubmit)} className="p-6 space-y-6">
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Jezik Aplikacije</label>
-                        <select className="mt-1 block w-full md:w-1/3 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 border">
-                            <option>Srpski (Latinica)</option>
-                            <option>English (US)</option>
-                            <option>Deutsch</option>
+                        <select
+                            {...registerPreferences("language")}
+                            disabled={appSettingsLoading}
+                            className="mt-1 block w-full md:w-1/3 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 border disabled:bg-gray-100"
+                        >
+                            <option value="sr-Latn">Srpski (Latinica)</option>
+                            <option value="en-US">English (US)</option>
+                            <option value="de-DE">Deutsch</option>
                         </select>
                     </div>
 
@@ -202,7 +243,13 @@ export default function Settings() {
                         <div className="space-y-4">
                             <div className="flex items-start">
                                 <div className="flex items-center h-5">
-                                    <input id="notif-invoices" type="checkbox" defaultChecked className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"/>
+                                    <input
+                                        id="notif-invoices"
+                                        type="checkbox"
+                                        {...registerPreferences("notifications.invoices")}
+                                        disabled={appSettingsLoading}
+                                        className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded disabled:bg-gray-100"
+                                    />
                                 </div>
                                 <div className="ml-3 text-sm">
                                     <label htmlFor="notif-invoices" className="font-medium text-gray-700">Nove Fakture</label>
@@ -211,7 +258,13 @@ export default function Settings() {
                             </div>
                             <div className="flex items-start">
                                 <div className="flex items-center h-5">
-                                    <input id="notif-clients" type="checkbox" className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded"/>
+                                    <input
+                                        id="notif-clients"
+                                        type="checkbox"
+                                        {...registerPreferences("notifications.clients")}
+                                        disabled={appSettingsLoading}
+                                        className="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded disabled:bg-gray-100"
+                                    />
                                 </div>
                                 <div className="ml-3 text-sm">
                                     <label htmlFor="notif-clients" className="font-medium text-gray-700">Novi Klijenti</label>
@@ -220,12 +273,13 @@ export default function Settings() {
                             </div>
                         </div>
                     </div>
-                </div>
+                </form>
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
                     <button
-                        type="button"
-                        onClick={() => toast.success('Podešavanja sačuvana')}
-                        className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        type="submit"
+                        form="preferences-form"
+                        disabled={appSettingsLoading}
+                        className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-70"
                     >
                         Sačuvaj Podešavanja
                     </button>

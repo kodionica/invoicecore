@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Account\PasswordController;
 use App\Http\Controllers\Account\ProfileController;
+use App\Http\Controllers\Account\SettingsController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanySwitchController;
@@ -37,4 +38,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::put('profile', [ProfileController::class, 'update']);
     Route::put('password', [PasswordController::class, 'update']);
+    Route::get('settings', [SettingsController::class, 'show']);
+    Route::put('settings', [SettingsController::class, 'update']);
 });

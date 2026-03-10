@@ -145,6 +145,14 @@ export interface MetaData {
     invoice_statuses?: Array<{ key: string; label: string }>;
 }
 
+export interface AppSettings {
+    language: string;
+    notifications: {
+        invoices: boolean;
+        clients: boolean;
+    };
+}
+
 interface AppContextType {
     user: User | null;
     authLoading: boolean;
@@ -154,12 +162,16 @@ interface AppContextType {
     invoices: Invoice[];
     meta: MetaData | null;
     metaLoading: boolean;
+    appSettings: AppSettings | null;
+    appSettingsLoading: boolean;
     login: (payload: LoginPayload) => Promise<void>;
     register: (payload: RegisterPayload) => Promise<void>;
     logout: () => Promise<void>;
     refreshUser: () => Promise<void>;
     updateUser: (updates: Partial<User>) => Promise<void>;
     resetPassword: (payload: PasswordPayload) => Promise<any>;
+    loadAppSettings: () => Promise<void>;
+    saveAppSettings: (payload: AppSettings) => Promise<void>;
     setActiveCompany: (id: number) => Promise<void>;
     addCompany: (company: CompanyCreatePayload) => Promise<void>;
     updateCompany: (id: number, data: CompanyUpdatePayload) => Promise<void>;
@@ -311,6 +323,8 @@ export function AppProvider({children}: { children: React.ReactNode }) {
     const [activeCompanyId, setActiveCompanyId] = useState<number | null>(null);
     const [meta, setMeta] = useState<MetaData | null>(null);
     const [metaLoading, setMetaLoading] = useState(true);
+    const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+    const [appSettingsLoading, setAppSettingsLoading] = useState(false);
 
     const refreshUser = async () => {
         setAuthLoading(true);
@@ -378,6 +392,22 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         }
     };
 
+    const loadAppSettings = async () => {
+        setAppSettingsLoading(true);
+        try {
+            const response = await api.get('/api/settings');
+            setAppSettings(response.data);
+        } catch (error: any) {
+            if (error?.response?.status === 401) {
+                setAppSettings(null);
+                return;
+            }
+            throw error;
+        } finally {
+            setAppSettingsLoading(false);
+        }
+    };
+
     useEffect(() => {
         refreshUser().catch(() => undefined);
         loadMeta().catch(() => undefined);
@@ -399,6 +429,14 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             loadInvoices().catch(() => undefined);
         }
     }, [activeCompanyId, user]);
+
+    useEffect(() => {
+        if (user) {
+            loadAppSettings().catch(() => undefined);
+        } else {
+            setAppSettings(null);
+        }
+    }, [user]);
 
     const login = async (payload: LoginPayload) => {
         await ensureCsrf();
@@ -423,6 +461,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         setCompanies([]);
         setClients([]);
         setInvoices([]);
+        setAppSettings(null);
     };
 
     const updateUser = async (updates: Partial<User>) => {
@@ -569,6 +608,26 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         }
     };
 
+    const saveAppSettings = async (payload: AppSettings) => {
+        try {
+            const response = await api.put('/api/settings', payload);
+            const nextSettings = response.data?.settings ?? payload;
+            setAppSettings(nextSettings);
+            const message = response.data?.message || 'Podešavanja sačuvana.';
+            toast.success(message);
+        } catch (err: any) {
+            const apiData = err?.response?.data;
+            const fieldErrors = apiData?.errors ? Object.values(apiData.errors).flat() : [];
+            const message =
+                apiData?.message ||
+                apiData?.error ||
+                fieldErrors[0] ||
+                'Došlo je do greške. Pokušaj ponovo.';
+            toast.error(message);
+            throw err;
+        }
+    };
+
     return (
         <AppContext.Provider value={{
             user,
@@ -579,12 +638,16 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             invoices,
             meta,
             metaLoading,
+            appSettings,
+            appSettingsLoading,
             login,
             register,
             logout,
             refreshUser,
             updateUser,
             resetPassword,
+            loadAppSettings,
+            saveAppSettings,
             setActiveCompany,
             addCompany,
             updateCompany,
