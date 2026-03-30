@@ -15,6 +15,7 @@ export interface InvoiceDocumentCompany {
     country?: string | null;
     email?: string | null;
     phone?: string | null;
+    bank_account: string;
     iban?: string | null;
     swift?: string | null;
     currency?: string | null;
@@ -73,10 +74,12 @@ export default function InvoiceDocument({
                                             className,
                                             meta
                                         }: InvoiceDocumentProps) {
+    const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number} = client;
     const resolvedCurrency = currency || invoice.currency || company.currency || 'RSD';
     const vatRate = 0.2;
     const vatAmount = company.vat_enabled ? invoice.total * vatRate : 0;
     const totalWithVat = company.vat_enabled ? invoice.total + vatAmount : invoice.total;
+    const isExternalPayment = company.country !== ccountry;
 
     return (
         <div className={clsx('bg-white shadow-lg rounded-lg overflow-hidden print:shadow-none', className)}>
@@ -98,8 +101,9 @@ export default function InvoiceDocument({
                             </p>
                             {company.tax_id && <p>PIB: {company.tax_id}</p>}
                             {company.registration_number && <p>MB: {company.registration_number}</p>}
-                            {company.iban && <p>IBAN: {company.iban}</p>}
-                            {company.swift && <p>SWIFT: {company.swift}</p>}
+                            {company.bank_account && <p>BROJ RAČUNA: {company.bank_account}</p>}
+                            {isExternalPayment && company.iban && <p>IBAN: {company.iban}</p>}
+                            {isExternalPayment && company.swift && <p>SWIFT: {company.swift}</p>}
                             {company.email && <p>Email: {company.email}</p>}
                             {company.phone && <p>Telefon: {company.phone}</p>}
                         </div>
@@ -127,17 +131,13 @@ export default function InvoiceDocument({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-8">
                     <div>
                         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Za klijenta:</h3>
-                        <div className="text-gray-900 font-medium text-lg">{client.name}</div>
+                        <div className="text-gray-900 font-medium text-lg">{cname}</div>
                         <div className="text-gray-500 text-sm mt-1 space-y-1">
-                            <p>
-                                {client.address}
-                                {client.address && client.city ? ',' : ''} {client.city}
-                                {client.country ? `, ${client.country}` : ''}
-                            </p>
-                            {client.email && <p>{client.email}</p>}
-                            {client.phone && <p>{client.phone}</p>}
-                            {client.tax_id && <p>PIB: {client.tax_id}</p>}
-                            {client.registration_number && <p>MB: {client.registration_number}</p>}
+                            <p>{[caddress, ccity, ccountry].join(', ')}</p>
+                            {cemail && <p>{cemail}</p>}
+                            {cphone && <p>{cphone}</p>}
+                            {ctax_id && <p>PIB: {ctax_id}</p>}
+                            {cregistration_number && <p>MB: {cregistration_number}</p>}
                         </div>
                     </div>
                 </div>
@@ -146,30 +146,10 @@ export default function InvoiceDocument({
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead>
                         <tr>
-                            <th
-                                scope="col"
-                                className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0"
-                            >
-                                Opis
-                            </th>
-                            <th
-                                scope="col"
-                                className="py-3.5 px-3 text-right text-sm font-semibold text-gray-900"
-                            >
-                                Količina
-                            </th>
-                            <th
-                                scope="col"
-                                className="py-3.5 px-3 text-right text-sm font-semibold text-gray-900"
-                            >
-                                Cena
-                            </th>
-                            <th
-                                scope="col"
-                                className="py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-0"
-                            >
-                                Ukupno
-                            </th>
+                            <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-0">Opis</th>
+                            <th scope="col" className="py-3.5 px-3 text-right text-sm font-semibold text-gray-900">Količina</th>
+                            <th scope="col" className="py-3.5 px-3 text-right text-sm font-semibold text-gray-900">Cena</th>
+                            <th scope="col" className="py-3.5 pl-3 pr-4 text-right text-sm font-semibold text-gray-900 sm:pr-0">Ukupno</th>
                         </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
@@ -190,75 +170,31 @@ export default function InvoiceDocument({
                         </tbody>
                         <tfoot>
                         <tr>
-                            <th
-                                scope="row"
-                                colSpan={3}
-                                className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0"
-                            >
-                                Međuzbir
-                            </th>
-                            <th
-                                scope="row"
-                                className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden"
-                            >
-                                Međuzbir
-                            </th>
+                            <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Međuzbir</th>
+                            <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Međuzbir</th>
                             <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
                                 {formatCurrency(invoice.total, resolvedCurrency)}
                             </td>
                         </tr>
                         <tr>
-                            <th
-                                scope="row"
-                                colSpan={3}
-                                className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0"
-                            >
-                                Način plaćanja
-                            </th>
-                            <th
-                                scope="row"
-                                className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden"
-                            >
-                                Način plaćanja
-                            </th>
+                            <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Način plaćanja</th>
+                            <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Način plaćanja</th>
                             <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
-                                {meta.payment_methods?.[invoice.paymentMethod]}
+                                {meta?.payment_methods?.[invoice.paymentMethod]}
                             </td>
                         </tr>
                         {company.vat_enabled && (
                             <tr>
-                                <th
-                                    scope="row"
-                                    colSpan={3}
-                                    className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0"
-                                >
-                                    PDV (20%)
-                                </th>
-                                <th
-                                    scope="row"
-                                    className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden"
-                                >
-                                    PDV (20%)
-                                </th>
+                                <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">PDV (20%)</th>
+                                <th scope="row" className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden">PDV (20%)</th>
                                 <td className="pl-3 pr-4 pt-4 text-right text-sm text-gray-500 sm:pr-0">
                                     {formatCurrency(vatAmount, resolvedCurrency)}
                                 </td>
                             </tr>
                         )}
                         <tr>
-                            <th
-                                scope="row"
-                                colSpan={3}
-                                className="hidden pl-4 pr-3 pt-4 text-right text-base font-bold text-gray-900 sm:table-cell sm:pl-0"
-                            >
-                                Ukupno za plaćanje
-                            </th>
-                            <th
-                                scope="row"
-                                className="pl-4 pr-3 pt-4 text-left text-base font-bold text-gray-900 sm:hidden"
-                            >
-                                Ukupno
-                            </th>
+                            <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-base font-bold text-gray-900 sm:table-cell sm:pl-0">Ukupno za plaćanje</th>
+                            <th scope="row" className="pl-4 pr-3 pt-4 text-left text-base font-bold text-gray-900 sm:hidden">Ukupno</th>
                             <td className="pl-3 pr-4 pt-4 text-right text-base font-bold text-gray-900 sm:pr-0">
                                 {formatCurrency(totalWithVat, resolvedCurrency)}
                             </td>
@@ -267,11 +203,8 @@ export default function InvoiceDocument({
                     </table>
                 </div>
 
-                <div className="mt-12 pt-8 border-t border-gray-100">
-                    <p className="text-gray-500 text-sm">
-                        Hvala vam na poslovanju! Molimo vas da iznos uplatite u roku od{' '}
-                        {format(new Date(invoice.dueDate), 'dd. MMM yyyy', {locale: srLatn})}.
-                    </p>
+                <div className="mt-12 pt-6 border-t border-gray-100">
+                    {!company.vat_enabled && <p className="text-gray-500 text-sm">Poreski obveznik nije u sistemu PDV-a. PDV nije obračunat na fakturi u skladu sa članom 33. Zakona o porezu na dodatu vrednost.</p>}
                 </div>
             </div>
         </div>
