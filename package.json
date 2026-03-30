@@ -25,6 +25,7 @@
     "dependencies": {
         "@dicebear/collection": "^9.4.0",
         "@dicebear/core": "^9.4.0",
+        "@tanstack/react-query": "^5.95.2",
         "bootstrap": "^5.3.8",
         "clsx": "^2.1.1",
         "date-fns": "^4.1.0",

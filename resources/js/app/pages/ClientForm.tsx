@@ -14,12 +14,13 @@ interface ClientFormData {
     phone: string;
     city: string;
     country: string;
+    client_type: string;
 }
 
 export default function ClientForm() {
     const {id} = useParams();
     const navigate = useNavigate();
-    const {clients, addClient, updateClient, activeCompanyId} = useApp();
+    const {clients, addClient, updateClient, activeCompanyId, meta} = useApp();
     const isEdit = !!id;
 
     const clientId = id ? Number(id) : null;
@@ -35,6 +36,7 @@ export default function ClientForm() {
             phone: client.phone || '',
             city: client.city || '',
             country: client.country || '',
+            client_type: client.clientType || 'b2b'
         } : {}
     });
 
@@ -125,6 +127,21 @@ export default function ClientForm() {
                                     className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                 />
                                 {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>}
+                            </div>
+                        </div>
+
+                        <div className="sm:col-span-3">
+                            <label htmlFor="client_type" className="block text-sm font-medium text-gray-700">
+                                Tip klijenta
+                            </label>
+                            <div className="mt-1">
+                                <select id="client_type"
+                                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
+                                        {...register("client_type")}
+                                >
+                                    {meta.client_types?.map(type => <option value={type.value} key={type.value}>{type.label}</option>)}
+                                </select>
+                                {errors.client_type && <p className="mt-1 text-sm text-red-600">{errors.client_type.message}</p>}
                             </div>
                         </div>
 

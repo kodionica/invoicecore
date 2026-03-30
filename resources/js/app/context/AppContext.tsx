@@ -36,6 +36,7 @@ export interface Client {
     city?: string;
     country?: string;
     createdAt?: string;
+    clientType: string;
 }
 
 export interface InvoiceItem {
@@ -143,6 +144,7 @@ export interface MetaData {
     currencies: Record<string, { name: string; symbol?: string }> | Array<{ code: string; name: string; symbol?: string }>;
     payment_methods: Record<string, string> | Array<{ key: string; label: string }>;
     invoice_statuses?: Array<{ key: string; label: string }>;
+    client_types: Array<{ value: string; label: string, code: string }>;
 }
 
 export interface AppSettings {
@@ -265,6 +267,7 @@ const normalizeClient = (client: any): Client => {
         city: client.city ?? undefined,
         country: client.country ?? undefined,
         createdAt: client.created_at ?? client.createdAt ?? undefined,
+        clientType: client.client_type
     };
 };
 

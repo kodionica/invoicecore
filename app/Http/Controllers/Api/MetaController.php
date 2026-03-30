@@ -29,6 +29,7 @@ class MetaController extends Controller {
                 'countries'        => config( 'countries' ),
                 'currencies'       => config( 'currency' ),
                 'payment_methods'  => config( 'payment' ),
+                'client_types'     => config( 'client-type' ),
                 'invoice_statuses' => $invoiceStatuses,
             ];
         } );

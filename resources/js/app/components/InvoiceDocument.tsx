@@ -2,8 +2,10 @@ import React from 'react';
 import clsx from 'clsx';
 import {format} from 'date-fns';
 import {srLatn} from 'date-fns/locale';
-import {formatCurrency} from '../utils/format';
+import {formatCurrency, formatCurrencyAlt} from '../utils/format';
 import {MetaData} from "../context/AppContext";
+import {useQuery} from "@tanstack/react-query";
+import {toast} from "sonner";
 
 export interface InvoiceDocumentCompany {
     id: number;
@@ -33,6 +35,7 @@ export interface InvoiceDocumentClient {
     phone?: string | null;
     tax_id?: string | null;
     registration_number?: string | null;
+    clientType: string;
 }
 
 export interface InvoiceDocumentItem {
@@ -74,12 +77,51 @@ export default function InvoiceDocument({
                                             className,
                                             meta
                                         }: InvoiceDocumentProps) {
-    const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number} = client;
+    const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number, clientType} = client;
     const resolvedCurrency = currency || invoice.currency || company.currency || 'RSD';
     const vatRate = 0.2;
     const vatAmount = company.vat_enabled ? invoice.total * vatRate : 0;
     const totalWithVat = company.vat_enabled ? invoice.total + vatAmount : invoice.total;
+    const isDomesticPayment = company.country === 'Srbija' && ccountry === 'Srbija';
     const isExternalPayment = company.country !== ccountry;
+    const getPaymentCode = (clientType: string) => meta.client_types.find(type => type.value === clientType);
+
+    const bodyParams = [
+        "K:PR",
+        "V:01",
+        "C:1",
+        `R:${company.bank_account.replaceAll('-', '').trim()}`,
+        `N:${company.name}\n${company.address}, ${company.city}`,
+        `I:${formatCurrencyAlt({amount: invoice.total})}`,
+        `P:${cname}\n ${caddress}, ${ccity}`,
+        `SF:${getPaymentCode(clientType)?.code}`,
+        `S:${invoice.items[0]?.description}`,
+        `RO:00${invoice.number}`
+    ];
+
+    const {data, isLoading, error} = useQuery({
+        queryKey: ['qrCode', invoice.number],
+        queryFn: async () => {
+            const response = await fetch('https://nbs.rs/QRcode/api/qr/v1/generate', {
+                method: 'POST',
+                body: bodyParams.join('|'),
+            });
+            return response.json();
+        },
+        enabled: isDomesticPayment
+    });
+
+    const qrCode = data?.s?.code === 0 ? data.i : null;
+
+    if (error) {
+        toast.error(error.message);
+    }
+
+    if (isDomesticPayment && !isLoading && data?.s?.code !== 0) {
+        toast.error("Nije moguće generisati IPS QR kod: ", {description: data?.e?.join('\n')})
+    }
+
+    console.log(data)
 
     return (
         <div className={clsx('bg-white shadow-lg rounded-lg overflow-hidden print:shadow-none', className)}>
@@ -140,6 +182,11 @@ export default function InvoiceDocument({
                             {cregistration_number && <p>MB: {cregistration_number}</p>}
                         </div>
                     </div>
+                    {isDomesticPayment && qrCode && (
+                        <div>
+                            <img src={`data:image/png;base64, ${qrCode}`} alt="IPS QR Code" className="w-32 h-32"/>
+                        </div>
+                    )}
                 </div>
 
                 <div className="mt-8">
