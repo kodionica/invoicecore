@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CurrencyRateController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Account\PasswordController;
 use App\Http\Controllers\Account\ProfileController;
@@ -30,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('companies/switch', [CompanySwitchController::class, 'switch']);
 
     Route::apiResource('clients', ClientController::class);
+    Route::get('currency-rates/{currency}/today', CurrencyRateController::class);
 
     Route::get('invoices/next-number', [InvoiceController::class, 'nextNumber']);
     Route::apiResource('invoices', InvoiceController::class);

@@ -84,7 +84,43 @@ export default function InvoiceDocument({
     const totalWithVat = company.vat_enabled ? invoice.total + vatAmount : invoice.total;
     const isDomesticPayment = company.country === 'Srbija' && ccountry === 'Srbija';
     const isExternalPayment = company.country !== ccountry;
+    const shouldConvertToRSD = isDomesticPayment && resolvedCurrency !== 'RSD';
     const getPaymentCode = (clientType: string) => meta.client_types.find(type => type.value === clientType);
+
+    const {data: exchangeRateData, error: exchangeRateError} = useQuery({
+        queryKey: ['currency', resolvedCurrency],
+        queryFn: async () => {
+            const response = await fetch(`/api/currency-rates/${resolvedCurrency}/today`);
+            if (!response.ok) {
+                throw new Error('Neuspesno preuzimanje dnevnog kursa.');
+            }
+
+            return response.json();
+        },
+        enabled: shouldConvertToRSD
+    });
+
+    const exchangeRate = exchangeRateData?.exchange_middle;
+    const amountInRSD = shouldConvertToRSD && exchangeRate
+        ? invoice.total * exchangeRate
+        : invoice.total;
+    const displayCurrency = shouldConvertToRSD ? 'RSD' : resolvedCurrency;
+    const convertToDisplayAmount = (amount: number) => (
+        shouldConvertToRSD && exchangeRate ? amount * exchangeRate : amount
+    );
+    const renderAmount = (amount: number) => {
+        const primary = formatCurrency(convertToDisplayAmount(amount), displayCurrency);
+        if (!shouldConvertToRSD) {
+            return primary;
+        }
+
+        return (
+            <div className="flex flex-col items-end">
+                <span>{primary}</span>
+                <span className="text-xs text-gray-500">{formatCurrency(amount, resolvedCurrency)}</span>
+            </div>
+        );
+    };
 
     const bodyParams = [
         "K:PR",
@@ -92,7 +128,7 @@ export default function InvoiceDocument({
         "C:1",
         `R:${company.bank_account.replaceAll('-', '').trim()}`,
         `N:${company.name}\n${company.address}, ${company.city}`,
-        `I:${formatCurrencyAlt({amount: invoice.total})}`,
+        `I:${formatCurrencyAlt({amount: amountInRSD})}`,
         `P:${cname}\n ${caddress}, ${ccity}`,
         `SF:${getPaymentCode(clientType)?.code}`,
         `S:${invoice.items[0]?.description}`,
@@ -108,7 +144,7 @@ export default function InvoiceDocument({
             });
             return response.json();
         },
-        enabled: isDomesticPayment
+        enabled: isDomesticPayment && (!shouldConvertToRSD || Boolean(exchangeRate))
     });
 
     const qrCode = data?.s?.code === 0 ? data.i : null;
@@ -117,11 +153,13 @@ export default function InvoiceDocument({
         toast.error(error.message);
     }
 
+    if (exchangeRateError) {
+        toast.error(exchangeRateError.message);
+    }
+
     if (isDomesticPayment && !isLoading && data?.s?.code !== 0) {
         toast.error("Nije moguće generisati IPS QR kod: ", {description: data?.e?.join('\n')})
     }
-
-    console.log(data)
 
     return (
         <div className={clsx('bg-white shadow-lg rounded-lg overflow-hidden print:shadow-none', className)}>
@@ -207,10 +245,10 @@ export default function InvoiceDocument({
                                 </td>
                                 <td className="py-4 px-3 text-sm text-right text-gray-500">{item.quantity}</td>
                                 <td className="py-4 px-3 text-sm text-right text-gray-500">
-                                    {formatCurrency(item.price, resolvedCurrency)}
+                                    {renderAmount(item.price)}
                                 </td>
                                 <td className="py-4 pl-3 pr-4 text-sm text-right text-gray-900 font-medium sm:pr-0">
-                                    {formatCurrency(item.quantity * item.price, resolvedCurrency)}
+                                    {renderAmount(item.quantity * item.price)}
                                 </td>
                             </tr>
                         ))}
@@ -220,7 +258,7 @@ export default function InvoiceDocument({
                             <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Međuzbir</th>
                             <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Međuzbir</th>
                             <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
-                                {formatCurrency(invoice.total, resolvedCurrency)}
+                                {renderAmount(invoice.total)}
                             </td>
                         </tr>
                         <tr>
@@ -235,7 +273,7 @@ export default function InvoiceDocument({
                                 <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">PDV (20%)</th>
                                 <th scope="row" className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden">PDV (20%)</th>
                                 <td className="pl-3 pr-4 pt-4 text-right text-sm text-gray-500 sm:pr-0">
-                                    {formatCurrency(vatAmount, resolvedCurrency)}
+                                    {renderAmount(vatAmount)}
                                 </td>
                             </tr>
                         )}
@@ -243,7 +281,7 @@ export default function InvoiceDocument({
                             <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-base font-bold text-gray-900 sm:table-cell sm:pl-0">Ukupno za plaćanje</th>
                             <th scope="row" className="pl-4 pr-3 pt-4 text-left text-base font-bold text-gray-900 sm:hidden">Ukupno</th>
                             <td className="pl-3 pr-4 pt-4 text-right text-base font-bold text-gray-900 sm:pr-0">
-                                {formatCurrency(totalWithVat, resolvedCurrency)}
+                                {renderAmount(totalWithVat)}
                             </td>
                         </tr>
                         </tfoot>
