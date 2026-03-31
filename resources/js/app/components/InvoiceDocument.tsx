@@ -35,7 +35,7 @@ export interface InvoiceDocumentClient {
     phone?: string | null;
     tax_id?: string | null;
     registration_number?: string | null;
-    clientType: string;
+    client_type: string;
 }
 
 export interface InvoiceDocumentItem {
@@ -83,7 +83,7 @@ export default function InvoiceDocument({
         payment_methods: {},
         client_types: [],
     };
-    const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number, clientType} = client;
+    const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number, client_type} = client;
     const resolvedCurrency = currency || invoice.currency || company.currency || 'RSD';
     const vatRate = 0.2;
     const vatAmount = company.vat_enabled ? invoice.total * vatRate : 0;
@@ -139,7 +139,7 @@ export default function InvoiceDocument({
         `N:${company.name}\n${company.address}, ${company.city}`,
         `I:${formatCurrencyAlt({amount: amountInRSD})}`,
         `P:${cname}\n ${caddress}, ${ccity}`,
-        `SF:${getPaymentCode(clientType)?.code}`,
+        `SF:${getPaymentCode(client_type)?.code}`,
         `S:${invoice.items[0]?.description}`,
         `RO:00${invoice.number}`
     ];

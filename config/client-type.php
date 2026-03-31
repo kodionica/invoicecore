@@ -7,7 +7,7 @@ return [
         'code'  => '281',
     ],
     [
-        'value' => 'b2s',
+        'value' => 'b2c',
         'label' => 'Fizičko lice',
         'code'  => '289',
     ],

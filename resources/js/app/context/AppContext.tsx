@@ -36,7 +36,7 @@ export interface Client {
     city?: string;
     country?: string;
     createdAt?: string;
-    clientType: string;
+    client_type: string;
 }
 
 export interface InvoiceItem {
@@ -126,6 +126,7 @@ interface ClientCreatePayload {
     phone?: string;
     city?: string;
     country?: string;
+    client_type?: string;
 }
 
 interface InvoiceCreatePayload {
@@ -267,7 +268,7 @@ const normalizeClient = (client: any): Client => {
         city: client.city ?? undefined,
         country: client.country ?? undefined,
         createdAt: client.created_at ?? client.createdAt ?? undefined,
-        clientType: client.client_type
+        client_type: client.client_type
     };
 };
 

@@ -3,12 +3,21 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreClientRequest extends FormRequest {
+    private function allowedClientTypes(): array {
+        return collect( config( 'client-type', [] ) )
+            ->pluck( 'value' )
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array|string>
      */
     public function rules(): array {
         return [
@@ -20,6 +29,7 @@ class StoreClientRequest extends FormRequest {
             'country'             => [ 'nullable', 'string' ],
             'email'               => [ 'nullable', 'email' ],
             'phone'               => [ 'nullable', 'string' ],
+            'client_type'         => [ 'nullable', 'string', Rule::in( $this->allowedClientTypes() ) ],
         ];
     }
 }

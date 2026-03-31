@@ -1,7 +1,7 @@
-import React from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {useForm} from 'react-hook-form';
 import {useNavigate, useParams} from 'react-router';
-import {useApp} from '../context/AppContext';
+import {Client, useApp} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft} from 'lucide-react';
 
@@ -17,64 +17,150 @@ interface ClientFormData {
     client_type: string;
 }
 
+
 export default function ClientForm() {
     const {id} = useParams();
     const navigate = useNavigate();
     const {clients, addClient, updateClient, activeCompanyId, meta} = useApp();
     const isEdit = !!id;
+    const [fallbackClient, setFallbackClient] = useState<Client | null>(null);
+    const [isLoadingClient, setIsLoadingClient] = useState(false);
 
     const clientId = id ? Number(id) : null;
-    const client = isEdit && clientId ? clients.find(c => c.id === clientId) : null;
+    const clientFromList = isEdit && clientId ? clients.find(c => c.id === clientId) : null;
+    const client = clientFromList ?? fallbackClient;
 
-    const {register, handleSubmit, formState: {errors}} = useForm<ClientFormData>({
-        defaultValues: client ? {
-            name: client.name,
-            email: client.email,
-            tax_id: client.tax_id || '',
-            registration_number: client.registration_number || '',
-            address: client.address,
-            phone: client.phone || '',
-            city: client.city || '',
-            country: client.country || '',
-            client_type: client.clientType || 'b2b'
-        } : {}
+    const toFormData = (item: Client): ClientFormData => {
+        return {
+            name: item.name ?? '',
+            email: item.email ?? '',
+            address: item.address ?? '',
+            tax_id: item.tax_id ?? '',
+            registration_number: item.registration_number ?? '',
+            phone: item.phone ?? '',
+            city: item.city ?? '',
+            country: item.country ?? '',
+            client_type: item.client_type ?? 'b2b',
+        };
+    };
+
+    const defaultClientType = useMemo(
+        () => meta?.client_types?.[0]?.value ?? 'b2b',
+        [meta?.client_types]
+    );
+
+    const {register, handleSubmit, formState: {errors}, reset} = useForm<ClientFormData>({
+        defaultValues: {
+            name: '',
+            email: '',
+            address: '',
+            tax_id: '',
+            registration_number: '',
+            phone: '',
+            city: '',
+            country: '',
+            client_type: defaultClientType,
+        }
     });
 
+    useEffect(() => {
+        if (isEdit && client) {
+            reset(toFormData(client));
+            return;
+        }
+
+        if (!isEdit) {
+            reset({
+                name: '',
+                email: '',
+                address: '',
+                tax_id: '',
+                registration_number: '',
+                phone: '',
+                city: '',
+                country: '',
+                client_type: defaultClientType,
+            });
+        }
+    }, [isEdit, client, reset, defaultClientType]);
+
+    useEffect(() => {
+        if (!isEdit || !clientId || clientFromList || fallbackClient) {
+            return;
+        }
+
+        let isCancelled = false;
+        const loadClient = async () => {
+            setIsLoadingClient(true);
+            try {
+                const response = await fetch(`/api/clients/${clientId}`);
+                if (!response.ok) {
+                    throw new Error('Nije moguće učitati klijenta.');
+                }
+                const apiClient = await response.json();
+                if (isCancelled) return;
+                setFallbackClient({
+                    id: Number(apiClient.id),
+                    companyId: Number(apiClient.company_id ?? 0),
+                    name: apiClient.name ?? '',
+                    email: apiClient.email ?? '',
+                    address: apiClient.address ?? '',
+                    tax_id: apiClient.tax_id ?? undefined,
+                    registration_number: apiClient.registration_number ?? undefined,
+                    phone: apiClient.phone ?? undefined,
+                    city: apiClient.city ?? undefined,
+                    country: apiClient.country ?? undefined,
+                    createdAt: apiClient.created_at ?? undefined,
+                    client_type: apiClient.client_type ?? 'b2b',
+                });
+            } catch (error: any) {
+                if (!isCancelled) {
+                    toast.error(error?.message ?? 'Nije moguće učitati klijenta.');
+                    navigate('/dashboard/clients');
+                }
+            } finally {
+                if (!isCancelled) {
+                    setIsLoadingClient(false);
+                }
+            }
+        };
+
+        loadClient().catch(() => undefined);
+        return () => {
+            isCancelled = true;
+        };
+    }, [isEdit, clientId, clientFromList, fallbackClient, navigate]);
+
     const onSubmit = async (data: ClientFormData) => {
+        const payload: ClientFormData = {
+            ...data,
+            client_type: data.client_type || defaultClientType,
+        };
+
         if (isEdit) {
             if (!clientId) {
                 return;
             }
-            await updateClient(clientId, {
-                name: data.name,
-                email: data.email,
-                address: data.address,
-                tax_id: data.tax_id || undefined,
-                registration_number: data.registration_number || undefined,
-                phone: data.phone || undefined,
-                city: data.city || undefined,
-                country: data.country || undefined,
-            });
+            await updateClient(clientId, payload);
             toast.success('Klijent uspešno izmenjen');
         } else {
             if (!activeCompanyId) {
                 toast.error('Molimo izaberite aktivnu firmu');
                 return;
             }
-            await addClient({
-                name: data.name,
-                email: data.email || undefined,
-                address: data.address || undefined,
-                tax_id: data.tax_id || undefined,
-                registration_number: data.registration_number || undefined,
-                phone: data.phone || undefined,
-                city: data.city || undefined,
-                country: data.country || undefined,
-            });
+            await addClient(payload);
             toast.success('Novi klijent uspešno dodat');
         }
         navigate('/dashboard/clients');
     };
+
+    if (isEdit && isLoadingClient && !client) {
+        return (
+            <div className="max-w-2xl mx-auto">
+                <div className="bg-white shadow rounded-lg p-6 text-gray-500">Učitavanje klijenta...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-2xl mx-auto space-y-6">
@@ -139,7 +225,7 @@ export default function ClientForm() {
                                         className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
                                         {...register("client_type")}
                                 >
-                                    {meta.client_types?.map(type => <option value={type.value} key={type.value}>{type.label}</option>)}
+                                    {meta?.client_types?.map(type => <option value={type.value} key={type.value}>{type.label}</option>)}
                                 </select>
                                 {errors.client_type && <p className="mt-1 text-sm text-red-600">{errors.client_type.message}</p>}
                             </div>

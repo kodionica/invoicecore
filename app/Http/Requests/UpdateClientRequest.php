@@ -6,6 +6,14 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateClientRequest extends FormRequest {
+    private function allowedClientTypes(): array {
+        return collect( config( 'client-type', [] ) )
+            ->pluck( 'value' )
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -16,13 +24,14 @@ class UpdateClientRequest extends FormRequest {
 
         return [
             'name'                => [ 'sometimes', 'string', 'max:255' ],
-            'tax_id'              => [ 'sometimes', 'string', Rule::unique( 'clients', 'tax_id' )->ignore( $client ) ],
-            'registration_number' => [ 'sometimes', 'string', Rule::unique( 'clients', 'registration_number' )->ignore( $client ) ],
-            'address'             => [ 'sometimes', 'string' ],
-            'city'                => [ 'sometimes', 'string' ],
-            'country'             => [ 'sometimes', 'string' ],
+            'tax_id'              => [ 'sometimes', 'nullable', 'string', Rule::unique( 'clients', 'tax_id' )->ignore( $client ) ],
+            'registration_number' => [ 'sometimes', 'nullable', 'string', Rule::unique( 'clients', 'registration_number' )->ignore( $client ) ],
+            'address'             => [ 'sometimes', 'nullable', 'string' ],
+            'city'                => [ 'sometimes', 'nullable', 'string' ],
+            'country'             => [ 'sometimes', 'nullable', 'string' ],
             'email'               => [ 'sometimes', 'email' ],
-            'phone'               => [ 'sometimes', 'string' ],
+            'phone'               => [ 'sometimes', 'nullable', 'string' ],
+            'client_type'         => [ 'sometimes', 'nullable', 'string', Rule::in( $this->allowedClientTypes() ) ],
         ];
     }
 }

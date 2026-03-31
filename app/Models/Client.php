@@ -54,6 +54,7 @@ class Client extends Model {
         'country',
         'email',
         'phone',
+        'client_type',
     ];
 
     public function company(): BelongsTo {

@@ -415,7 +415,7 @@ class InvoiceController extends Controller {
                 'phone'               => $client->phone,
                 'tax_id'              => $client->tax_id,
                 'registration_number' => $client->registration_number,
-                'clientType'          => (string) $client->client_type,
+                'client_type'          => (string) $client->client_type,
             ],
             'currency' => $invoice->currency ?: $company->currency,
             'meta' => [
