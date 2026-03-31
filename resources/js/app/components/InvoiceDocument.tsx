@@ -66,7 +66,7 @@ export interface InvoiceDocumentProps {
     company: InvoiceDocumentCompany;
     currency?: string | null;
     className?: string;
-    meta: MetaData
+    meta?: MetaData | null
 }
 
 export default function InvoiceDocument({
@@ -77,6 +77,12 @@ export default function InvoiceDocument({
                                             className,
                                             meta
                                         }: InvoiceDocumentProps) {
+    const safeMeta = meta ?? {
+        countries: {},
+        currencies: {},
+        payment_methods: {},
+        client_types: [],
+    };
     const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number, clientType} = client;
     const resolvedCurrency = currency || invoice.currency || company.currency || 'RSD';
     const vatRate = 0.2;
@@ -85,7 +91,10 @@ export default function InvoiceDocument({
     const isDomesticPayment = company.country === 'Srbija' && ccountry === 'Srbija';
     const isExternalPayment = company.country !== ccountry;
     const shouldConvertToRSD = isDomesticPayment && resolvedCurrency !== 'RSD';
-    const getPaymentCode = (clientType: string) => meta.client_types.find(type => type.value === clientType);
+    const getPaymentCode = (currentClientType: string) => safeMeta.client_types?.find(type => type.value === currentClientType);
+    const paymentMethodLabel = Array.isArray(safeMeta.payment_methods)
+        ? safeMeta.payment_methods.find(method => method.key === invoice.paymentMethod)?.label
+        : safeMeta.payment_methods?.[invoice.paymentMethod];
 
     const {data: exchangeRateData, error: exchangeRateError} = useQuery({
         queryKey: ['currency', resolvedCurrency],
@@ -199,6 +208,12 @@ export default function InvoiceDocument({
                                 </span>
                             </div>
                             <div className="flex justify-between gap-8">
+                                <span>Datum prometa:</span>
+                                <span className="font-medium text-gray-900">
+                                    {format(new Date(invoice.date), 'dd. MMM yyyy', {locale: srLatn})}
+                                </span>
+                            </div>
+                            <div className="flex justify-between gap-8">
                                 <span>Rok plaćanja:</span>
                                 <span className="font-medium text-gray-900">
                                     {format(new Date(invoice.dueDate), 'dd. MMM yyyy', {locale: srLatn})}
@@ -220,11 +235,6 @@ export default function InvoiceDocument({
                             {cregistration_number && <p>MB: {cregistration_number}</p>}
                         </div>
                     </div>
-                    {isDomesticPayment && qrCode && (
-                        <div>
-                            <img src={`data:image/png;base64, ${qrCode}`} alt="IPS QR Code" className="w-32 h-32"/>
-                        </div>
-                    )}
                 </div>
 
                 <div className="mt-8">
@@ -255,22 +265,29 @@ export default function InvoiceDocument({
                         </tbody>
                         <tfoot>
                         <tr>
-                            <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Međuzbir</th>
+                            <td rowSpan={3}>
+                                {isDomesticPayment && qrCode && (
+                                    <div>
+                                        <img src={`data:image/png;base64, ${qrCode}`} alt="IPS QR Code" className="w-32 h-32"/>
+                                    </div>
+                                )}
+                            </td>
+                            <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Međuzbir</th>
                             <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Međuzbir</th>
                             <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
                                 {renderAmount(invoice.total)}
                             </td>
                         </tr>
                         <tr>
-                            <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Način plaćanja</th>
+                            <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Način plaćanja</th>
                             <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Način plaćanja</th>
                             <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
-                                {meta?.payment_methods?.[invoice.paymentMethod]}
+                                {paymentMethodLabel ?? invoice.paymentMethod}
                             </td>
                         </tr>
                         {company.vat_enabled && (
                             <tr>
-                                <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">PDV (20%)</th>
+                                <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">PDV (20%)</th>
                                 <th scope="row" className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden">PDV (20%)</th>
                                 <td className="pl-3 pr-4 pt-4 text-right text-sm text-gray-500 sm:pr-0">
                                     {renderAmount(vatAmount)}
@@ -278,7 +295,7 @@ export default function InvoiceDocument({
                             </tr>
                         )}
                         <tr>
-                            <th scope="row" colSpan={3} className="hidden pl-4 pr-3 pt-4 text-right text-base font-bold text-gray-900 sm:table-cell sm:pl-0">Ukupno za plaćanje</th>
+                            <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-4 text-right text-base font-bold text-gray-900 sm:table-cell sm:pl-0">Ukupno za plaćanje</th>
                             <th scope="row" className="pl-4 pr-3 pt-4 text-left text-base font-bold text-gray-900 sm:hidden">Ukupno</th>
                             <td className="pl-3 pr-4 pt-4 text-right text-base font-bold text-gray-900 sm:pr-0">
                                 {renderAmount(totalWithVat)}

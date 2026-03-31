@@ -377,6 +377,7 @@ class InvoiceController extends Controller {
                 'date'     => (string) $invoice->issue_date,
                 'dueDate'  => (string) $invoice->due_date,
                 'currency' => $invoice->currency,
+                'paymentMethod' => (string) $invoice->payment_method,
                 'total'    => (float) $invoice->total,
                 'items'    => $invoice_items->map( static function ( $item ) {
                     return [
@@ -397,6 +398,7 @@ class InvoiceController extends Controller {
                 'country'              => $company->country,
                 'email'                => $company->email,
                 'phone'                => $company->phone,
+                'bank_account'         => $company->bank_account,
                 'iban'                 => $company->iban,
                 'swift'                => $company->swift,
                 'currency'             => $company->currency,
@@ -413,8 +415,15 @@ class InvoiceController extends Controller {
                 'phone'               => $client->phone,
                 'tax_id'              => $client->tax_id,
                 'registration_number' => $client->registration_number,
+                'clientType'          => (string) $client->client_type,
             ],
             'currency' => $invoice->currency ?: $company->currency,
+            'meta' => [
+                'countries'       => config( 'countries' ),
+                'currencies'      => config( 'currency' ),
+                'payment_methods' => config( 'payment' ),
+                'client_types'    => config( 'client-type' ),
+            ],
         ];
     }
 
