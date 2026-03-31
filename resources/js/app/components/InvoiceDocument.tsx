@@ -182,7 +182,7 @@ export default function InvoiceDocument({
                                 <span className="font-bold text-2xl text-white">{company.name.substring(0, 1)}</span>
                             </div>
                         )}
-                        <h2 className="text-xl font-bold text-gray-900">{company.name}</h2>
+                        <h2 className="text-lg font-bold text-gray-900">{company.name}</h2>
                         <div className="text-gray-500 text-sm mt-2 space-y-1">
                             <p>
                                 {company.address}
@@ -199,7 +199,7 @@ export default function InvoiceDocument({
                     </div>
                     <div className="text-right sm:text-right">
                         <h1 className="text-3xl font-bold text-gray-900 mb-2">FAKTURA</h1>
-                        <p className="text-lg font-medium text-gray-600">#{invoice.number}</p>
+                        <p className="text-lg font-medium text-gray-600">{invoice.number}</p>
                         <div className="mt-4 space-y-1 text-sm text-gray-500">
                             <div className="flex justify-between gap-8">
                                 <span>Datum izdavanja:</span>
