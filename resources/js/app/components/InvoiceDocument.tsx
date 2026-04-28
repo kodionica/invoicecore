@@ -177,10 +177,10 @@ export default function InvoiceDocument({
     return (
         <div className={clsx('bg-white shadow-lg rounded-lg overflow-hidden print:shadow-none', className)}>
             <div className="p-8 sm:p-12">
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-8 border-b border-gray-100 pb-8 mb-8">
-                    <div>
+                <div className="flex flex-col sm:flex-row justify-between items-start border-b border-gray-100 pb-8 mb-8">
+                    <div className="invoice__heading__left">
                         {company.logoUrl ? (
-                            <img src={company.logoUrl} alt="logo" className="h-12 w-12"/>
+                            <img src={company.logoUrl} alt="logo" className="h-12 w-12 mb-4"/>
                         ) : (
                             <div className="h-12 w-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4">
                                 <span className="font-bold text-2xl text-white">{company.name.substring(0, 1)}</span>
@@ -201,9 +201,9 @@ export default function InvoiceDocument({
                             {company.phone && <p>Telefon: {company.phone}</p>}
                         </div>
                     </div>
-                    <div className="text-right sm:text-right">
-                        <h1 className="text-3xl font-bold text-gray-900 mb-2">FAKTURA</h1>
-                        <p className="text-lg font-medium text-gray-600">{invoice.number}</p>
+                    <div className="invoice__heading__right">
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2 text-right">FAKTURA</h1>
+                        <p className="text-lg font-medium text-gray-600 text-right">{invoice.number}</p>
                         <div className="mt-4 space-y-1 text-sm text-gray-500">
                             <div className="flex justify-between gap-8">
                                 <span>Datum izdavanja:</span>

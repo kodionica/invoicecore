@@ -1,3 +1,7 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+.invoice__heading__right {
+    flex: 0 0 230px;
+}
