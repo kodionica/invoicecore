@@ -60,6 +60,9 @@ export interface Invoice {
     status: InvoiceStatus;
     paymentMethod: string;
     total: number;
+    totalOriginal: number;
+    totalRsd: number;
+    fxRateToRsd?: number;
 }
 
 interface User {
@@ -285,6 +288,11 @@ const normalizeInvoice = (invoice: any): Invoice => {
         status: invoice.status as InvoiceStatus,
         paymentMethod: invoice.payment_method,
         total: Number(invoice.total ?? 0),
+        totalOriginal: Number(invoice.total_original ?? invoice.total ?? 0),
+        totalRsd: Number(invoice.total_rsd ?? invoice.total ?? 0),
+        fxRateToRsd: invoice.fx_rate_to_rsd !== undefined && invoice.fx_rate_to_rsd !== null
+            ? Number(invoice.fx_rate_to_rsd)
+            : undefined,
         items: items.map((item: any) => ({
             id: Number(item.id ?? 0),
             description: item.name ?? item.description ?? '',

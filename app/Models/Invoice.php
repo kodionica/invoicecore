@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -14,8 +15,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string                                                                      $issue_date
  * @property string                                                                      $due_date
  * @property string                                                                      $currency
+ * @property numeric|null                                                                $fx_rate_to_rsd
+ * @property string|null                                                                 $fx_provider
+ * @property string|null                                                                 $fx_date
  * @property string|null                                                                 $payment_method
  * @property numeric                                                                     $total
+ * @property numeric                                                                     $subtotal_original
+ * @property numeric                                                                     $tax_original
+ * @property numeric                                                                     $total_original
+ * @property numeric                                                                     $subtotal_rsd
+ * @property numeric                                                                     $tax_rsd
+ * @property numeric                                                                     $total_rsd
  * @property string                                                                      $status
  * @property string|null                                                                 $pdf_path
  * @property string|null                                                                 $note
@@ -52,8 +62,17 @@ class Invoice extends Model {
         'issue_date',
         'due_date',
         'currency',
+        'fx_rate_to_rsd',
+        'fx_provider',
+        'fx_date',
         'payment_method',
         'total',
+        'subtotal_original',
+        'tax_original',
+        'total_original',
+        'subtotal_rsd',
+        'tax_rsd',
+        'total_rsd',
         'status',
         'pdf_path',
         'note',
@@ -63,7 +82,15 @@ class Invoice extends Model {
     protected $casts    = [
         'issue_date' => 'date',
         'due_date'   => 'date',
+        'fx_date'    => 'date',
+        'fx_rate_to_rsd' => 'decimal:6',
         'total'      => 'decimal:2',
+        'subtotal_original' => 'decimal:2',
+        'tax_original'      => 'decimal:2',
+        'total_original'    => 'decimal:2',
+        'subtotal_rsd'      => 'decimal:2',
+        'tax_rsd'           => 'decimal:2',
+        'total_rsd'         => 'decimal:2',
     ];
 
     public function items(): HasMany {
@@ -76,5 +103,9 @@ class Invoice extends Model {
 
     public function company(): BelongsTo {
         return $this->belongsTo( Company::class );
+    }
+
+    public function scopeForActiveCompany( Builder $query, int $companyId ): Builder {
+        return $query->where( 'company_id', $companyId );
     }
 }

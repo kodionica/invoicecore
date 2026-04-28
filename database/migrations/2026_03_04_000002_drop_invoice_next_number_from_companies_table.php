@@ -9,17 +9,21 @@ return new class extends Migration {
      * Run the migrations.
      */
     public function up(): void {
-        Schema::table( 'companies', static function ( Blueprint $table ) {
-            $table->dropColumn( 'invoice_next_number' );
-        } );
+        if ( Schema::hasColumn( 'companies', 'invoice_next_number' ) ) {
+            Schema::table( 'companies', static function ( Blueprint $table ) {
+                $table->dropColumn( 'invoice_next_number' );
+            } );
+        }
     }
 
     /**
      * Reverse the migrations.
      */
     public function down(): void {
-        Schema::table( 'companies', static function ( Blueprint $table ) {
-            $table->unsignedInteger( 'invoice_next_number' )->default( 1 );
-        } );
+        if ( ! Schema::hasColumn( 'companies', 'invoice_next_number' ) ) {
+            Schema::table( 'companies', static function ( Blueprint $table ) {
+                $table->unsignedInteger( 'invoice_next_number' )->default( 1 );
+            } );
+        }
     }
 };

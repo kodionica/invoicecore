@@ -21,7 +21,7 @@ class ClientController extends Controller {
             ], 422 );
         }
 
-        $clients = $company->clients()->get();
+        $clients = Client::query()->forActiveCompany( $company->id )->get();
 
         return response()->json( $clients );
     }
@@ -49,7 +49,7 @@ class ClientController extends Controller {
      * Display the specified resource.
      */
     public function show( Client $client ) {
-        $this->authorizeClient( $client );
+        $this->authorize( 'view', $client );
 
         return response()->json( $client );
     }
@@ -58,7 +58,7 @@ class ClientController extends Controller {
      * Update the specified resource in storage.
      */
     public function update( UpdateClientRequest $request, Client $client ) {
-        $this->authorizeClient( $client );
+        $this->authorize( 'update', $client );
         $data = $request->validated();
 
         $client->fill( $data );
@@ -75,16 +75,10 @@ class ClientController extends Controller {
      * Remove the specified resource from storage.
      */
     public function destroy( Client $client ) {
-        $this->authorizeClient( $client );
+        $this->authorize( 'delete', $client );
 
         $client->delete();
 
         return response()->noContent();
-    }
-
-    private function authorizeClient( Client $client ): void {
-        if ( $client->company?->user_id !== auth()->id() ) {
-            abort( 404 );
-        }
     }
 }

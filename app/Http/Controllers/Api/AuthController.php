@@ -41,7 +41,10 @@ class AuthController extends Controller
 
         if (! Auth::attempt([$loginType => $credentials['login'], 'password' => $credentials['password']], $request->boolean('remember'))) {
             return response()->json([
-                'message' => 'Invalid credentials',
+                'message' => 'Neispravni kredencijali.',
+                'errors' => [
+                    'login' => ['Neispravni kredencijali.'],
+                ],
             ], 422);
         }
 

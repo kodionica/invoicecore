@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
     Building2,
     Users,
@@ -38,6 +38,7 @@ function StatsCard({title, value, subValue, icon: Icon, trend, trendValue}: { ti
 
 export default function Dashboard() {
     const {companies, clients, invoices, activeCompanyId, meta} = useApp();
+    const [revenueView, setRevenueView] = useState<'rsd' | 'original'>('rsd');
     const today = new Date();
 
     // Filter data for active company
@@ -46,6 +47,10 @@ export default function Dashboard() {
     const activeClients: Client[] = activeCompanyId ? clients.filter(c => c.companyId === activeCompanyId) : [];
     const activeInvoices: Invoice[] = activeCompanyId ? invoices.filter(i => i.companyId === activeCompanyId) : [];
     const defaultCurrencyInvoices = activeInvoices.filter(invoice => (invoice.currency ?? defaultCurrency) === defaultCurrency);
+    const getInvoiceAmount = (invoice: Invoice) => (
+        revenueView === 'rsd' ? (invoice.totalRsd ?? invoice.total) : invoice.total
+    );
+    const primaryCurrency = revenueView === 'rsd' ? 'RSD' : defaultCurrency;
 
     const startOfCurrentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
@@ -101,20 +106,26 @@ export default function Dashboard() {
     const sentInvoicesTrendValue = `${sentInvoicesPercentChange >= 0 ? '+' : ''}${sentInvoicesPercentChange.toFixed(1)}%`;
 
     // Calculate stats
-    const currentMonthRevenue = defaultCurrencyInvoices
+    const currentMonthRevenue = (revenueView === 'rsd' ? activeInvoices : defaultCurrencyInvoices)
         .filter(invoice => isWithinRange(invoice.date, startOfCurrentMonth, startOfNextMonth))
-        .reduce((acc, inv) => acc + inv.total, 0);
-    const previousMonthRevenue = defaultCurrencyInvoices
+        .reduce((acc, inv) => acc + getInvoiceAmount(inv), 0);
+    const previousMonthRevenue = (revenueView === 'rsd' ? activeInvoices : defaultCurrencyInvoices)
         .filter(invoice => isWithinRange(invoice.date, startOfPreviousMonth, startOfCurrentMonth))
-        .reduce((acc, inv) => acc + inv.total, 0);
+        .reduce((acc, inv) => acc + getInvoiceAmount(inv), 0);
     const revenuePercentChange = getPercentChange(currentMonthRevenue, previousMonthRevenue);
     const revenueTrend: 'up' | 'down' = revenuePercentChange >= 0 ? 'up' : 'down';
     const showRevenueTrend = currentMonthRevenue > 0 || previousMonthRevenue > 0;
     const revenueTrendValue = `${revenuePercentChange >= 0 ? '+' : ''}${revenuePercentChange.toFixed(1)}%`;
 
-    const paidRevenue = defaultCurrencyInvoices.filter(i => i.status === 'paid').reduce((acc, inv) => acc + inv.total, 0);
-    const pendingRevenue = defaultCurrencyInvoices.filter(i => i.status === 'draft' || i.status === 'sent').reduce((acc, inv) => acc + inv.total, 0);
-    const overdueRevenue = defaultCurrencyInvoices.filter(i => i.status === 'overdue').reduce((acc, inv) => acc + inv.total, 0);
+    const paidRevenue = (revenueView === 'rsd' ? activeInvoices : defaultCurrencyInvoices)
+        .filter(i => i.status === 'paid')
+        .reduce((acc, inv) => acc + getInvoiceAmount(inv), 0);
+    const pendingRevenue = (revenueView === 'rsd' ? activeInvoices : defaultCurrencyInvoices)
+        .filter(i => i.status === 'draft' || i.status === 'sent')
+        .reduce((acc, inv) => acc + getInvoiceAmount(inv), 0);
+    const overdueRevenue = (revenueView === 'rsd' ? activeInvoices : defaultCurrencyInvoices)
+        .filter(i => i.status === 'overdue')
+        .reduce((acc, inv) => acc + getInvoiceAmount(inv), 0);
 
     const otherCurrencyTotals = activeInvoices
         .filter(invoice => isWithinRange(invoice.date, startOfCurrentMonth, startOfNextMonth))
@@ -127,10 +138,12 @@ export default function Dashboard() {
     const otherCurrencySummary = Object.entries(otherCurrencyTotals)
         .map(([currency, total]) => formatCurrency(total, currency))
         .join(' • ');
-    const hasOtherCurrencies = otherCurrencySummary.length > 0;
+    const hasOtherCurrencies = revenueView === 'original' && otherCurrencySummary.length > 0;
 
     const monthBuckets = buildLastMonths(12);
-    const currencyCodes = Array.from(new Set(activeInvoices.map(inv => inv.currency ?? defaultCurrency))).sort();
+    const currencyCodes = revenueView === 'rsd'
+        ? ['RSD']
+        : Array.from(new Set(activeInvoices.map(inv => inv.currency ?? defaultCurrency))).sort();
     const revenueByMonth = monthBuckets.map(bucket => {
         const row: Record<string, string | number> = {name: bucket.name, key: bucket.key};
         currencyCodes.forEach(code => {
@@ -146,9 +159,9 @@ export default function Dashboard() {
         const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
         const index = monthIndexMap.get(key);
         if (index === undefined) return;
-        const currency = invoice.currency ?? defaultCurrency;
+        const currency = revenueView === 'rsd' ? 'RSD' : (invoice.currency ?? defaultCurrency);
         const current = Number(revenueByMonth[index][currency] ?? 0);
-        revenueByMonth[index][currency] = current + invoice.total;
+        revenueByMonth[index][currency] = current + getInvoiceAmount(invoice);
     });
     const currencyColors = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#22c55e', '#f97316'];
 
@@ -186,7 +199,7 @@ export default function Dashboard() {
                 />
                 <StatsCard
                     title="Ukupan Prihod"
-                    value={formatCurrency(currentMonthRevenue, defaultCurrency)}
+                    value={formatCurrency(currentMonthRevenue, primaryCurrency)}
                     subValue={hasOtherCurrencies ? `Ostale valute (ovaj mesec): ${otherCurrencySummary}` : undefined}
                     icon={DollarSign}
                     trend={showRevenueTrend ? revenueTrend : undefined}
@@ -205,7 +218,25 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Revenue Chart */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
-                    <h3 className="text-lg font-bold text-gray-900 mb-4">Prihod kroz vreme</h3>
+                    <div className="mb-4 flex items-center justify-between">
+                        <h3 className="text-lg font-bold text-gray-900">Prihod kroz vreme</h3>
+                        <div className="inline-flex rounded-md border border-gray-200 p-1 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setRevenueView('rsd')}
+                                className={`rounded px-2 py-1 ${revenueView === 'rsd' ? 'bg-indigo-600 text-white' : 'text-gray-600'}`}
+                            >
+                                RSD
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRevenueView('original')}
+                                className={`rounded px-2 py-1 ${revenueView === 'original' ? 'bg-indigo-600 text-white' : 'text-gray-600'}`}
+                            >
+                                Original
+                            </button>
+                        </div>
+                    </div>
                     <div className="h-80 w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={revenueByMonth}>
@@ -268,7 +299,7 @@ export default function Dashboard() {
                                     ></span>
                                     {entry.name}
                                 </span>
-                                <span className="font-bold">{formatCurrency(entry.value, defaultCurrency)}</span>
+                                <span className="font-bold">{formatCurrency(entry.value, primaryCurrency)}</span>
                             </div>
                         ))}
                         {hasOtherCurrencies && (
@@ -307,7 +338,9 @@ export default function Dashboard() {
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client?.name || 'Nepoznat'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(invoice.date).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(invoice.dueDate).toLocaleDateString()}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{formatCurrency(invoice.total, invoice.currency)}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+                                        {formatCurrency(getInvoiceAmount(invoice), revenueView === 'rsd' ? 'RSD' : invoice.currency)}
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${invoiceStatusBadgeClass[invoice.status]}`}>
                         {statusLabelMap[invoice.status] ?? invoice.status}

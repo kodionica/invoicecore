@@ -46,7 +46,7 @@ class CompanyController extends Controller {
      * Display the specified resource.
      */
     public function show( Company $company ) {
-        $this->authorizeCompany( $company );
+        $this->authorize( 'view', $company );
 
         return response()->json( $company );
     }
@@ -55,7 +55,7 @@ class CompanyController extends Controller {
      * Update the specified resource in storage.
      */
     public function update( UpdateCompanyRequest $request, Company $company ) {
-        $this->authorizeCompany( $company );
+        $this->authorize( 'update', $company );
         $data = $request->validated();
 
         // If user wants to remove the logo
@@ -91,7 +91,7 @@ class CompanyController extends Controller {
      * Remove the specified resource from storage.
      */
     public function destroy( Company $company ) {
-        $this->authorizeCompany( $company );
+        $this->authorize( 'delete', $company );
 
         $user = auth()->user();
 
@@ -102,11 +102,5 @@ class CompanyController extends Controller {
         $company->delete();
 
         return response()->noContent();
-    }
-
-    private function authorizeCompany( Company $company ): void {
-        if ( $company->user_id !== auth()->id() ) {
-            abort( 404 );
-        }
     }
 }

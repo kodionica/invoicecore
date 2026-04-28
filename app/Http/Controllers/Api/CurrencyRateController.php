@@ -3,29 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\ExchangeRateService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Http;
 
 class CurrencyRateController extends Controller {
-    public function __invoke( string $currency ): JsonResponse {
-        $code = strtoupper( trim( $currency ) );
-
-        if ( ! preg_match( '/^[A-Z]{3}$/', $code ) ) {
+    public function __invoke( string $currency, ExchangeRateService $exchangeRateService ): JsonResponse {
+        try {
+            $rate = $exchangeRateService->getTodayRate( $currency );
+        } catch ( \InvalidArgumentException $exception ) {
             return response()->json( [
-                'message' => 'Neispravan kod valute.',
+                'message' => $exception->getMessage(),
             ], 422 );
-        }
-
-        $response = Http::timeout( 10 )
-            ->acceptJson()
-            ->get( "https://kurs.resenje.org/api/v1/currencies/{$code}/rates/today" );
-
-        if ( ! $response->ok() ) {
+        } catch ( \Throwable $exception ) {
             return response()->json( [
                 'message' => 'Neuspesno preuzimanje dnevnog kursa.',
             ], 502 );
         }
 
-        return response()->json( $response->json() );
+        return response()->json( $rate['raw'] !== [] ? $rate['raw'] : [
+            'currency'        => $rate['currency'],
+            'exchange_middle' => $rate['exchange_middle'],
+            'date'            => $rate['date'],
+        ] );
     }
 }

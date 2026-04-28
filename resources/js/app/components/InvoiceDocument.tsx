@@ -54,6 +54,9 @@ export interface InvoiceDocumentInvoice {
     paymentMethod: string;
     items: InvoiceDocumentItem[];
     total: number;
+    totalOriginal?: number;
+    totalRsd?: number;
+    fxRateToRsd?: number;
 }
 
 export interface InvoiceDocumentMeta {
@@ -96,6 +99,7 @@ export default function InvoiceDocument({
         ? safeMeta.payment_methods.find(method => method.key === invoice.paymentMethod)?.label
         : safeMeta.payment_methods?.[invoice.paymentMethod];
 
+    const hasStoredFxRate = typeof invoice.fxRateToRsd === 'number' && invoice.fxRateToRsd > 0;
     const {data: exchangeRateData, error: exchangeRateError} = useQuery({
         queryKey: ['currency', resolvedCurrency],
         queryFn: async () => {
@@ -106,10 +110,10 @@ export default function InvoiceDocument({
 
             return response.json();
         },
-        enabled: shouldConvertToRSD
+        enabled: shouldConvertToRSD && !hasStoredFxRate
     });
 
-    const exchangeRate = exchangeRateData?.exchange_middle;
+    const exchangeRate = hasStoredFxRate ? invoice.fxRateToRsd : exchangeRateData?.exchange_middle;
     const amountInRSD = shouldConvertToRSD && exchangeRate
         ? invoice.total * exchangeRate
         : invoice.total;

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -63,5 +64,9 @@ class Client extends Model {
 
     public function invoices(): HasMany {
         return $this->hasMany( Invoice::class );
+    }
+
+    public function scopeForActiveCompany( Builder $query, int $companyId ): Builder {
+        return $query->where( 'company_id', $companyId );
     }
 }

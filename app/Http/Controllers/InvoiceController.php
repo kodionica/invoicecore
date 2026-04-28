@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Http\Requests\StoreInvoiceRequest;
 use App\Mail\InvoiceMail;
 use App\Models\Invoice;
+use App\Services\ExchangeRateService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -31,7 +32,8 @@ class InvoiceController extends Controller {
             ], 422 );
         }
 
-        $invoices = $active_company->invoices()
+        $invoices = Invoice::query()
+            ->forActiveCompany( $active_company->id )
             ->with( [ 'client', 'items' ] )
             ->latest()
             ->get();
@@ -79,7 +81,7 @@ class InvoiceController extends Controller {
      *
      * @throws \Throwable
      */
-    public function store( StoreInvoiceRequest $request ) {
+    public function store( StoreInvoiceRequest $request, ExchangeRateService $exchangeRateService ) {
         $attrs          = $request->validated();
         $user           = auth()->user();
         $active_company = $user->activeCompany;
@@ -96,7 +98,7 @@ class InvoiceController extends Controller {
             ], 422 );
         }
 
-        $invoice = DB::transaction( static function () use ( $attrs, $active_company ) {
+        $invoice = DB::transaction( static function () use ( $attrs, $active_company, $exchangeRateService ) {
             $now = now();
             $year = (int) $now->year;
             $month = (int) $now->month;
@@ -158,6 +160,38 @@ class InvoiceController extends Controller {
             $attrs[ 'total' ]          = 0;
             $attrs[ 'status' ]         = InvoiceStatus::DRAFT;
 
+            $currency = strtoupper( (string) ( $attrs['currency'] ?? 'RSD' ) );
+            $ratePayload = $exchangeRateService->getTodayRate( $currency );
+            $fxRateToRsd = (float) $ratePayload['exchange_middle'];
+
+            $subtotalOriginal = 0.0;
+            $taxOriginal = 0.0;
+
+            foreach ( $attrs[ 'items' ] as $item ) {
+                $subTotal  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
+                $taxAmount = $active_company->vat_enabled
+                    ? ( ( $subTotal * (float) $active_company->default_tax_percent ) / 100 )
+                    : 0.0;
+
+                $subtotalOriginal += $subTotal;
+                $taxOriginal += $taxAmount;
+            }
+
+            $totalOriginal = $subtotalOriginal + $taxOriginal;
+            $subtotalRsd = $currency === 'RSD' ? $subtotalOriginal : $subtotalOriginal * $fxRateToRsd;
+            $taxRsd = $currency === 'RSD' ? $taxOriginal : $taxOriginal * $fxRateToRsd;
+            $totalRsd = $currency === 'RSD' ? $totalOriginal : $totalOriginal * $fxRateToRsd;
+
+            $attrs['fx_rate_to_rsd'] = $fxRateToRsd;
+            $attrs['fx_provider'] = (string) ( $ratePayload['provider'] ?? 'unknown' );
+            $attrs['fx_date'] = (string) ( $ratePayload['date'] ?? now()->toDateString() );
+            $attrs['subtotal_original'] = round( $subtotalOriginal, 2 );
+            $attrs['tax_original'] = round( $taxOriginal, 2 );
+            $attrs['total_original'] = round( $totalOriginal, 2 );
+            $attrs['subtotal_rsd'] = round( $subtotalRsd, 2 );
+            $attrs['tax_rsd'] = round( $taxRsd, 2 );
+            $attrs['total_rsd'] = round( $totalRsd, 2 );
+
             $invoice = Invoice::create( $attrs );
 
             foreach ( $attrs[ 'items' ] as $item ) {
@@ -190,7 +224,7 @@ class InvoiceController extends Controller {
      * Display the specified resource.
      */
     public function show( Invoice $invoice ) {
-        $this->authorizeInvoice( $invoice );
+        $this->authorize( 'view', $invoice );
         $user          = auth()->user();
         $invoice_items = $invoice->items;
         $company       = $invoice->company;
@@ -206,7 +240,7 @@ class InvoiceController extends Controller {
      * @return \Symfony\Component\HttpFoundation\StreamedResponse
      */
     public function generatePDF( Request $request, Invoice $invoice ) {
-        $this->authorizeInvoice( $invoice );
+        $this->authorize( 'view', $invoice );
         $force_refresh = $request->boolean( 'refresh' );
         $relative_path = $this->ensureInvoicePdf( $invoice, $force_refresh );
         $file_name     = "faktura-{$invoice->invoice_number}.pdf";
@@ -215,7 +249,7 @@ class InvoiceController extends Controller {
     }
 
     public function sendEmail( Invoice $invoice ) {
-        $this->authorizeInvoice( $invoice );
+        $this->authorize( 'view', $invoice );
 
         $client = $invoice->client;
         if ( ! $client?->email ) {
@@ -248,7 +282,7 @@ class InvoiceController extends Controller {
      * Update the specified resource in storage.
      */
     public function update( Request $request, Invoice $invoice ) {
-        $this->authorizeInvoice( $invoice );
+        $this->authorize( 'update', $invoice );
 
         $data = $request->validate( [
             'status'         => [ 'sometimes', Rule::in( array_map( static fn( $case ) => $case->value, InvoiceStatus::cases() ) ) ],
@@ -270,17 +304,11 @@ class InvoiceController extends Controller {
      * Remove the specified resource from storage.
      */
     public function destroy( Invoice $invoice ) {
-        $this->authorizeInvoice( $invoice );
+        $this->authorize( 'delete', $invoice );
 
         $invoice->delete();
 
         return response()->noContent();
-    }
-
-    private function authorizeInvoice( Invoice $invoice ): void {
-        if ( $invoice->company?->user_id !== auth()->id() ) {
-            abort( 404 );
-        }
     }
 
     private function ensureInvoicePdf( Invoice $invoice, bool $force_refresh = false ): string {
@@ -377,8 +405,11 @@ class InvoiceController extends Controller {
                 'date'     => (string) $invoice->issue_date,
                 'dueDate'  => (string) $invoice->due_date,
                 'currency' => $invoice->currency,
+                'fxRateToRsd' => (float) ( $invoice->fx_rate_to_rsd ?? 1 ),
                 'paymentMethod' => (string) $invoice->payment_method,
                 'total'    => (float) $invoice->total,
+                'totalOriginal' => (float) ( $invoice->total_original ?? $invoice->total ),
+                'totalRsd' => (float) ( $invoice->total_rsd ?? $invoice->total ),
                 'items'    => $invoice_items->map( static function ( $item ) {
                     return [
                         'id'          => $item->id,
