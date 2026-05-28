@@ -11,6 +11,7 @@ import {Client, Invoice, useApp} from '../context/AppContext';
 import {BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend} from 'recharts';
 import {formatCurrency} from "../utils/format";
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusBadgeClass} from '../utils/invoiceStatus';
+import {useNavigate} from "react-router";
 
 function StatsCard({title, value, subValue, icon: Icon, trend, trendValue}: { title: string, value: string, subValue?: string, icon: any, trend?: 'up' | 'down', trendValue?: string }) {
     return (
@@ -40,6 +41,7 @@ export default function Dashboard() {
     const {companies, clients, invoices, activeCompanyId, meta} = useApp();
     const [revenueView, setRevenueView] = useState<'rsd' | 'original'>('rsd');
     const today = new Date();
+    const navigate = useNavigate();
 
     // Filter data for active company
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
@@ -334,7 +336,9 @@ export default function Dashboard() {
                             const client = clients.find(c => c.id === invoice.clientId);
                             return (
                                 <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#{invoice.number}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        <button onClick={() => navigate(`/dashboard/invoices/${invoice.id}`)}>#{invoice.number}</button>
+                                    </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{client?.name || 'Nepoznat'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(invoice.date).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(invoice.dueDate).toLocaleDateString()}</td>

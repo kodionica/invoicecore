@@ -277,6 +277,10 @@ const normalizeClient = (client: any): Client => {
 
 const normalizeInvoice = (invoice: any): Invoice => {
     const items = Array.isArray(invoice.items) ? invoice.items : [];
+    const total = Number(invoice.total ?? 0);
+    const totalOriginal = Number(invoice.total_original ?? 0);
+    const totalRsd = Number(invoice.total_rsd ?? 0);
+
     return {
         id: Number(invoice.id),
         companyId: Number(invoice.company_id ?? 0),
@@ -287,9 +291,9 @@ const normalizeInvoice = (invoice: any): Invoice => {
         currency: invoice.currency ?? 'RSD',
         status: invoice.status as InvoiceStatus,
         paymentMethod: invoice.payment_method,
-        total: Number(invoice.total ?? 0),
-        totalOriginal: Number(invoice.total_original ?? invoice.total ?? 0),
-        totalRsd: Number(invoice.total_rsd ?? invoice.total ?? 0),
+        total,
+        totalOriginal: totalOriginal > 0 ? totalOriginal : total,
+        totalRsd: totalRsd > 0 ? totalRsd : total,
         fxRateToRsd: invoice.fx_rate_to_rsd !== undefined && invoice.fx_rate_to_rsd !== null
             ? Number(invoice.fx_rate_to_rsd)
             : undefined,
