@@ -140,11 +140,11 @@ export default function InvoiceDocument({
         "V:01",
         "C:1",
         `R:${company.bank_account.replaceAll('-', '').trim()}`,
-        `N:${company.name}\n${company.address}, ${company.city}`,
+        `N:${company.name}`,
         `I:${formatCurrencyAlt({amount: amountInRSD})}`,
         `P:${cname}\n ${caddress}, ${ccity}`,
         `SF:${getPaymentCode(client_type)?.code}`,
-        `S:${invoice.items[0]?.description}`,
+        `S:${invoice.items[0]?.description.substring(0, 35)}`,
         `RO:00${invoice.number}`
     ];
 
