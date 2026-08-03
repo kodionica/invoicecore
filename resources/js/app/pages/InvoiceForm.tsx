@@ -1,9 +1,10 @@
-import {useEffect, useMemo} from 'react';
+import React, {useEffect, useMemo} from 'react';
 import {useForm, useFieldArray} from 'react-hook-form';
 import {useNavigate} from 'react-router';
 import {useApp} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft, Plus, Trash2, Calendar, User} from 'lucide-react';
+import {formatCurrency} from "../utils/format";
 
 interface InvoiceFormData {
     clientId: string;
@@ -19,16 +20,23 @@ export default function InvoiceForm() {
     const {clients, addInvoice, activeCompanyId, companies, meta, getNextInvoiceNumber} = useApp();
     const navigate = useNavigate();
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
-    const todayString = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const todayString = today.toISOString().split('T')[0];
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const lastDayOfMonthString = lastDayOfMonth.toISOString().split('T')[0];
 
     const {register, control, handleSubmit, watch, setValue, formState: {errors, dirtyFields}} = useForm<InvoiceFormData>({
         defaultValues: {
             number: '',
-            date: todayString,
-            dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            date: lastDayOfMonthString,
+            dueDate: new Date(lastDayOfMonth + (15 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0],
             currency: '',
             paymentMethod: '',
-            items: [{description: 'Usluga', quantity: 1, price: 100}]
+            items: [{
+                description: `Web razvoj, računarsko programiranje i IT podrška po Ugovoru o poslovno-tehničkoj saradnji za ${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}. godine / {{ HOURS }} h / {{ PRICE }} EUR`,
+                quantity: 1,
+                price: 100
+            }]
         }
     });
 
@@ -106,8 +114,6 @@ export default function InvoiceForm() {
             toast.error('Molimo izaberite aktivnu firmu');
             return;
         }
-
-        console.log(data)
 
         await addInvoice({
             clientId: Number(data.clientId),
@@ -299,7 +305,7 @@ export default function InvoiceForm() {
                             <div className="flex justify-end text-right">
                                 <div>
                                     <p className="text-sm text-gray-500">Ukupno za plaćanje</p>
-                                    <p className="text-3xl font-bold text-gray-900">{currencySymbol || ''}{totalAmount.toFixed(2)}</p>
+                                    <p className="text-3xl font-bold text-gray-900">{formatCurrency(totalAmount, currencySymbol)}</p>
                                 </div>
                             </div>
                         </div>
