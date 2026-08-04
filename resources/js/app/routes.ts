@@ -12,6 +12,7 @@ import InvoiceForm from "./pages/InvoiceForm";
 import InvoiceDetails from "./pages/InvoiceDetails";
 import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
+import Turnover from "./pages/Turnover";
 
 export const router = createBrowserRouter([
   {
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
     Component: DashboardLayout,
     children: [
       { index: true, Component: Dashboard },
+      { path: "turnover", Component: Turnover },
       { path: "clients", Component: Clients },
       { path: "clients/new", Component: ClientForm },
       { path: "clients/:id", Component: ClientForm },

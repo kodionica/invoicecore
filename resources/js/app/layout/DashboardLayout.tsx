@@ -11,7 +11,7 @@ import {
     ChevronDown,
     Bell,
     Search,
-    Menu
+    Menu, CurrencyIcon
 } from 'lucide-react';
 import {useApp} from '../context/AppContext';
 import clsx from 'clsx';
@@ -82,6 +82,7 @@ export default function DashboardLayout() {
 
     const navItems = [
         {to: "/dashboard", icon: LayoutDashboard, label: "Kontrolna Tabla", end: true},
+        {to: "/dashboard/turnover", icon: CurrencyIcon, label: "Promet"},
         {to: "/dashboard/clients", icon: Users, label: "Klijenti"},
         {to: "/dashboard/invoices", icon: FileText, label: "Fakture"},
         {to: "/dashboard/companies", icon: Building2, label: "Moje Firme"},
