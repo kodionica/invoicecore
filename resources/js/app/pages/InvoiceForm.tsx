@@ -4,7 +4,7 @@ import {useNavigate} from 'react-router';
 import {useApp} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft, Plus, Trash2, Calendar, User} from 'lucide-react';
-import {formatCurrency} from "../utils/format";
+import {formatCurrency, formatLocalDate} from "../utils/format";
 
 interface InvoiceFormData {
     clientId: string;
@@ -21,9 +21,9 @@ export default function InvoiceForm() {
     const navigate = useNavigate();
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
     const today = new Date();
-    const todayString = today.toISOString().split('T')[0];
+    const todayString = formatLocalDate(today);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    const lastDayOfMonthString = lastDayOfMonth.toISOString().split('T')[0];
+    const lastDayOfMonthString = formatLocalDate(lastDayOfMonth);
 
     const {register, control, handleSubmit, watch, setValue, formState: {errors, dirtyFields}} = useForm<InvoiceFormData>({
         defaultValues: {
