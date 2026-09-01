@@ -2,10 +2,12 @@ import React from 'react';
 import clsx from 'clsx';
 import {format} from 'date-fns';
 import {srLatn} from 'date-fns/locale';
-import {formatCurrency, formatCurrencyAlt} from '../utils/format';
+import {formatCurrency} from '../utils/format';
 import {MetaData} from "../context/AppContext";
 import {useQuery} from "@tanstack/react-query";
 import {toast} from "sonner";
+import {buildIpsQrBodyParams, fetchIpsQrCodeResponse} from '../utils/ipsQrCode';
+import {resolveInvoiceDocumentState} from '../utils/invoiceDocumentState';
 
 export interface InvoiceDocumentCompany {
     id: number;
@@ -69,7 +71,8 @@ export interface InvoiceDocumentProps {
     company: InvoiceDocumentCompany;
     currency?: string | null;
     className?: string;
-    meta?: MetaData | null
+    meta?: MetaData | null;
+    qrCode?: string | null;
 }
 
 export default function InvoiceDocument({
@@ -78,7 +81,8 @@ export default function InvoiceDocument({
                                             company,
                                             currency,
                                             className,
-                                            meta
+                                            meta,
+                                            qrCode: providedQrCode,
                                         }: InvoiceDocumentProps) {
     const safeMeta = meta ?? {
         countries: {},
@@ -86,20 +90,23 @@ export default function InvoiceDocument({
         payment_methods: {},
         client_types: [],
     };
-    const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number, client_type} = client;
-    const resolvedCurrency = currency || invoice.currency || company.currency || 'RSD';
+    const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number} = client;
+    const {
+        resolvedCurrency,
+        isDomesticPayment,
+        shouldConvertToRSD,
+        hasStoredFxRate,
+        clientTypeCode,
+        amountInRSD,
+        canGenerateQrCode,
+    } = resolveInvoiceDocumentState({invoice, client, company, currency, meta});
     const vatRate = 0.2;
     const vatAmount = company.vat_enabled ? invoice.total * vatRate : 0;
     const totalWithVat = company.vat_enabled ? invoice.total + vatAmount : invoice.total;
-    const isDomesticPayment = company.country === 'Srbija' && ccountry === 'Srbija';
     const isExternalPayment = company.country !== ccountry;
-    const shouldConvertToRSD = isDomesticPayment && resolvedCurrency !== 'RSD';
-    const getPaymentCode = (currentClientType: string) => safeMeta.client_types?.find(type => type.value === currentClientType);
     const paymentMethodLabel = Array.isArray(safeMeta.payment_methods)
         ? safeMeta.payment_methods.find(method => method.key === invoice.paymentMethod)?.label
         : safeMeta.payment_methods?.[invoice.paymentMethod];
-
-    const hasStoredFxRate = typeof invoice.fxRateToRsd === 'number' && invoice.fxRateToRsd > 0;
     const {data: exchangeRateData, error: exchangeRateError} = useQuery({
         queryKey: ['currency', resolvedCurrency],
         queryFn: async () => {
@@ -114,9 +121,9 @@ export default function InvoiceDocument({
     });
 
     const exchangeRate = hasStoredFxRate ? invoice.fxRateToRsd : exchangeRateData?.exchange_middle;
-    const amountInRSD = shouldConvertToRSD && exchangeRate
+    const resolvedAmountInRSD = shouldConvertToRSD && exchangeRate
         ? invoice.total * exchangeRate
-        : invoice.total;
+        : amountInRSD;
     const displayCurrency = shouldConvertToRSD ? 'RSD' : resolvedCurrency;
     const convertToDisplayAmount = (amount: number) => (
         shouldConvertToRSD && exchangeRate ? amount * exchangeRate : amount
@@ -135,32 +142,21 @@ export default function InvoiceDocument({
         );
     };
 
-    const bodyParams = [
-        "K:PR",
-        "V:01",
-        "C:1",
-        `R:${company.bank_account.replaceAll('-', '').trim()}`,
-        `N:${company.name}`,
-        `I:${formatCurrencyAlt({amount: amountInRSD})}`,
-        `P:${cname}\n ${caddress}, ${ccity}`,
-        `SF:${getPaymentCode(client_type)?.code}`,
-        `S:${invoice.items[0]?.description.substring(0, 35)}`,
-        `RO:00${invoice.number}`
-    ];
-
-    const {data, isLoading, error} = useQuery({
-        queryKey: ['qrCode', invoice.number],
-        queryFn: async () => {
-            const response = await fetch('https://nbs.rs/QRcode/api/qr/v1/generate', {
-                method: 'POST',
-                body: bodyParams.join('|'),
-            });
-            return response.json();
-        },
-        enabled: isDomesticPayment && (!shouldConvertToRSD || Boolean(exchangeRate))
+    const bodyParams = buildIpsQrBodyParams({
+        company,
+        client,
+        invoice,
+        amountInRSD: resolvedAmountInRSD,
+        clientTypeCode,
     });
 
-    const qrCode = data?.s?.code === 0 ? data.i : null;
+    const {data, isLoading, error} = useQuery({
+        queryKey: ['qrCode', invoice.number, bodyParams.join('|')],
+        queryFn: () => fetchIpsQrCodeResponse(bodyParams),
+        enabled: providedQrCode === undefined && canGenerateQrCode && (!shouldConvertToRSD || Boolean(exchangeRate)),
+    });
+
+    const qrCode = providedQrCode ?? (data?.s?.code === 0 ? data.i : null);
 
     if (error) {
         toast.error(error.message);
@@ -170,7 +166,7 @@ export default function InvoiceDocument({
         toast.error(exchangeRateError.message);
     }
 
-    if (isDomesticPayment && !isLoading && data?.s?.code !== 0) {
+    if (providedQrCode === undefined && isDomesticPayment && !isLoading && data?.s?.code !== 0 && data !== undefined) {
         toast.error("Nije moguće generisati IPS QR kod: ", {description: data?.e?.join('\n')})
     }
 
@@ -272,7 +268,7 @@ export default function InvoiceDocument({
                             <td rowSpan={3}>
                                 {isDomesticPayment && qrCode && (
                                     <div>
-                                        <img src={`data:image/png;base64, ${qrCode}`} alt="IPS QR Code" className="w-32 h-32"/>
+                                        <img src={`data:image/png;base64,${qrCode}`} alt="IPS QR Code" className="w-32 h-32"/>
                                     </div>
                                 )}
                             </td>

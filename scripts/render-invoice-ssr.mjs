@@ -22,5 +22,5 @@ if (!fs.existsSync(bundlePath)) {
 }
 
 const { render } = await import(pathToFileURL(bundlePath).href);
-const html = render(payload);
+const html = await render(payload);
 process.stdout.write(html);
