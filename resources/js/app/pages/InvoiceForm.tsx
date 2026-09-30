@@ -3,8 +3,8 @@ import {useForm, useFieldArray} from 'react-hook-form';
 import {useNavigate} from 'react-router';
 import {useApp} from '../context/AppContext';
 import {toast} from 'sonner';
-import {ArrowLeft, Plus, Trash2, Calendar, User} from 'lucide-react';
-import {formatCurrency, formatLocalDate} from "../utils/format";
+import {ArrowLeft, Plus, Trash2, Calendar, User}         from 'lucide-react';
+import { addDaysToDate, formatCurrency, formatLocalDate } from "../utils/format";
 
 interface InvoiceFormData {
     clientId: string;
@@ -24,12 +24,13 @@ export default function InvoiceForm() {
     const todayString = formatLocalDate(today);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const lastDayOfMonthString = formatLocalDate(lastDayOfMonth);
+    const dueDate = addDaysToDate(lastDayOfMonth, 15);
 
     const {register, control, handleSubmit, watch, setValue, formState: {errors, dirtyFields}} = useForm<InvoiceFormData>({
         defaultValues: {
             number: '',
             date: lastDayOfMonthString,
-            dueDate: new Date(lastDayOfMonth + (15 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0],
+            dueDate: dueDate.toISOString().split('T')[0],
             currency: '',
             paymentMethod: '',
             items: [{
