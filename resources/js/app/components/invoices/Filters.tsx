@@ -15,7 +15,7 @@ export default function Filters( { searchTerm, onSearchTermChange }: FiltersProp
                 <input
                     type="text"
                     className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2"
-                    placeholder="Pretraži fakture..."
+                    placeholder="Pretraži fakture po klijentu..."
                     value={ searchTerm }
                     onChange={ ( e ) => onSearchTermChange( e.target.value ) }
                 />
