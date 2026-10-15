@@ -1,23 +1,73 @@
 import React, { useState }                                   from 'react';
 import { type InvoiceStatus, useApp }                        from '../context/AppContext';
 import { formatCurrency }                                    from '../utils/format';
-import { Plus, Search, Filter, Download, Eye, Trash2, Send } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Trash2, Send } from 'lucide-react';
 import { Link, useNavigate }                                 from 'react-router';
 import { format }                                            from 'date-fns';
 import { srLatn }                                            from 'date-fns/locale';
 import { toast }                                             from 'sonner';
 import { getInvoiceStatusOptions, invoiceStatusSelectClass } from "../utils/invoiceStatus";
+import SectionHeader                                         from "../components/invoices/SectionHeader";
+import Filters                                               from "../components/invoices/Filters";
+
+type SortColumn = 'status' | 'number' | 'client' | 'date' | 'dueDate' | 'total';
+type SortDirection = 'asc' | 'desc';
 
 export default function Invoices() {
     const { invoices, clients, activeCompanyId, updateInvoiceStatus, deleteInvoice, sendInvoiceEmail, meta } = useApp();
     const navigate = useNavigate();
     const [ searchTerm, setSearchTerm ] = useState( '' );
+    const [ sort, setSort ] = useState<{ column: SortColumn; direction: SortDirection } | null>( null );
     const [ sendingInvoiceId, setSendingInvoiceId ] = useState<number | null>( null );
     const statusOptions = getInvoiceStatusOptions( meta?.invoice_statuses );
 
     const filteredInvoices = invoices
         .filter( inv => ( activeCompanyId ? inv.companyId === activeCompanyId : false ) )
         .filter( inv => inv.number.includes( searchTerm ) || clients.find( c => c.id === inv.clientId )?.name.toLowerCase().includes( searchTerm.toLowerCase() ) );
+
+    const sortedInvoices = sort
+        ? [ ...filteredInvoices ].sort( ( a, b ) => {
+            let comparison: number;
+            switch ( sort.column ) {
+                case 'status':
+                    comparison = a.status.localeCompare( b.status );
+                    break;
+                case 'number':
+                    comparison = a.number.localeCompare( b.number, 'sr', { numeric: true, sensitivity: 'base' } );
+                    break;
+                case 'client':
+                    comparison = ( clients.find( client => client.id === a.clientId )?.name ?? '' )
+                        .localeCompare( clients.find( client => client.id === b.clientId )?.name ?? '', 'sr', { sensitivity: 'base' } );
+                    break;
+                case 'date':
+                case 'dueDate':
+                    comparison = Date.parse( a[sort.column] ) - Date.parse( b[sort.column] );
+                    if ( Number.isNaN( comparison ) ) {
+                        comparison = a[sort.column].localeCompare( b[sort.column] );
+                    }
+                    break;
+                case 'total':
+                    comparison = a.total - b.total;
+                    break;
+            }
+            return sort.direction === 'asc' ? comparison : -comparison;
+        } )
+        : filteredInvoices;
+
+    const toggleSort = ( column: SortColumn ) => {
+        setSort( current => {
+            if ( current?.column !== column ) return { column, direction: 'asc' };
+            if ( current.direction === 'asc' ) return { column, direction: 'desc' };
+            return null;
+        } );
+    };
+
+    const sortIcon = ( column: SortColumn ) => {
+        if ( sort?.column !== column ) return <ArrowUpDown className="ml-1 inline h-3 w-3"/>;
+        return sort.direction === 'asc'
+            ? <ArrowUp className="ml-1 inline h-3 w-3"/>
+            : <ArrowDown className="ml-1 inline h-3 w-3"/>;
+    };
 
     const handleStatusChange = async ( id: number, newStatus: string ) => {
         await updateInvoiceStatus( id, newStatus as any );
@@ -43,72 +93,32 @@ export default function Invoices() {
 
     return (
         <div className="space-y-6">
-            <div className="sm:flex sm:items-center sm:justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Fakture</h1>
-                    <p className="mt-2 text-sm text-gray-700">Pregled svih izdatih faktura.</p>
-                </div>
-                <div className="mt-4 sm:mt-0">
-                    <button
-                        onClick={ () => navigate( '/dashboard/invoices/new' ) }
-                        className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
-                    >
-                        <Plus className="h-4 w-4 mr-2"/>
-                        Nova Faktura
-                    </button>
-                </div>
-            </div>
+            <SectionHeader/>
 
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
-                {/* Filters & Search */ }
-                <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="relative rounded-md shadow-sm max-w-xs w-full">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                            <Search className="h-4 w-4 text-gray-400" aria-hidden="true"/>
-                        </div>
-                        <input
-                            type="text"
-                            className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2"
-                            placeholder="Pretraži fakture..."
-                            value={ searchTerm }
-                            onChange={ ( e ) => setSearchTerm( e.target.value ) }
-                        />
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                            <Filter className="h-4 w-4 mr-2 text-gray-500"/>
-                            Filteri
-                        </button>
-                        <button
-                            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                            <Download className="h-4 w-4 mr-2 text-gray-500"/>
-                            Izvoz
-                        </button>
-                    </div>
-                </div>
+                <Filters searchTerm={ searchTerm } onSearchTermChange={ setSearchTerm } />
 
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                         <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Status
+                            <th scope="col" aria-sort={ sort?.column === 'status' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button type="button" onClick={ () => toggleSort( 'status' ) }>Status{ sortIcon( 'status' ) }</button>
                             </th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Broj Fakture
+                            <th scope="col" aria-sort={ sort?.column === 'number' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button type="button" onClick={ () => toggleSort( 'number' ) }>Broj Fakture{ sortIcon( 'number' ) }</button>
                             </th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Klijent
+                            <th scope="col" aria-sort={ sort?.column === 'client' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button type="button" onClick={ () => toggleSort( 'client' ) }>Klijent{ sortIcon( 'client' ) }</button>
                             </th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Datum
+                            <th scope="col" aria-sort={ sort?.column === 'date' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button type="button" onClick={ () => toggleSort( 'date' ) }>Datum{ sortIcon( 'date' ) }</button>
                             </th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Rok
+                            <th scope="col" aria-sort={ sort?.column === 'dueDate' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button type="button" onClick={ () => toggleSort( 'dueDate' ) }>Rok{ sortIcon( 'dueDate' ) }</button>
                             </th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Iznos
+                            <th scope="col" aria-sort={ sort?.column === 'total' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                <button type="button" onClick={ () => toggleSort( 'total' ) }>Iznos{ sortIcon( 'total' ) }</button>
                             </th>
                             <th scope="col" className="relative px-6 py-3">
                                 <span className="sr-only">Akcije</span>
@@ -116,7 +126,7 @@ export default function Invoices() {
                         </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                        { filteredInvoices.map( ( invoice ) => {
+                        { sortedInvoices.map( ( invoice ) => {
                             const client = clients.find( c => c.id === invoice.clientId );
                             return (
                                 <tr key={ invoice.id } className="hover:bg-gray-50 transition-colors">
@@ -169,7 +179,7 @@ export default function Invoices() {
                         } ) }
                         </tbody>
                     </table>
-                    { filteredInvoices.length === 0 && (
+                    { sortedInvoices.length === 0 && (
                         <div className="text-center py-12 text-gray-500">
                             Nema pronađenih faktura.
                         </div>
