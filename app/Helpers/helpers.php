@@ -14,6 +14,6 @@ function setting( string $key, $default = null ) {
     return cache()->remember(
         "setting:$key",
         3600,
-        fn() => Setting::where( 'key', $key )->value( 'value' ) ?? $default
+        fn() => Setting::whereNull( 'user_id' )->where( 'key', $key )->value( 'value' ) ?? $default
     );
 }

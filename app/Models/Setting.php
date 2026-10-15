@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property int $id
@@ -22,8 +23,13 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Setting extends Model {
     public $timestamps = false;
+
     protected $fillable = [
         'key',
         'value',
     ];
+
+    public function user(): BelongsTo {
+        return $this->belongsTo( User::class );
+    }
 }

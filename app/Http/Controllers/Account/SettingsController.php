@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Account;
 
 use App\Http\Controllers\Controller;
-use App\Models\Setting;
 use Illuminate\Http\Request;
 
 class SettingsController extends Controller {
@@ -16,7 +15,7 @@ class SettingsController extends Controller {
             ],
         ];
 
-        $storedSetting = Setting::query()->where( 'key', 'app_settings' )->first();
+        $storedSetting = $request->user()->settings()->where( 'key', 'app_settings' )->first();
         $stored = [];
         if ( $storedSetting && $storedSetting->value ) {
             $decoded = json_decode( $storedSetting->value, true );
@@ -42,7 +41,7 @@ class SettingsController extends Controller {
             'notifications.clients'  => [ 'sometimes', 'boolean' ],
         ] );
 
-        $storedSetting = Setting::query()->where( 'key', 'app_settings' )->first();
+        $storedSetting = $request->user()->settings()->where( 'key', 'app_settings' )->first();
         $current = [];
         if ( $storedSetting && $storedSetting->value ) {
             $decoded = json_decode( $storedSetting->value, true );
@@ -60,7 +59,7 @@ class SettingsController extends Controller {
             );
         }
 
-        Setting::query()->updateOrCreate(
+        $request->user()->settings()->updateOrCreate(
             [ 'key' => 'app_settings' ],
             [ 'value' => json_encode( $next, JSON_UNESCAPED_UNICODE ) ]
         );
