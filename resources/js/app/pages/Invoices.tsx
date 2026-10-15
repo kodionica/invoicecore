@@ -1,14 +1,14 @@
-import React, { useState }                                   from 'react';
-import { type InvoiceStatus, useApp }                        from '../context/AppContext';
-import { formatCurrency }                                    from '../utils/format';
+import React, { useState }                                    from 'react';
+import { type InvoiceStatus, useApp }                         from '../context/AppContext';
+import { formatCurrency }                                     from '../utils/format';
 import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Trash2, Send } from 'lucide-react';
-import { Link, useNavigate }                                 from 'react-router';
-import { format }                                            from 'date-fns';
-import { srLatn }                                            from 'date-fns/locale';
-import { toast }                                             from 'sonner';
-import { getInvoiceStatusOptions, invoiceStatusSelectClass } from "../utils/invoiceStatus";
-import SectionHeader                                         from "../components/invoices/SectionHeader";
-import Filters                                               from "../components/invoices/Filters";
+import { Link, useNavigate }                                  from 'react-router';
+import { format }                                             from 'date-fns';
+import { srLatn }                                             from 'date-fns/locale';
+import { toast }                                              from 'sonner';
+import { getInvoiceStatusOptions, invoiceStatusSelectClass }  from "../utils/invoiceStatus";
+import SectionHeader                                          from "../components/invoices/SectionHeader";
+import Filters                                                from "../components/invoices/Filters";
 
 type SortColumn = 'status' | 'number' | 'client' | 'date' | 'dueDate' | 'total';
 type SortDirection = 'asc' | 'desc';
@@ -26,7 +26,7 @@ export default function Invoices() {
         .filter( inv => inv.number.includes( searchTerm ) || clients.find( c => c.id === inv.clientId )?.name.toLowerCase().includes( searchTerm.toLowerCase() ) );
 
     const sortedInvoices = sort
-        ? [ ...filteredInvoices ].sort( ( a, b ) => {
+                           ? [ ...filteredInvoices ].sort( ( a, b ) => {
             let comparison: number;
             switch ( sort.column ) {
                 case 'status':
@@ -52,7 +52,7 @@ export default function Invoices() {
             }
             return sort.direction === 'asc' ? comparison : -comparison;
         } )
-        : filteredInvoices;
+                           : filteredInvoices;
 
     const toggleSort = ( column: SortColumn ) => {
         setSort( current => {
@@ -65,8 +65,8 @@ export default function Invoices() {
     const sortIcon = ( column: SortColumn ) => {
         if ( sort?.column !== column ) return <ArrowUpDown className="ml-1 inline h-3 w-3"/>;
         return sort.direction === 'asc'
-            ? <ArrowUp className="ml-1 inline h-3 w-3"/>
-            : <ArrowDown className="ml-1 inline h-3 w-3"/>;
+               ? <ArrowUp className="ml-1 inline h-3 w-3"/>
+               : <ArrowDown className="ml-1 inline h-3 w-3"/>;
     };
 
     const handleStatusChange = async ( id: number, newStatus: string ) => {
@@ -96,28 +96,34 @@ export default function Invoices() {
             <SectionHeader/>
 
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
-                <Filters searchTerm={ searchTerm } onSearchTermChange={ setSearchTerm } />
+                <Filters searchTerm={ searchTerm } onSearchTermChange={ setSearchTerm }/>
 
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                         <tr>
-                            <th scope="col" aria-sort={ sort?.column === 'status' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" aria-sort={ sort?.column === 'status' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <button type="button" onClick={ () => toggleSort( 'status' ) }>Status{ sortIcon( 'status' ) }</button>
                             </th>
-                            <th scope="col" aria-sort={ sort?.column === 'number' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" aria-sort={ sort?.column === 'number' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <button type="button" onClick={ () => toggleSort( 'number' ) }>Broj Fakture{ sortIcon( 'number' ) }</button>
                             </th>
-                            <th scope="col" aria-sort={ sort?.column === 'client' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" aria-sort={ sort?.column === 'client' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <button type="button" onClick={ () => toggleSort( 'client' ) }>Klijent{ sortIcon( 'client' ) }</button>
                             </th>
-                            <th scope="col" aria-sort={ sort?.column === 'date' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" aria-sort={ sort?.column === 'date' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <button type="button" onClick={ () => toggleSort( 'date' ) }>Datum{ sortIcon( 'date' ) }</button>
                             </th>
-                            <th scope="col" aria-sort={ sort?.column === 'dueDate' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" aria-sort={ sort?.column === 'dueDate' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <button type="button" onClick={ () => toggleSort( 'dueDate' ) }>Rok{ sortIcon( 'dueDate' ) }</button>
                             </th>
-                            <th scope="col" aria-sort={ sort?.column === 'total' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' } className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" aria-sort={ sort?.column === 'total' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <button type="button" onClick={ () => toggleSort( 'total' ) }>Iznos{ sortIcon( 'total' ) }</button>
                             </th>
                             <th scope="col" className="relative px-6 py-3">
