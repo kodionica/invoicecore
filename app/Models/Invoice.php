@@ -105,6 +105,10 @@ class Invoice extends Model {
         return $this->belongsTo( Company::class );
     }
 
+    public function kpoEntries(): HasMany {
+        return $this->hasMany( KpoEntry::class, 'source_invoice_id' );
+    }
+
     public function scopeForActiveCompany( Builder $query, int $companyId ): Builder {
         return $query->where( 'company_id', $companyId );
     }

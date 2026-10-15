@@ -10,6 +10,7 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanySwitchController;
 use App\Http\Controllers\InvoiceController;
+use App\Http\Controllers\KpoController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('invoices', InvoiceController::class);
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'generatePDF']);
     Route::post('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail']);
+
+    Route::get('kpo', [KpoController::class, 'index']);
+    Route::post('kpo', [KpoController::class, 'store']);
+    Route::get('kpo/{kpo}', [KpoController::class, 'show']);
+    Route::put('kpo/{kpo}', [KpoController::class, 'update']);
 
     Route::put('profile', [ProfileController::class, 'update']);
     Route::put('password', [PasswordController::class, 'update']);

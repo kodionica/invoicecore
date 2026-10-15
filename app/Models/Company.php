@@ -141,6 +141,10 @@ class Company extends Model {
         return $this->hasMany( Invoice::class );
     }
 
+    public function kpoEntries(): HasMany {
+        return $this->hasMany( KpoEntry::class );
+    }
+
     public function scopeForUser( Builder $query, int $userId ): Builder {
         return $query->where( 'user_id', $userId );
     }
