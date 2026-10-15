@@ -220,6 +220,29 @@ it('previews only missing invoices for the selected year and can include histori
         ->assertJsonPath('entries.0.id', $historicalInvoice->id);
 });
 
+it('uses the current application year when preview year is omitted', function () {
+    [$user, $company, $client] = createKpoContext('kpo-preview-default-year@example.com');
+    $year = (int) now()->year;
+    $invoice = Invoice::create([
+        'company_id' => $company->id,
+        'client_id' => $client->id,
+        'invoice_number' => $year.'-01-default',
+        'issue_date' => now()->startOfYear()->addDays(2)->toDateString(),
+        'due_date' => now()->startOfYear()->addDays(16)->toDateString(),
+        'currency' => 'RSD',
+        'total' => 100,
+        'total_original' => 100,
+        'total_rsd' => 100,
+        'status' => 'paid',
+    ]);
+    $this->actingAs($user);
+
+    $this->getJson('/api/kpo/generation-preview')
+        ->assertOk()
+        ->assertJsonPath('year', $year)
+        ->assertJsonPath('entries.0.id', $invoice->id);
+});
+
 it('generates missing invoice entries idempotently and preserves manual corrections', function () {
     [$user, $company, $client] = createKpoContext('kpo-generate@example.com');
     $invoice = Invoice::create([
@@ -245,6 +268,34 @@ it('generates missing invoice entries idempotently and preserves manual correcti
     $this->postJson('/api/kpo/generate', $payload)->assertOk()->assertJsonCount(0, 'created')->assertJsonCount(1, 'skipped');
     expect((float) $entry->refresh()->adjustment_rsd)->toBe(25.0);
     expect(KpoEntry::query()->where('source_invoice_id', $invoice->id)->count())->toBe(1);
+});
+
+it('uses the current application year when generate year is omitted', function () {
+    [$user, $company, $client] = createKpoContext('kpo-generate-default-year@example.com');
+    $year = (int) now()->year;
+    $entryDate = now()->startOfYear()->addDays(3)->toDateString();
+    $invoice = Invoice::create([
+        'company_id' => $company->id,
+        'client_id' => $client->id,
+        'invoice_number' => $year.'-01-generate-default',
+        'issue_date' => $entryDate,
+        'due_date' => now()->startOfYear()->addDays(17)->toDateString(),
+        'currency' => 'RSD',
+        'total' => 250,
+        'total_original' => 250,
+        'total_rsd' => 250,
+        'status' => 'paid',
+    ]);
+    $this->actingAs($user);
+
+    $this->postJson('/api/kpo/generate', [
+        'entries' => [['invoice_id' => $invoice->id, 'entry_date' => $entryDate]],
+    ])->assertOk()->assertJsonCount(1, 'created');
+
+    $entry = KpoEntry::query()->where('source_invoice_id', $invoice->id)->firstOrFail();
+
+    expect($entry->year)->toBe($year);
+    expect($entry->entry_date->toDateString())->toBe($entryDate);
 });
 
 it('does not infer the year for a historical invoice without an explicit matching entry date', function () {

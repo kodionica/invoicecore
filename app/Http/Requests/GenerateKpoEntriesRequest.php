@@ -6,6 +6,13 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class GenerateKpoEntriesRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->missing('year')) {
+            $this->merge(['year' => now()->year]);
+        }
+    }
+
     public function rules(): array
     {
         return [
