@@ -1,67 +1,43 @@
-import React, {useState} from 'react';
-import {useApp} from '../context/AppContext';
-import {formatCurrency} from '../utils/format';
-import {Plus, Search, Filter, Download, Eye, Trash2, Send} from 'lucide-react';
-import {Link, useNavigate} from 'react-router';
-import {format} from 'date-fns';
-import {srLatn} from 'date-fns/locale';
-import {toast} from 'sonner';
+import React, { useState }                                   from 'react';
+import { type InvoiceStatus, useApp }                        from '../context/AppContext';
+import { formatCurrency }                                    from '../utils/format';
+import { Plus, Search, Filter, Download, Eye, Trash2, Send } from 'lucide-react';
+import { Link, useNavigate }                                 from 'react-router';
+import { format }                                            from 'date-fns';
+import { srLatn }                                            from 'date-fns/locale';
+import { toast }                                             from 'sonner';
+import { getInvoiceStatusOptions, invoiceStatusSelectClass } from "../utils/invoiceStatus";
 
 export default function Invoices() {
-    const {invoices, clients, activeCompanyId, updateInvoiceStatus, deleteInvoice, sendInvoiceEmail} = useApp();
+    const { invoices, clients, activeCompanyId, updateInvoiceStatus, deleteInvoice, sendInvoiceEmail, meta } = useApp();
     const navigate = useNavigate();
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sendingInvoiceId, setSendingInvoiceId] = useState<number | null>(null);
+    const [ searchTerm, setSearchTerm ] = useState( '' );
+    const [ sendingInvoiceId, setSendingInvoiceId ] = useState<number | null>( null );
+    const statusOptions = getInvoiceStatusOptions( meta?.invoice_statuses );
 
     const filteredInvoices = invoices
-        .filter(inv => (activeCompanyId ? inv.companyId === activeCompanyId : false))
-        .filter(inv => inv.number.includes(searchTerm) || clients.find(c => c.id === inv.clientId)?.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        .filter( inv => ( activeCompanyId ? inv.companyId === activeCompanyId : false ) )
+        .filter( inv => inv.number.includes( searchTerm ) || clients.find( c => c.id === inv.clientId )?.name.toLowerCase().includes( searchTerm.toLowerCase() ) );
 
-    const handleStatusChange = async (id: number, newStatus: string) => {
-        await updateInvoiceStatus(id, newStatus as any);
-        toast.success('Status promenjen');
+    const handleStatusChange = async ( id: number, newStatus: string ) => {
+        await updateInvoiceStatus( id, newStatus as any );
+        toast.success( 'Status promenjen' );
     };
 
-    const handleSendEmail = async (id: number, clientName?: string, currentStatus?: string) => {
-        if (sendingInvoiceId) return;
-        setSendingInvoiceId(id);
+    const handleSendEmail = async ( id: number, clientName?: string, currentStatus?: string ) => {
+        if ( sendingInvoiceId ) return;
+        setSendingInvoiceId( id );
         try {
-            await sendInvoiceEmail(id);
-            if (currentStatus !== 'sent') {
-                await updateInvoiceStatus(id, 'sent' as any);
+            await sendInvoiceEmail( id );
+            if ( currentStatus !== 'sent' ) {
+                await updateInvoiceStatus( id, 'sent' as any );
             }
-            toast.success(`Email je poslat${clientName ? ` (${clientName})` : ''}`);
-        } catch (error: any) {
+            toast.success( `Email je poslat${ clientName ? ` (${ clientName })` : '' }` );
+        } catch ( error: any ) {
             const message = error?.response?.data?.message ?? 'Neuspešno slanje emaila.';
-            toast.error(message);
+            toast.error( message );
         } finally {
-            setSendingInvoiceId(null);
-        }
-    };
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'paid':
-                return 'bg-green-100 text-green-800 border-green-200';
-            case 'sent':
-                return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'overdue':
-                return 'bg-red-100 text-red-800 border-red-200';
-            default:
-                return 'bg-gray-100 text-gray-800 border-gray-200';
-        }
-    };
-
-    const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'paid':
-                return 'PLAĆENO';
-            case 'sent':
-                return 'POSLATO';
-            case 'overdue':
-                return 'KASNI';
-            default:
-                return 'NACRT';
+            setSendingInvoiceId( null );
         }
     };
 
@@ -74,7 +50,7 @@ export default function Invoices() {
                 </div>
                 <div className="mt-4 sm:mt-0">
                     <button
-                        onClick={() => navigate('/dashboard/invoices/new')}
+                        onClick={ () => navigate( '/dashboard/invoices/new' ) }
                         className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
                     >
                         <Plus className="h-4 w-4 mr-2"/>
@@ -84,7 +60,7 @@ export default function Invoices() {
             </div>
 
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
-                {/* Filters & Search */}
+                {/* Filters & Search */ }
                 <div className="p-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="relative rounded-md shadow-sm max-w-xs w-full">
                         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -94,8 +70,8 @@ export default function Invoices() {
                             type="text"
                             className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2"
                             placeholder="Pretraži fakture..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
+                            value={ searchTerm }
+                            onChange={ ( e ) => setSearchTerm( e.target.value ) }
                         />
                     </div>
                     <div className="flex gap-2">
@@ -140,58 +116,64 @@ export default function Invoices() {
                         </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredInvoices.map((invoice) => {
-                            const client = clients.find(c => c.id === invoice.clientId);
+                        { filteredInvoices.map( ( invoice ) => {
+                            const client = clients.find( c => c.id === invoice.clientId );
                             return (
-                                <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
+                                <tr key={ invoice.id } className="hover:bg-gray-50 transition-colors">
                                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(invoice.status)}`}>
-                        {getStatusLabel(invoice.status)}
-                      </span>
+                                        <select
+                                            value={ invoice.status }
+                                            onChange={ ( e ) => handleStatusChange( invoice.id, e.target.value as InvoiceStatus ) }
+                                            className={ `block rounded-full border px-3 py-1 w-full text-xs text-center font-semibold ring-1 ring-inset focus:ring-2 focus:ring-indigo-600 sm:text-xs sm:leading-6 ${ invoiceStatusSelectClass[invoice.status] }` }
+                                        >
+                                            { statusOptions.map( ( status ) => (
+                                                <option key={ status.key } value={ status.key }>{ status.label }</option>
+                                            ) ) }
+                                        </select>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        <Link to={`/dashboard/invoices/${invoice.id}`}>#{invoice.number}</Link>
+                                        <Link to={ `/dashboard/invoices/${ invoice.id }` }>#{ invoice.number }</Link>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {client?.id && <Link to={`/dashboard/clients/${client.id}`}>{client.name || 'Nepoznat'}</Link>}
+                                        { client?.id && <Link to={ `/dashboard/clients/${ client.id }` }>{ client.name || 'Nepoznat' }</Link> }
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {format(new Date(invoice.date), 'dd. M. yyyy', {locale: srLatn})}
+                                        { format( new Date( invoice.date ), 'dd. M. yyyy', { locale: srLatn } ) }
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {format(new Date(invoice.dueDate), 'dd. M. yyyy', {locale: srLatn})}
+                                        { format( new Date( invoice.dueDate ), 'dd. M. yyyy', { locale: srLatn } ) }
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                                        {formatCurrency(invoice.total, invoice.currency)}
+                                        { formatCurrency( invoice.total, invoice.currency ) }
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <div className="flex justify-end gap-2">
-                                            <button onClick={() => navigate(`/dashboard/invoices/${invoice.id}`)} className="text-indigo-600 hover:text-indigo-900" title="Pregledaj">
+                                            <button onClick={ () => navigate( `/dashboard/invoices/${ invoice.id }` ) } className="text-indigo-600 hover:text-indigo-900" title="Pregledaj">
                                                 <Eye className="h-4 w-4"/>
                                             </button>
                                             <button
-                                                onClick={() => handleSendEmail(invoice.id, client?.name, invoice.status)}
-                                                className={`text-gray-400 hover:text-gray-600 ${sendingInvoiceId === invoice.id ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                onClick={ () => handleSendEmail( invoice.id, client?.name, invoice.status ) }
+                                                className={ `text-gray-400 hover:text-gray-600 ${ sendingInvoiceId === invoice.id ? 'opacity-60 cursor-not-allowed' : '' }` }
                                                 title="Pošalji"
-                                                disabled={sendingInvoiceId === invoice.id}
+                                                disabled={ sendingInvoiceId === invoice.id }
                                             >
                                                 <Send className="h-4 w-4"/>
                                             </button>
-                                            <button onClick={() => deleteInvoice(invoice.id)} className="text-red-400 hover:text-red-600" title="Obriši">
+                                            <button onClick={ () => deleteInvoice( invoice.id ) } className="text-red-400 hover:text-red-600" title="Obriši">
                                                 <Trash2 className="h-4 w-4"/>
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                             );
-                        })}
+                        } ) }
                         </tbody>
                     </table>
-                    {filteredInvoices.length === 0 && (
+                    { filteredInvoices.length === 0 && (
                         <div className="text-center py-12 text-gray-500">
                             Nema pronađenih faktura.
                         </div>
-                    )}
+                    ) }
                 </div>
             </div>
         </div>
