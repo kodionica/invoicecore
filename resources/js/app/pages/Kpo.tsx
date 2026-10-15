@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {BookOpen, Download, Eye, RefreshCw, Save, X} from 'lucide-react';
+import {ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Download, Eye, RefreshCw, Save, X} from 'lucide-react';
 import {Link} from 'react-router';
 import {toast} from 'sonner';
 import {formatCurrency} from '../utils/format';
@@ -38,6 +38,9 @@ const incomeByType = (entry: KpoEntry, type: 'product' | 'service') => {
 
 const emptyTotals: KpoTotals = {amountRsd: 0, adjustmentRsd: 0, totalRsd: 0};
 
+type SortColumn = 'entryNumber' | 'date' | 'description' | 'product' | 'service' | 'total';
+type SortDirection = 'asc' | 'desc';
+
 export default function Kpo() {
     const {activeCompanyId, loadKpo, downloadKpoPdf, getKpoEntry, updateKpoEntry, previewKpoGeneration, generateKpoEntries} = useApp();
     const [entries, setEntries] = useState<KpoEntry[]>([]);
@@ -58,6 +61,7 @@ export default function Kpo() {
     const [includeHistorical, setIncludeHistorical] = useState(false);
     const [generationPreview, setGenerationPreview] = useState<KpoGenerationPreview | null>(null);
     const [generationSelection, setGenerationSelection] = useState<Record<number, KpoGenerationSelection>>({});
+    const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
     const [form, setForm] = useState({
         entryDate: '',
         incomeType: '',
@@ -70,6 +74,52 @@ export default function Kpo() {
         from: fromDate || undefined,
         to: toDate || undefined,
     }), [fromDate, selectedYear, toDate]);
+
+    const sortedEntries = useMemo(() => {
+        if (!sort) return entries;
+
+        return [...entries].sort((a, b) => {
+            let comparison: number;
+            switch (sort.column) {
+                case 'entryNumber':
+                    comparison = a.entryNumber - b.entryNumber;
+                    break;
+                case 'date':
+                    comparison = Date.parse(a.entryDate) - Date.parse(b.entryDate);
+                    if (Number.isNaN(comparison)) comparison = a.entryDate.localeCompare(b.entryDate);
+                    break;
+                case 'description':
+                    comparison = (a.description ?? '').localeCompare(b.description ?? '', 'sr', {sensitivity: 'base'});
+                    break;
+                case 'product':
+                    comparison = (incomeByType(a, 'product') ?? 0) - (incomeByType(b, 'product') ?? 0);
+                    break;
+                case 'service':
+                    comparison = (incomeByType(a, 'service') ?? 0) - (incomeByType(b, 'service') ?? 0);
+                    break;
+                case 'total':
+                    comparison = a.totalRsd - b.totalRsd;
+                    break;
+            }
+
+            return sort.direction === 'asc' ? comparison : -comparison;
+        });
+    }, [entries, sort]);
+
+    const toggleSort = (column: SortColumn) => {
+        setSort(current => {
+            if (current?.column !== column) return {column, direction: 'asc'};
+            if (current.direction === 'asc') return {column, direction: 'desc'};
+            return null;
+        });
+    };
+
+    const sortIcon = (column: SortColumn) => {
+        if (sort?.column !== column) return <ArrowUpDown className="ml-1 inline h-3 w-3"/>;
+        return sort.direction === 'asc'
+            ? <ArrowUp className="ml-1 inline h-3 w-3"/>
+            : <ArrowDown className="ml-1 inline h-3 w-3"/>;
+    };
 
     const loadEntries = async () => {
         if (!activeCompanyId) {
@@ -326,12 +376,24 @@ export default function Kpo() {
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                         <tr>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">R.br.</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Datum</th>
-                            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Opis</th>
-                            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Proizvodi</th>
-                            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Usluge</th>
-                            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Ukupno</th>
+                            <th scope="col" aria-sort={sort?.column === 'entryNumber' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                <button type="button" onClick={() => toggleSort('entryNumber')}>R.br.{sortIcon('entryNumber')}</button>
+                            </th>
+                            <th scope="col" aria-sort={sort?.column === 'date' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                <button type="button" onClick={() => toggleSort('date')}>Datum{sortIcon('date')}</button>
+                            </th>
+                            <th scope="col" aria-sort={sort?.column === 'description' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                                <button type="button" onClick={() => toggleSort('description')}>Opis{sortIcon('description')}</button>
+                            </th>
+                            <th scope="col" aria-sort={sort?.column === 'product' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                                <button type="button" onClick={() => toggleSort('product')}>Proizvodi{sortIcon('product')}</button>
+                            </th>
+                            <th scope="col" aria-sort={sort?.column === 'service' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                                <button type="button" onClick={() => toggleSort('service')}>Usluge{sortIcon('service')}</button>
+                            </th>
+                            <th scope="col" aria-sort={sort?.column === 'total' ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                                <button type="button" onClick={() => toggleSort('total')}>Ukupno{sortIcon('total')}</button>
+                            </th>
                             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Akcije</th>
                         </tr>
                         </thead>
@@ -340,7 +402,7 @@ export default function Kpo() {
                             <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">Učitavanje KPO evidencije...</td></tr>
                         ) : entries.length === 0 ? (
                             <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">Nema KPO zapisa za izabrani period.</td></tr>
-                        ) : entries.map(entry => (
+                        ) : sortedEntries.map(entry => (
                             <tr key={entry.id} className="transition-colors hover:bg-gray-50">
                                 <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-gray-900">{entry.entryNumber}</td>
                                 <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">{formatDate(entry.entryDate)}</td>

@@ -13,6 +13,7 @@ interface InvoiceFormData {
     dueDate: string;
     currency: string;
     paymentMethod: string;
+    includeInKpo: boolean;
     items: { description: string; quantity: number; price: number }[];
 }
 
@@ -33,6 +34,7 @@ export default function InvoiceForm() {
             dueDate: dueDate.toISOString().split('T')[0],
             currency: '',
             paymentMethod: '',
+            includeInKpo: true,
             items: [{
                 description: `Web razvoj, računarsko programiranje i IT podrška po Ugovoru o poslovno-tehničkoj saradnji za ${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}. godine / {{ HOURS }} h / {{ PRICE }} EUR`,
                 quantity: 1,
@@ -123,6 +125,7 @@ export default function InvoiceForm() {
             dueDate: data.dueDate,
             currency: data.currency,
             paymentMethod: data.paymentMethod,
+            includeInKpo: data.includeInKpo,
             items: data.items.map((item) => ({...item}))
         });
 
@@ -242,6 +245,18 @@ export default function InvoiceForm() {
                         </select>
                         {errors.paymentMethod && <p className="mt-1 text-sm text-red-600">{errors.paymentMethod.message}</p>}
                     </div>
+
+                    <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3 md:col-span-2">
+                        <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+                            <input type="checkbox" {...register('includeInKpo')} className="peer sr-only"/>
+                            <span className="absolute inset-0 rounded-full bg-gray-300 transition peer-checked:bg-indigo-600 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500 peer-focus-visible:ring-offset-2"/>
+                            <span className="relative ml-1 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-5"/>
+                        </span>
+                        <span>
+                            <span className="block text-sm font-medium text-gray-900">Uključi u KPO evidenciju</span>
+                            <span className="block text-xs text-gray-500">Isključite za testne ili druge fakture koje ne treba da budu ponuđene za KPO.</span>
+                        </span>
+                    </label>
                 </div>
 
                 {/* Line Items */}

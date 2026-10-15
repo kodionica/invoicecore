@@ -182,6 +182,19 @@ it('previews only missing invoices for the selected year and can include histori
         'total_rsd' => 200,
         'status' => 'paid',
     ]);
+    Invoice::create([
+        'company_id' => $company->id,
+        'client_id' => $client->id,
+        'invoice_number' => '2026-10-ignored',
+        'issue_date' => '2026-10-21',
+        'due_date' => '2026-11-05',
+        'currency' => 'RSD',
+        'total' => 50,
+        'total_original' => 50,
+        'total_rsd' => 50,
+        'status' => 'paid',
+        'include_in_kpo' => false,
+    ]);
     KpoEntry::create([
         'company_id' => $company->id,
         'source_invoice_id' => $currentInvoice->id,
@@ -226,6 +239,7 @@ it('generates missing invoice entries idempotently and preserves manual correcti
 
     $this->postJson('/api/kpo/generate', $payload)->assertOk()->assertJsonCount(1, 'created')->assertJsonCount(0, 'skipped');
     $entry = KpoEntry::query()->where('source_invoice_id', $invoice->id)->firstOrFail();
+    expect($entry->income_type)->toBe('usluga');
     $this->putJson("/api/kpo/{$entry->id}", ['adjustment_rsd' => 25])->assertOk();
 
     $this->postJson('/api/kpo/generate', $payload)->assertOk()->assertJsonCount(0, 'created')->assertJsonCount(1, 'skipped');

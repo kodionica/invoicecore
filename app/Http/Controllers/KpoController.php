@@ -69,6 +69,7 @@ class KpoController extends Controller
         );
         $query = Invoice::query()
             ->where('company_id', $company->id)
+            ->where('include_in_kpo', true)
             ->whereDoesntHave('kpoEntries')
             ->orderBy('issue_date')
             ->orderBy('invoice_number');
@@ -77,7 +78,7 @@ class KpoController extends Controller
             $query->whereYear('issue_date', $year);
         }
 
-        $invoices = $query->get(['id', 'invoice_number', 'issue_date', 'due_date', 'currency', 'total_original', 'total_rsd', 'status']);
+        $invoices = $query->get(['id', 'invoice_number', 'issue_date', 'due_date', 'currency', 'total_original', 'total_rsd', 'status', 'include_in_kpo']);
 
         return response()->json([
             'year' => $year,

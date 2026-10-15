@@ -74,6 +74,7 @@ class Invoice extends Model {
         'tax_rsd',
         'total_rsd',
         'status',
+        'include_in_kpo',
         'pdf_path',
         'note',
         'company_id',
@@ -91,6 +92,7 @@ class Invoice extends Model {
         'subtotal_rsd'      => 'decimal:2',
         'tax_rsd'           => 'decimal:2',
         'total_rsd'         => 'decimal:2',
+        'include_in_kpo' => 'boolean',
     ];
 
     public function items(): HasMany {

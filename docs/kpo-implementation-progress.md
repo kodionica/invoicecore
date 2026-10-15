@@ -21,6 +21,9 @@
 - Dodat je opt-in preview i inicijalno generisanje KPO zapisa iz postojećih faktura, uključujući fakture nastale pre KPO funkcionalnosti.
 - Generisanje je idempotentno, preskače fakture koje već imaju KPO zapis, čuva postojeće korekcije i prijavljuje kreirane, preskočene i neuspešne stavke.
 - KPO stranica dinamički koristi tekuću kalendarsku godinu kao početni filter; generisanje ne koristi filter godinu kao računovodstveni datum.
+- Generisani invoice-sourced KPO zapisi podrazumevano dobijaju `income_type=usluga`; ručne vrednosti prosleđene kroz API i dalje imaju prednost.
+- KPO tabela koristi isti troklik obrazac sortiranja kao fakture: ASC, DESC, pa podrazumevani redosled.
+- Fakture imaju opciju `include_in_kpo`, podrazumevano uključenu; KPO preview/generisanje i serversko kreiranje iz fakture odbijaju eksplicitno isključene fakture.
 
 ## Izmenjeni fajlovi
 
@@ -36,6 +39,7 @@
 - `app/Http/Requests/KpoPdfRequest.php`
 - `app/Http/Requests/KpoGenerationPreviewRequest.php`
 - `app/Http/Requests/GenerateKpoEntriesRequest.php`
+- `database/migrations/2026_10_15_000003_add_include_in_kpo_to_invoices_table.php`
 - `app/Services/KpoEntryService.php`
 - `app/Http/Controllers/KpoController.php`
 - `routes/api.php`

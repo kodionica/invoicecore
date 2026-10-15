@@ -25,6 +25,10 @@ class KpoEntryService
                 if (KpoEntry::query()->where('source_invoice_id', $invoice->id)->exists()) {
                     abort(422, 'Za izabranu fakturu KPO zapis već postoji.');
                 }
+
+                if (! $invoice->include_in_kpo) {
+                    abort(422, 'Izabrana faktura je isključena iz KPO evidencije.');
+                }
             }
 
             $entryDate = Carbon::parse($data['entry_date']);
@@ -40,7 +44,7 @@ class KpoEntryService
                 'entry_number' => $entryNumber,
                 'entry_date' => $entryDate->toDateString(),
                 'source_type' => $data['source_type'],
-                'income_type' => $data['income_type'] ?? null,
+                'income_type' => $data['income_type'] ?? ($invoice ? 'usluga' : null),
                 'currency' => $invoice?->currency ?? strtoupper($data['currency'] ?? 'RSD'),
                 'amount_original' => round($amountOriginal, 2),
                 'amount_rsd' => round($amountRsd, 2),

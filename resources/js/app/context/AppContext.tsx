@@ -63,6 +63,7 @@ export interface Invoice {
     totalOriginal: number;
     totalRsd: number;
     fxRateToRsd?: number;
+    includeInKpo: boolean;
 }
 
 export interface KpoEntry {
@@ -215,6 +216,7 @@ interface InvoiceCreatePayload {
     paymentMethod?: string;
     note?: string;
     items: { description: string; quantity: number; price: number }[];
+    includeInKpo?: boolean;
 }
 
 export interface MetaData {
@@ -377,6 +379,7 @@ const normalizeInvoice = (invoice: any): Invoice => {
         fxRateToRsd: invoice.fx_rate_to_rsd !== undefined && invoice.fx_rate_to_rsd !== null
             ? Number(invoice.fx_rate_to_rsd)
             : undefined,
+        includeInKpo: invoice.include_in_kpo !== false,
         items: items.map((item: any) => ({
             id: Number(item.id ?? 0),
             description: item.name ?? item.description ?? '',
@@ -717,6 +720,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             currency: invoice.currency,
             payment_method: invoice.paymentMethod,
             note: invoice.note,
+            include_in_kpo: invoice.includeInKpo !== false,
             items: invoice.items.map(item => ({
                 name: item.description,
                 description: item.description,

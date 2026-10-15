@@ -20,6 +20,7 @@ class StoreInvoiceRequest extends FormRequest {
             'currency'       => [ 'nullable', 'string', 'size:3' ],
             'payment_method' => [ 'nullable', 'string' ],
             'note'           => [ 'nullable', 'string' ],
+            'include_in_kpo' => [ 'sometimes', 'boolean' ],
 
             'items'               => [ 'required', 'array', 'min:1' ],
             'items.*.name'        => [ 'required', 'string' ],
