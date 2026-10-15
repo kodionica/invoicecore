@@ -8,6 +8,7 @@ php artisan test tests/Feature/KpoEntryTest.php
 composer test
 vendor/bin/pint --test
 php artisan route:list --path=api --except-vendor
+git diff --check
 ```
 
 KPO testovi su u `tests/Feature/KpoEntryTest.php`. Pokrivaju validaciju, server-side iznose, duplikate, ručne korekcije, tenant izolaciju, generisanje, PDF i istorijske datume.
@@ -39,3 +40,9 @@ git diff --stat
 ```
 
 Posle izmene pregledati diff, proveriti import-e i API/frontend ugovor, zatim prijaviti samo stvarno pokrenute provere.
+
+## Dokumentaciona provera
+
+- `php artisan route:list --path=api --except-vendor` — pokrenuto tokom audita; potvrđeno 36 API ruta.
+- `git diff --check` — pokrenuti nakon svake dokumentacione izmene.
+- Testovi, build i type-check nisu pokretani tokom ovog audita osim eksplicitno navedenih provera.

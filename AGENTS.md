@@ -116,3 +116,8 @@ npm run build:ssr
 - Veće funkcionalnosti raditi u nezavisnim, proverljivim fazama; posle svake faze pokrenuti relevantne provere.
 - Pregledati kompletan diff, proveriti API/frontend ugovore i navesti sve preostale probleme.
 - Ne implementirati KPO u okviru dokumentacionog zadatka.
+- Pre izmene postojeće funkcionalnosti pročitati relevantni dokument iz `docs/`.
+- Kada se promene API ugovor, model, migracija, poslovno pravilo ili korisnički tok, ažurirati odgovarajući dokument i `docs/plan-razvoja.md` ako se stanje ili prioritet promenio.
+- Otvorena poslovna ili računovodstvena pitanja ne označavati kao rešena bez potvrde.
+- Nikada ne tvrditi da je nešto testirano ako komanda nije stvarno pokrenuta.
+- Za dokumentacione izmene koristiti `git diff --check`, proveriti Markdown linkove i ne menjati aplikacioni kod, šemu ili podatke bez zasebnog zahteva.
