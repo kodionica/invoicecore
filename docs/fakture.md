@@ -36,6 +36,12 @@ Statusi su `draft`, `sent`, `paid`, `overdue` i `cancelled`. `InvoiceController:
 
 Server snapshot-uje kurs, provajdera i datum kroz `ExchangeRateService`; RSD koristi kurs 1, a strane valute podatke sa `kurs.resenje.org`. PDV se računa samo kada je `Company::vat_enabled=true`. `total_original` i `total_rsd` su relevantni snapshot iznosi za nove fakture.
 
+## Bankarske instrukcije po valuti — predlog
+
+Pri kreiranju fakture budući API treba da dobije `bank_account_id` ili eksplicitnu odluku da se koristi predloženi račun. Server mora proveriti da račun pripada aktivnoj firmi, da je aktivan i da je njegova valuta jednaka valuti fakture ili da je označen kao potvrđeni opšti račun. Ako nema odgovarajućeg računa, UI treba jasno da prikaže upozorenje i zahtev za izbor/dopunu podataka; ne sme automatski prikazati račun druge valute.
+
+Faktura treba da sačuva `bank_account_id` kao istorijski trag kada je moguće i kopiju svih instrukcija korišćenih pri izdavanju u `bank_instructions_snapshot`. Snapshot mora obuhvatiti i opciona polja koja je korisnik uneo, a kasnije izmene ili deaktiviranje računa ne smeju promeniti već izdat dokument. Ručni izbor je dozvoljen samo među računima koji su validni za valutu fakture; izbor ne sme zaobići tenant proveru.
+
 ## KPO uključivanje
 
 Faktura ima boolean `include_in_kpo`, dodat migracijom `2026_10_15_000003_add_include_in_kpo_to_invoices_table.php`.

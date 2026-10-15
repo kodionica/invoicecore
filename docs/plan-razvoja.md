@@ -30,7 +30,19 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** dozvoljeni/odbijeni prelazi, idempotentni događaji, storno bez brisanja originala, timezone testovi.
 - **Potvrda pravila:** da.
 
-### 4. Stvarne uplate
+### 4. Više bankovnih računa i instrukcije po valuti
+
+- **Prioritet:** P1.
+- **Stanje:** nije implementirano. Firma trenutno ima samo `bank_account`, `iban` i `swift` kolone; nema valute računa, više računa, izbora pri fakturi ni snapshot-a instrukcija.
+- **Poslovni razlog:** sprečiti da EUR/USD faktura prikaže pogrešan račun i sačuvati tačne instrukcije na istorijskom dokumentu.
+- **Predloženi obim:** `company_bank_accounts` sa `company_id`, opcionom ISO valutom, nazivom banke, brojem računa, IBAN-om, SWIFT/BIC-om, slobodnim instrukcijama, opcionim dodatnim JSON poljima, aktivnim/default statusom i redosledom. `Company::bankAccounts()` je `hasMany`; faktura dobija opcion `bank_account_id` i immutable `bank_instructions_snapshot`. Predlog po valuti radi server; ručni izbor je dozvoljen samo za validan račun iste valute ili potvrđeni opšti račun.
+- **Migracija postojećih podataka:** prvo napraviti jedan račun po firmi iz postojećih `bank_account`/`iban`/`swift` vrednosti, bez izmišljanja valute; sačuvati null/empty stanje i označiti zapis za proveru. Ne menjati niti brisati stare kolone dok se ne potvrdi backfill. Postojeće fakture ne mogu pouzdano dobiti istorijski račun ako snapshot nije ranije čuvan; ne retroaktivno prepisivati njihove PDF-ove.
+- **Validacija i tenant izolacija:** `company_id` server izvodi iz autorizovane firme; `bank_account_id` mora pripadati aktivnoj firmi, biti aktivan i odgovarati valuti. Valuta je uppercase ISO kod; ne zahtevati sva bankarska polja za svaki račun. Najmanje jedan upotrebljiv identifikator (IBAN ili broj računa) treba da postoji, dok se SWIFT/BIC, naziv banke i dodatna polja uslovljavaju scenarijem.
+- **Zavisnosti/rizici:** odluka o opštem računu, pravilo kada se izdavanje blokira, bankarski zahtevi za međunarodne transfere, privatnost, migracija bez gubitka i kompatibilnost sa starim PDF-ovima.
+- **Kriterijumi prihvatanja/testovi:** više računa za EUR/USD; tačan predlog po valuti; jasno upozorenje kada račun nedostaje; ručni izbor drugog validnog računa; odbijanje računa druge valute/firme; snapshot ostaje isti nakon izmene/deaktiviranja računa; istorijska faktura/PDF koristi snapshot; testovi tenant izolacije i backfill-a.
+- **Potvrda poslovnih pravila:** obavezna za opštu valutu, blokiranje bez računa, obavezna polja po banci i međunarodne instrukcije.
+
+### 5. Stvarne uplate
 
 - **Stanje:** nije implementirano; `payment_method` nije uplata, Payment domen ne postoji.
 - **Razlog/obim:** Payment model/migracija, više i delimične uplate, refund/storno, saldo i API/UI.
@@ -38,7 +50,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** saldo, overpayment, više uplata, tenant izolacija i idempotentno knjiženje.
 - **Potvrda pravila:** obavezno.
 
-### 5. Klijent, dashboard i pokazatelji
+### 6. Klijent, dashboard i pokazatelji
 
 - **Stanje:** delimično. Klijenti postoje; dashboard koristi fakture/status, ne stvarne uplate.
 - **Razlog/obim:** client detail sa fakturama/uplatama, server-side KPI, period/valuta filteri i jasna definicija prometa.
@@ -46,7 +58,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** KPI se slažu sa server agregatima i tenant filterom; prazna stanja i strane valute.
 - **Potvrda pravila:** da.
 
-### 6. Izvoz i lokalne integracije
+### 7. Izvoz i lokalne integracije
 
 - **Stanje:** delimično. PDF fakture/KPO postoji; CSV/XLSX i SEF nisu potvrđeni.
 - **Razlog/obim:** izvoz faktura, klijenata, uplata i KPO; discovery za SEF/eFaktura.
@@ -54,7 +66,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** veliki dataset, UTF-8/decimalni separator, filteri, authorization i reproducibilan KPO export.
 - **Potvrda pravila:** da, format i SEF scope.
 
-### 7. E-mail i podsetnici
+### 8. E-mail i podsetnici
 
 - **Stanje:** delimično. Jednokratno slanje PDF-a postoji; nema istorije, template-a, retry-ja ni automatskih podsetnika.
 - **Razlog/obim:** template-i, queue, delivery log, retry, opt-in, due/overdue reminderi i ručno slanje.
@@ -64,7 +76,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 
 ## P2
 
-### 8. Podrazumevane vrednosti i PDF brendiranje
+### 9. Podrazumevane vrednosti i PDF brendiranje
 
 - **Stanje:** delimično. Firma ima logo, valutu, PDV, rok i napomenu; nema potpunu konfiguraciju izgleda.
 - **Razlog/obim:** footer, uslovi, bankovni blok, numeracija/prefix, preview i validacija logotipa.
@@ -72,7 +84,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** PDF payload/snapshot, fallback vrednosti, company isolation i očuvanje starih podataka.
 - **Potvrda pravila:** da.
 
-### 9. Ponude/predračuni
+### 10. Ponude/predračuni
 
 - **Stanje:** nije implementirano.
 - **Razlog/obim:** quote model/statusi, numeracija, PDF, prihvatanje/odbijanje i konverzija u fakturu.
@@ -80,7 +92,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** idempotentna konverzija, istorijski quote, tenant/policy testovi.
 - **Potvrda pravila:** da.
 
-### 10. Ponavljajuće fakture
+### 11. Ponavljajuće fakture
 
 - **Stanje:** nije implementirano.
 - **Razlog/obim:** template, schedule, pause/cancel, preview, job i zaštita od duplikata.
@@ -88,7 +100,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** deterministički next run, idempotency key i retry testovi.
 - **Potvrda pravila:** da.
 
-### 11. KPO workflow
+### 12. KPO workflow
 
 - **Stanje:** tehnički implementirano; računovodstvena pravila nisu potvrđena. Postoje preview/generate, `include_in_kpo`, korekcije i PDF.
 - **Razlog/obim:** potvrditi datum/prihod/storno/classification, zaključavanje godine, audit i export.
@@ -98,7 +110,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 
 ## P3
 
-### 12. Obaveštenja i preference
+### 13. Obaveštenja i preference
 
 - **Stanje:** delimično, kao JSON preference bez dispatch-a.
 - **Razlog/obim:** per-user/per-company kanali, in-app/email, digest i audit preference.
@@ -106,7 +118,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** opt-in/out, izolacija, retry i timezone.
 - **Potvrda pravila:** da.
 
-### 13. SEF i druge lokalne integracije
+### 14. SEF i druge lokalne integracije
 
 - **Stanje:** zahteva proveru; nema potvrđenih klijenta/ruta.
 - **Razlog/obim:** discovery, sertifikati, slanje/statusi, error mapping i reconciliation.
@@ -114,7 +126,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 - **Prihvatanje/testovi:** sandbox contract tests, retry i ručna korekcija.
 - **Potvrda pravila:** da, uz knjigovođu/poreskog savetnika.
 
-### 14. Operativni alati
+### 15. Operativni alati
 
 - **Stanje:** nije implementirano.
 - **Razlog/obim:** backup dashboard, restore procedura, health checks, failed jobs, storage cleanup i archive export.
@@ -126,7 +138,7 @@ Plan je izveden iz koda i migracija na dan audita. Prioriteti: P0 — bezbednost
 
 1. P0 tenant/settings i stale factory/seeder problem.
 2. P0 backup/restore i audit/brisanje politike.
-3. P1 payment domen i invoice lifecycle.
+3. P1 payment domen, bankovni računi i invoice lifecycle.
 4. P1 client/dashboard/export/e-mail reminders.
 5. P1 KPO pravila i zaključavanje.
 6. P2 quote/recurring/brendiranje.

@@ -16,6 +16,10 @@ Ovo nisu pretpostavljena pravila. Potrebna je potvrda pre promene poslovne logik
 
 - Da li isključenje `include_in_kpo` treba da bude dozvoljeno i za fakturu koja već ima KPO zapis? Trenutna implementacija ne briše i ne menja postojeći zapis.
 - Da li treba omogućiti naknadnu izmenu ovog polja na detalju fakture? Trenutni zahtev pokriva kreiranje fakture.
+- Da li `currency=null` znači opšti račun za sve valute ili svaki račun mora imati eksplicitnu valutu?
+- Da li faktura bez odgovarajućeg računa sme da se sačuva kao nacrt ili izdavanje mora biti blokirano?
+- Koja polja su obavezna po banci/valuti: naziv banke, broj računa, IBAN, SWIFT/BIC, ABA/routing, correspondent/intermediary bank, purpose/reference ili druga instrukcija?
+- Da li postojeći pojedinačni podaci firme predstavljaju jedan stvarni račun i koju valutu imaju? To se ne sme zaključiti samo iz IBAN-a/SWIFT-a.
 
 ## Profil, podešavanja i operativni rizici
 
