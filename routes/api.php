@@ -41,6 +41,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('kpo', [KpoController::class, 'index']);
     Route::post('kpo', [KpoController::class, 'store']);
+    Route::get('kpo/generation-preview', [KpoController::class, 'generationPreview']);
+    Route::post('kpo/generate', [KpoController::class, 'generate']);
+    Route::get('kpo/pdf', [KpoController::class, 'generatePDF']);
     Route::get('kpo/{kpo}', [KpoController::class, 'show']);
     Route::put('kpo/{kpo}', [KpoController::class, 'update']);
 

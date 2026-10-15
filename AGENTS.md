@@ -101,7 +101,7 @@ npm run build:ssr
 
 ## KPO i nepotvrđene poslovne činjenice
 
-- KPO model, migracija, servis, kontroler, API rute, React stranica i PDF nisu potvrđeni kao postojeći.
+- KPO backend model, migracije, servis, kontroler, API rute, React stranica i server-side PDF izvoz sada postoje; payment domen nije potvrđen kao postojeći.
 - Pre KPO implementacije potvrditi da li se evidentiraju izdati ili naplaćeni prihodi, koji datum i iznos se koriste, kako se razlikuju proizvodi/usluge, kako rade ručne korekcije, storno, zaključavanje i numeracija po firmi/godini.
 - Ne donositi računovodstvene odluke na osnovu naziva `paid`, `Turnover` ili postojećeg UI-ja bez potvrđenog poslovnog pravila.
 - Ako zahtev zavisi od naplate, prvo proveriti da li je uveden stvarni payment domen; trenutno nije potvrđen.

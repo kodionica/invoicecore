@@ -8,6 +8,7 @@ use App\Models\KpoEntry;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class KpoEntryService
 {
@@ -72,6 +73,62 @@ class KpoEntryService
 
             return $entry->refresh();
         });
+    }
+
+    public function generateFromInvoices(Company $company, int $year, array $entries): array
+    {
+        $result = ['created' => [], 'skipped' => [], 'failed' => []];
+
+        foreach ($entries as $entryData) {
+            $invoiceId = (int) $entryData['invoice_id'];
+
+            try {
+                $entryDate = Carbon::parse($entryData['entry_date']);
+            } catch (Throwable) {
+                $result['failed'][] = ['invoice_id' => $invoiceId, 'reason' => 'Datum KPO evidencije nije validan.'];
+
+                continue;
+            }
+
+            if ((int) $entryDate->year !== $year) {
+                $result['failed'][] = ['invoice_id' => $invoiceId, 'reason' => 'Datum KPO evidencije ne pripada izabranoj godini.'];
+
+                continue;
+            }
+
+            if (! Invoice::query()->whereKey($invoiceId)->where('company_id', $company->id)->exists()) {
+                $result['failed'][] = ['invoice_id' => $invoiceId, 'reason' => 'Faktura nije dostupna u aktivnoj firmi.'];
+
+                continue;
+            }
+
+            if (KpoEntry::query()->where('source_invoice_id', $invoiceId)->exists()) {
+                $result['skipped'][] = ['invoice_id' => $invoiceId, 'reason' => 'KPO zapis već postoji.'];
+
+                continue;
+            }
+
+            try {
+                $entry = $this->create($company, [
+                    'source_type' => 'invoice',
+                    'invoice_id' => $invoiceId,
+                    'entry_date' => $entryData['entry_date'],
+                ]);
+
+                $result['created'][] = [
+                    'invoice_id' => $invoiceId,
+                    'kpo_entry_id' => $entry->id,
+                    'entry_number' => $entry->entry_number,
+                ];
+            } catch (Throwable $exception) {
+                $result['failed'][] = [
+                    'invoice_id' => $invoiceId,
+                    'reason' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        return $result;
     }
 
     private function nextNumber(int $companyId, int $year): int

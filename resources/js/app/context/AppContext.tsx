@@ -65,6 +65,80 @@ export interface Invoice {
     fxRateToRsd?: number;
 }
 
+export interface KpoEntry {
+    id: number;
+    companyId: number;
+    sourceInvoiceId?: number | null;
+    year: number;
+    entryNumber: number;
+    entryDate: string;
+    sourceType: 'manual' | 'invoice' | string;
+    incomeType?: string | null;
+    currency: string;
+    amountOriginal: number;
+    amountRsd: number;
+    adjustmentRsd: number;
+    totalRsd: number;
+    description?: string | null;
+    sourceInvoice?: {
+        id: number;
+        invoiceNumber?: string;
+    } | null;
+}
+
+export interface KpoTotals {
+    amountRsd: number;
+    adjustmentRsd: number;
+    totalRsd: number;
+}
+
+export interface KpoFilters {
+    year?: number;
+    from?: string;
+    to?: string;
+}
+
+export interface KpoListResponse {
+    entries: KpoEntry[];
+    totals: KpoTotals;
+}
+
+export interface KpoUpdatePayload {
+    entry_date?: string;
+    income_type?: string | null;
+    adjustment_rsd?: string | number;
+    description?: string | null;
+}
+
+export interface KpoGenerationCandidate {
+    id: number;
+    invoice_number: string;
+    issue_date: string;
+    due_date: string;
+    currency: string;
+    total_original: string | number;
+    total_rsd: string | number;
+    status: string;
+}
+
+export interface KpoGenerationPreview {
+    year: number;
+    includeHistorical: boolean;
+    dateRule: 'manual_entry_date_required' | string;
+    entries: KpoGenerationCandidate[];
+}
+
+export interface KpoGenerationSelection {
+    invoice_id: number;
+    entry_date: string;
+}
+
+export interface KpoGenerationResult {
+    created: Array<{invoice_id: number; kpo_entry_id: number; entry_number: number}>;
+    skipped: Array<{invoice_id: number; reason: string}>;
+    failed: Array<{invoice_id: number; reason: string}>;
+}
+
 interface User {
     id: number;
     first_name: string;
@@ -191,6 +265,12 @@ interface AppContextType {
     updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
     sendInvoiceEmail: (id: number) => Promise<void>;
+    loadKpo: (filters?: KpoFilters) => Promise<KpoListResponse>;
+    downloadKpoPdf: (filters?: KpoFilters) => Promise<void>;
+    getKpoEntry: (id: number) => Promise<KpoEntry>;
+    updateKpoEntry: (id: number, payload: KpoUpdatePayload) => Promise<KpoEntry>;
+    previewKpoGeneration: (year: number, includeHistorical?: boolean) => Promise<KpoGenerationPreview>;
+    generateKpoEntries: (year: number, entries: KpoGenerationSelection[]) => Promise<KpoGenerationResult>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -306,6 +386,31 @@ const normalizeInvoice = (invoice: any): Invoice => {
     };
 };
 
+const normalizeKpoEntry = (entry: any): KpoEntry => ({
+    id: Number(entry.id),
+    companyId: Number(entry.company_id ?? 0),
+    sourceInvoiceId: entry.source_invoice_id !== null && entry.source_invoice_id !== undefined
+        ? Number(entry.source_invoice_id)
+        : null,
+    year: Number(entry.year ?? 0),
+    entryNumber: Number(entry.entry_number ?? 0),
+    entryDate: entry.entry_date ?? '',
+    sourceType: entry.source_type ?? 'manual',
+    incomeType: entry.income_type ?? null,
+    currency: entry.currency ?? 'RSD',
+    amountOriginal: Number(entry.amount_original ?? 0),
+    amountRsd: Number(entry.amount_rsd ?? 0),
+    adjustmentRsd: Number(entry.adjustment_rsd ?? 0),
+    totalRsd: Number(entry.total_rsd ?? 0),
+    description: entry.description ?? null,
+    sourceInvoice: entry.source_invoice
+        ? {
+            id: Number(entry.source_invoice.id),
+            invoiceNumber: entry.source_invoice.invoice_number,
+        }
+        : null,
+});
+
 const buildCompanyFormData = (data: CompanyCreatePayload | CompanyUpdatePayload) => {
     const form = new FormData();
     Object.entries(data).forEach(([key, value]) => {
@@ -392,6 +497,69 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             }
             throw error;
         }
+    };
+
+    const loadKpo = async (filters?: KpoFilters): Promise<KpoListResponse> => {
+        const response = await api.get('/api/kpo', {params: filters});
+        const entries = Array.isArray(response.data?.entries)
+            ? response.data.entries.map(normalizeKpoEntry)
+            : [];
+        const totals = response.data?.totals ?? {};
+
+        return {
+            entries,
+            totals: {
+                amountRsd: Number(totals.amount_rsd ?? 0),
+                adjustmentRsd: Number(totals.adjustment_rsd ?? 0),
+                totalRsd: Number(totals.total_rsd ?? 0),
+            },
+        };
+    };
+
+    const downloadKpoPdf = async (filters?: KpoFilters): Promise<void> => {
+        const response = await api.get('/api/kpo/pdf', {params: filters, responseType: 'blob'});
+        const disposition = response.headers['content-disposition'] as string | undefined;
+        const filename = disposition?.match(/filename="?([^";]+)"?/i)?.[1] ?? `kpo-evidencija-${filters?.year ?? 'svi-periodi'}.pdf`;
+        const url = window.URL.createObjectURL(new Blob([response.data], {type: 'application/pdf'}));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+    };
+
+    const getKpoEntry = async (id: number): Promise<KpoEntry> => {
+        const response = await api.get(`/api/kpo/${id}`);
+        return normalizeKpoEntry(response.data);
+    };
+
+    const updateKpoEntry = async (id: number, payload: KpoUpdatePayload): Promise<KpoEntry> => {
+        const response = await api.put(`/api/kpo/${id}`, payload);
+        return normalizeKpoEntry(response.data);
+    };
+
+    const previewKpoGeneration = async (year: number, includeHistorical = false): Promise<KpoGenerationPreview> => {
+        const response = await api.get('/api/kpo/generation-preview', {
+            params: {year, include_historical: includeHistorical ? 1 : 0},
+        });
+
+        return {
+            year: Number(response.data?.year ?? year),
+            includeHistorical: Boolean(response.data?.include_historical),
+            dateRule: response.data?.date_rule ?? 'manual_entry_date_required',
+            entries: Array.isArray(response.data?.entries) ? response.data.entries : [],
+        };
+    };
+
+    const generateKpoEntries = async (year: number, entries: KpoGenerationSelection[]): Promise<KpoGenerationResult> => {
+        const response = await api.post('/api/kpo/generate', {year, entries});
+        return {
+            created: response.data?.created ?? [],
+            skipped: response.data?.skipped ?? [],
+            failed: response.data?.failed ?? [],
+        };
     };
 
     const loadAll = async () => {
@@ -673,6 +841,12 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             updateInvoiceStatus,
             downloadInvoicePdf,
             sendInvoiceEmail,
+            loadKpo,
+            downloadKpoPdf,
+            getKpoEntry,
+            updateKpoEntry,
+            previewKpoGeneration,
+            generateKpoEntries,
         }}>
             {children}
         </AppContext.Provider>
