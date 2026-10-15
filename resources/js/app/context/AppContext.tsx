@@ -116,6 +116,7 @@ export interface KpoGenerationCandidate {
     invoice_number: string;
     issue_date: string;
     due_date: string;
+    suggested_entry_date: string;
     currency: string;
     total_original: string | number;
     total_rsd: string | number;

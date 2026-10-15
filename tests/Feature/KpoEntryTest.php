@@ -217,7 +217,52 @@ it('previews only missing invoices for the selected year and can include histori
     $this->getJson('/api/kpo/generation-preview?year=2026&include_historical=true')
         ->assertOk()
         ->assertJsonCount(1, 'entries')
-        ->assertJsonPath('entries.0.id', $historicalInvoice->id);
+        ->assertJsonPath('entries.0.id', $historicalInvoice->id)
+        ->assertJsonPath('entries.0.suggested_entry_date', '2025-12-20');
+});
+
+it('generates historical invoices in separate year groups with independent numbering', function () {
+    [$user, $company, $client] = createKpoContext('kpo-generation-multiple-years@example.com');
+    $currentInvoice = Invoice::create([
+        'company_id' => $company->id,
+        'client_id' => $client->id,
+        'invoice_number' => '2026-10-multi-year',
+        'issue_date' => '2026-10-01',
+        'due_date' => '2026-10-15',
+        'currency' => 'RSD',
+        'total' => 100,
+        'total_original' => 100,
+        'total_rsd' => 100,
+        'status' => 'paid',
+    ]);
+    $historicalInvoice = Invoice::create([
+        'company_id' => $company->id,
+        'client_id' => $client->id,
+        'invoice_number' => '2025-12-multi-year',
+        'issue_date' => '2025-12-20',
+        'due_date' => '2026-01-03',
+        'currency' => 'RSD',
+        'total' => 200,
+        'total_original' => 200,
+        'total_rsd' => 200,
+        'status' => 'paid',
+    ]);
+    $this->actingAs($user);
+
+    $this->postJson('/api/kpo/generate', [
+        'year' => 2025,
+        'entries' => [['invoice_id' => $historicalInvoice->id, 'entry_date' => '2025-12-20']],
+    ])->assertOk()->assertJsonCount(1, 'created');
+
+    $this->postJson('/api/kpo/generate', [
+        'year' => 2026,
+        'entries' => [['invoice_id' => $currentInvoice->id, 'entry_date' => '2026-10-01']],
+    ])->assertOk()->assertJsonCount(1, 'created');
+
+    expect(KpoEntry::where('source_invoice_id', $historicalInvoice->id)->value('year'))->toBe(2025);
+    expect(KpoEntry::where('source_invoice_id', $historicalInvoice->id)->value('entry_number'))->toBe(1);
+    expect(KpoEntry::where('source_invoice_id', $currentInvoice->id)->value('year'))->toBe(2026);
+    expect(KpoEntry::where('source_invoice_id', $currentInvoice->id)->value('entry_number'))->toBe(1);
 });
 
 it('uses the current application year when preview year is omitted', function () {

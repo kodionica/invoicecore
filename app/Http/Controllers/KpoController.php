@@ -79,11 +79,17 @@ class KpoController extends Controller
         }
 
         $invoices = $query->get(['id', 'invoice_number', 'issue_date', 'due_date', 'currency', 'total_original', 'total_rsd', 'status', 'include_in_kpo']);
+        $invoices->each(static function (Invoice $invoice): void {
+            $invoice->setAttribute(
+                'suggested_entry_date',
+                $invoice->issue_date?->toDateString()
+            );
+        });
 
         return response()->json([
             'year' => $year,
             'include_historical' => $includeHistorical,
-            'date_rule' => 'manual_entry_date_required',
+            'date_rule' => 'issue_date_suggested_manual_override',
             'entries' => $invoices,
         ]);
     }

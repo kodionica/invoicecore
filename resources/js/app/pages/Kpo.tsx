@@ -4,7 +4,7 @@ import {Link} from 'react-router';
 import {toast} from 'sonner';
 import {formatCurrency} from '../utils/format';
 import {useApp} from '../context/AppContext';
-import type {KpoEntry, KpoFilters, KpoGenerationPreview, KpoGenerationSelection, KpoTotals} from '../context/AppContext';
+import type {KpoEntry, KpoFilters, KpoGenerationPreview, KpoGenerationResult, KpoGenerationSelection, KpoTotals} from '../context/AppContext';
 
 const currentYear = new Date().getFullYear();
 
@@ -167,7 +167,10 @@ export default function Kpo() {
             setGenerationPreview(response);
             setGenerationSelection(current => Object.fromEntries(response.entries.map(invoice => [
                 invoice.id,
-                current[invoice.id] ?? {invoice_id: invoice.id, entry_date: ''},
+                current[invoice.id] ?? {
+                    invoice_id: invoice.id,
+                    entry_date: invoice.suggested_entry_date,
+                },
             ])));
             setGenerationOpen(true);
         } catch (requestError: any) {
@@ -193,7 +196,24 @@ export default function Kpo() {
 
         setGenerationLoading(true);
         try {
-            const result = await generateKpoEntries(generationPreview.year, selections);
+            const entriesByYear = selections.reduce<Record<number, KpoGenerationSelection[]>>((groups, selection) => {
+                const year = Number(selection.entry_date.slice(0, 4));
+                groups[year] = groups[year] ?? [];
+                groups[year].push(selection);
+                return groups;
+            }, {});
+
+            const results = await Promise.all(
+                Object.entries(entriesByYear).map(([year, entries]) =>
+                    generateKpoEntries(Number(year), entries)
+                )
+            );
+            const result = results.reduce((combined, current) => ({
+                created: [...combined.created, ...current.created],
+                skipped: [...combined.skipped, ...current.skipped],
+                failed: [...combined.failed, ...current.failed],
+            }), {created: [], skipped: [], failed: []} as KpoGenerationResult);
+
             toast.success(`Kreirano: ${result.created.length}, preskočeno: ${result.skipped.length}, neuspešno: ${result.failed.length}.`);
             if (result.failed.length) {
                 toast.error(result.failed.map(item => `Faktura ${item.invoice_id}: ${item.reason}`).join(' '));
@@ -479,7 +499,7 @@ export default function Kpo() {
                         <button type="button" onClick={() => setGenerationOpen(false)} className="text-gray-400 hover:text-gray-600" title="Zatvori"><X className="h-5 w-5"/></button>
                     </div>
                     <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        Datum KPO evidencije nije automatski izveden iz statusa ili datuma fakture. Unesite potvrđeni datum za svaku fakturu; server će zapis numerisati po godini tog datuma.
+                        Datum KPO evidencije je unapred predložen prema datumu izdavanja fakture. Proverite ili izmenite datum za svaku fakturu; server će zapis numerisati po godini konačnog datuma.
                     </div>
                     <label className="mb-4 flex items-center gap-2 text-sm text-gray-700">
                         <input type="checkbox" checked={includeHistorical} onChange={event => {
@@ -515,8 +535,10 @@ export default function Kpo() {
                                                 <input
                                                     required
                                                     type="date"
-                                                    min={`${generationPreview.year}-01-01`}
-                                                    max={`${generationPreview.year}-12-31`}
+                                                    {...(!includeHistorical ? {
+                                                        min: `${generationPreview.year}-01-01`,
+                                                        max: `${generationPreview.year}-12-31`,
+                                                    } : {})}
                                                     value={generationSelection[invoice.id]?.entry_date ?? ''}
                                                     onChange={event => setGenerationSelection(current => ({...current, [invoice.id]: {invoice_id: invoice.id, entry_date: event.target.value}}))}
                                                     className="rounded-md border-gray-300 py-1.5 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
