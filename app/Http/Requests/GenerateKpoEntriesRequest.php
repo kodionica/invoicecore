@@ -11,6 +11,12 @@ class GenerateKpoEntriesRequest extends FormRequest
         if ($this->missing('year')) {
             $this->merge(['year' => now()->year]);
         }
+
+        if ($this->has('confirm_manual_overlap')) {
+            $this->merge([
+                'confirm_manual_overlap' => filter_var($this->input('confirm_manual_overlap'), FILTER_VALIDATE_BOOLEAN),
+            ]);
+        }
     }
 
     public function rules(): array
@@ -20,6 +26,8 @@ class GenerateKpoEntriesRequest extends FormRequest
             'entries' => ['required', 'array', 'min:1'],
             'entries.*.invoice_id' => ['required', 'integer', 'distinct', 'exists:invoices,id'],
             'entries.*.entry_date' => ['required', 'date'],
+            'confirm_manual_overlap' => ['sometimes', 'boolean'],
+            'include_historical' => ['sometimes', 'boolean'],
         ];
     }
 

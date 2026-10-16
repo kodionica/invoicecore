@@ -131,6 +131,7 @@ export interface KpoGenerationPreview {
     includeHistorical: boolean;
     dateRule: 'manual_entry_date_required' | string;
     entries: KpoGenerationCandidate[];
+    manualOverlapWarning?: {count: number; year: number; requiresConfirmation: boolean} | null;
 }
 
 export interface KpoGenerationSelection {
@@ -277,7 +278,7 @@ interface AppContextType {
     getKpoEntry: (id: number) => Promise<KpoEntry>;
     updateKpoEntry: (id: number, payload: KpoUpdatePayload) => Promise<KpoEntry>;
     previewKpoGeneration: (year: number, includeHistorical?: boolean) => Promise<KpoGenerationPreview>;
-    generateKpoEntries: (year: number, entries: KpoGenerationSelection[]) => Promise<KpoGenerationResult>;
+    generateKpoEntries: (year: number, entries: KpoGenerationSelection[], confirmManualOverlap?: boolean, includeHistorical?: boolean) => Promise<KpoGenerationResult>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -559,11 +560,21 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             includeHistorical: Boolean(response.data?.include_historical),
             dateRule: response.data?.date_rule ?? 'manual_entry_date_required',
             entries: Array.isArray(response.data?.entries) ? response.data.entries : [],
+            manualOverlapWarning: response.data?.manual_overlap_warning ? {
+                count: Number(response.data.manual_overlap_warning.count ?? 0),
+                year: Number(response.data.manual_overlap_warning.year ?? year),
+                requiresConfirmation: Boolean(response.data.manual_overlap_warning.requires_confirmation),
+            } : null,
         };
     };
 
-    const generateKpoEntries = async (year: number, entries: KpoGenerationSelection[]): Promise<KpoGenerationResult> => {
-        const response = await api.post('/api/kpo/generate', {year, entries});
+    const generateKpoEntries = async (year: number, entries: KpoGenerationSelection[], confirmManualOverlap = false, includeHistorical = false): Promise<KpoGenerationResult> => {
+        const response = await api.post('/api/kpo/generate', {
+            year,
+            entries,
+            confirm_manual_overlap: confirmManualOverlap,
+            include_historical: includeHistorical,
+        });
         return {
             created: response.data?.created ?? [],
             skipped: response.data?.skipped ?? [],

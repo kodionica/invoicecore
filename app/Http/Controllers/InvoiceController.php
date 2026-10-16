@@ -193,6 +193,7 @@ class InvoiceController extends Controller {
             $attrs['subtotal_rsd'] = round( $subtotalRsd, 2 );
             $attrs['tax_rsd'] = round( $taxRsd, 2 );
             $attrs['total_rsd'] = round( $totalRsd, 2 );
+            $attrs['vat_enabled_at_issue'] = (bool) $active_company->vat_enabled;
 
             $invoice = Invoice::create( $attrs );
 

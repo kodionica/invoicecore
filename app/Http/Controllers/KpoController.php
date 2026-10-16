@@ -54,7 +54,7 @@ class KpoController extends Controller
         return response()->json($entry->load('sourceInvoice'), 201);
     }
 
-    public function generationPreview(KpoGenerationPreviewRequest $request)
+    public function generationPreview(KpoGenerationPreviewRequest $request, KpoEntryService $service)
     {
         $company = auth()->user()->activeCompany;
         if (! $company) {
@@ -67,31 +67,7 @@ class KpoController extends Controller
             $request->validated('include_historical', false),
             FILTER_VALIDATE_BOOLEAN
         );
-        $query = Invoice::query()
-            ->where('company_id', $company->id)
-            ->where('include_in_kpo', true)
-            ->whereDoesntHave('kpoEntries')
-            ->orderBy('issue_date')
-            ->orderBy('invoice_number');
-
-        if (! $includeHistorical) {
-            $query->whereYear('issue_date', $year);
-        }
-
-        $invoices = $query->get(['id', 'invoice_number', 'issue_date', 'due_date', 'currency', 'total_original', 'total_rsd', 'status', 'include_in_kpo']);
-        $invoices->each(static function (Invoice $invoice): void {
-            $invoice->setAttribute(
-                'suggested_entry_date',
-                $invoice->issue_date?->toDateString()
-            );
-        });
-
-        return response()->json([
-            'year' => $year,
-            'include_historical' => $includeHistorical,
-            'date_rule' => 'issue_date_suggested_manual_override',
-            'entries' => $invoices,
-        ]);
+        return response()->json($service->previewFromInvoices($company, $year, $includeHistorical));
     }
 
     public function generate(GenerateKpoEntriesRequest $request, KpoEntryService $service)
@@ -103,7 +79,13 @@ class KpoController extends Controller
         $this->authorize('view', $company);
 
         $validated = $request->validated();
-        $result = $service->generateFromInvoices($company, (int) $validated['year'], $validated['entries']);
+        $result = $service->generateFromInvoices(
+            $company,
+            (int) $validated['year'],
+            $validated['entries'],
+            (bool) ($validated['confirm_manual_overlap'] ?? false),
+            (bool) ($validated['include_historical'] ?? false)
+        );
 
         return response()->json($result);
     }

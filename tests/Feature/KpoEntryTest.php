@@ -24,6 +24,24 @@ function createKpoContext(string $email): array
     return [$user, $company, $client];
 }
 
+function addKpoInvoiceItem(Invoice $invoice, float $total, string $category = 'service'): void
+{
+    if ($invoice->vat_enabled_at_issue === null) {
+        $invoice->update(['vat_enabled_at_issue' => false]);
+    }
+
+    $invoice->items()->create([
+        'name' => 'KPO stavka',
+        'quantity' => 1,
+        'price' => $total,
+        'sub_total' => $total,
+        'total' => $total,
+        'tax_amount' => 0,
+        'description' => 'KPO test stavka',
+        'income_category' => $category,
+    ]);
+}
+
 it('rejects incomplete KPO source data', function () {
     [$user] = createKpoContext('kpo-validation@example.com');
     $this->actingAs($user);
@@ -165,6 +183,7 @@ it('previews only missing invoices for the selected year and can include histori
         'issue_date' => '2026-10-01',
         'due_date' => '2026-10-15',
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 100,
         'total_original' => 100,
         'total_rsd' => 100,
@@ -177,11 +196,13 @@ it('previews only missing invoices for the selected year and can include histori
         'issue_date' => '2025-12-20',
         'due_date' => '2026-01-03',
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 200,
         'total_original' => 200,
         'total_rsd' => 200,
         'status' => 'paid',
     ]);
+    addKpoInvoiceItem($historicalInvoice, 200);
     Invoice::create([
         'company_id' => $company->id,
         'client_id' => $client->id,
@@ -230,6 +251,7 @@ it('generates historical invoices in separate year groups with independent numbe
         'issue_date' => '2026-10-01',
         'due_date' => '2026-10-15',
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 100,
         'total_original' => 100,
         'total_rsd' => 100,
@@ -242,11 +264,14 @@ it('generates historical invoices in separate year groups with independent numbe
         'issue_date' => '2025-12-20',
         'due_date' => '2026-01-03',
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 200,
         'total_original' => 200,
         'total_rsd' => 200,
         'status' => 'paid',
     ]);
+    addKpoInvoiceItem($currentInvoice, 100);
+    addKpoInvoiceItem($historicalInvoice, 200);
     $this->actingAs($user);
 
     $this->postJson('/api/kpo/generate', [
@@ -275,11 +300,13 @@ it('uses the current application year when preview year is omitted', function ()
         'issue_date' => now()->startOfYear()->addDays(2)->toDateString(),
         'due_date' => now()->startOfYear()->addDays(16)->toDateString(),
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 100,
         'total_original' => 100,
         'total_rsd' => 100,
         'status' => 'paid',
     ]);
+    addKpoInvoiceItem($invoice, 100);
     $this->actingAs($user);
 
     $this->getJson('/api/kpo/generation-preview')
@@ -297,11 +324,13 @@ it('generates missing invoice entries idempotently and preserves manual correcti
         'issue_date' => '2026-10-03',
         'due_date' => '2026-10-17',
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 300,
         'total_original' => 300,
         'total_rsd' => 300,
         'status' => 'paid',
     ]);
+    addKpoInvoiceItem($invoice, 300);
     $payload = ['year' => 2026, 'entries' => [['invoice_id' => $invoice->id, 'entry_date' => '2026-10-04']]];
     $this->actingAs($user);
 
@@ -326,11 +355,13 @@ it('uses the current application year when generate year is omitted', function (
         'issue_date' => $entryDate,
         'due_date' => now()->startOfYear()->addDays(17)->toDateString(),
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 250,
         'total_original' => 250,
         'total_rsd' => 250,
         'status' => 'paid',
     ]);
+    addKpoInvoiceItem($invoice, 250);
     $this->actingAs($user);
 
     $this->postJson('/api/kpo/generate', [
@@ -352,11 +383,13 @@ it('does not infer the year for a historical invoice without an explicit matchin
         'issue_date' => '2025-12-20',
         'due_date' => '2026-01-03',
         'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1,
         'total' => 400,
         'total_original' => 400,
         'total_rsd' => 400,
         'status' => 'paid',
     ]);
+    addKpoInvoiceItem($invoice, 400);
     $this->actingAs($user);
 
     $this->getJson('/api/kpo/generation-preview?year=2026')->assertJsonCount(0, 'entries');

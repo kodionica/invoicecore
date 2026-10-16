@@ -73,6 +73,7 @@ class Invoice extends Model {
         'subtotal_rsd',
         'tax_rsd',
         'total_rsd',
+        'vat_enabled_at_issue',
         'status',
         'include_in_kpo',
         'pdf_path',
@@ -92,6 +93,7 @@ class Invoice extends Model {
         'subtotal_rsd'      => 'decimal:2',
         'tax_rsd'           => 'decimal:2',
         'total_rsd'         => 'decimal:2',
+        'vat_enabled_at_issue' => 'boolean',
         'include_in_kpo' => 'boolean',
     ];
 

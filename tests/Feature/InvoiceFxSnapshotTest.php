@@ -65,8 +65,33 @@ it( 'stores rsd snapshot fields for rsd invoice', function () {
         'fx_rate_to_rsd' => 1.000000,
         'total_original' => 200.00,
         'total_rsd'      => 200.00,
+        'vat_enabled_at_issue' => false,
     ] );
 } );
+
+it('persists the VAT setting at invoice issuance instead of reading it later', function () {
+    [$user, $company, $client] = createUserWithCompanyAndClient('vat-snapshot@example.com', 'RSD');
+    $company->update(['vat_enabled' => true]);
+    $this->actingAs($user);
+
+    $response = $this->postJson('/api/invoices', [
+        'client_id' => $client->id,
+        'invoice_number' => 'VAT-SNAPSHOT-001',
+        'issue_date' => now()->toDateString(),
+        'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'RSD',
+        'items' => [['name' => 'Usluga', 'description' => 'Opis', 'quantity' => 1, 'price' => 100]],
+    ]);
+
+    $response->assertCreated();
+    $this->assertDatabaseHas('invoices', [
+        'id' => $response->json('id'),
+        'vat_enabled_at_issue' => true,
+    ]);
+
+    $company->update(['vat_enabled' => false]);
+    expect((bool) $response->json('vat_enabled_at_issue'))->toBeTrue();
+});
 
 it( 'stores foreign currency snapshot fields for non-rsd invoice', function () {
     Http::fake( [

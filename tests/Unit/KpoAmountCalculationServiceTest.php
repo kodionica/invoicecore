@@ -5,7 +5,7 @@ use App\Models\Invoice;
 use App\Services\KpoAmountCalculationService;
 use App\Models\User;
 
-function amountCalculationInvoice(string $email, string $currency = 'RSD', float $rate = 1.0, float $totalRsd = 0): Invoice
+function amountCalculationInvoice(string $email, string $currency = 'RSD', float $rate = 1.0, float $totalRsd = 0, ?float $totalOriginal = null): Invoice
 {
     $user = User::create([
         'first_name' => 'KPO',
@@ -30,6 +30,8 @@ function amountCalculationInvoice(string $email, string $currency = 'RSD', float
         'client_type' => 'b2b',
     ]);
 
+    $totalOriginal ??= $currency === 'RSD' ? $totalRsd : $totalRsd / $rate;
+
     return Invoice::create([
         'company_id' => $company->id,
         'client_id' => $client->id,
@@ -39,9 +41,9 @@ function amountCalculationInvoice(string $email, string $currency = 'RSD', float
         'currency' => $currency,
         'fx_rate_to_rsd' => $rate,
         'total' => $totalRsd,
-        'subtotal_original' => $totalRsd,
+        'subtotal_original' => $totalOriginal,
         'tax_original' => 0,
-        'total_original' => $totalRsd,
+        'total_original' => $totalOriginal,
         'subtotal_rsd' => $totalRsd,
         'tax_rsd' => 0,
         'total_rsd' => $totalRsd,
@@ -76,6 +78,7 @@ it('calculates product, service and unclassified persisted totals', function () 
         ->and($result['categories']['service']['amount_original'])->toBe('200.00')
         ->and($result['categories']['unclassified']['amount_original'])->toBe('50.00')
         ->and($result['is_complete'])->toBeFalse()
+        ->and($result['generation_readiness']['status'])->toBe('partial')
         ->and($result['unresolved_amount_rsd'])->toBe('50.00')
         ->and($result['calculated_total_rsd'])->toBe('350.00')
         ->and($result['reconciliation_discrepancy_rsd'])->toBe('0.00');
@@ -105,6 +108,22 @@ it('keeps an all-unclassified invoice unresolved', function () {
         ->and($result['is_complete'])->toBeFalse();
 });
 
+it('allows accumulated persisted-item rounding within the derived tolerance', function () {
+    $invoice = amountCalculationInvoice('item-rounding@example.com', 'RSD', 1, 0.02);
+    addAmountItem($invoice, 0, 'product');
+    addAmountItem($invoice, 0, 'product');
+    addAmountItem($invoice, 0, 'service');
+    addAmountItem($invoice, 0, 'service');
+    $invoice->update(['total_original' => 0.02]);
+
+    $result = app(KpoAmountCalculationService::class)->calculate($invoice->fresh('items'));
+
+    expect($result['item_derived_total_original'])->toBe('0.00')
+        ->and($result['original_snapshot_difference'])->toBe('0.02')
+        ->and($result['snapshot_discrepancy_rsd'])->toBe('0.02')
+        ->and($result['generation_readiness']['status'])->toBe('ready');
+});
+
 it('uses the persisted FX rate for foreign currency and includes persisted VAT-inclusive totals', function () {
     $invoice = amountCalculationInvoice('eur-amounts@example.com', 'EUR', 117.25, 11725);
     addAmountItem($invoice, 100, 'service');
@@ -113,7 +132,8 @@ it('uses the persisted FX rate for foreign currency and includes persisted VAT-i
 
     expect($result['categories']['service']['amount_original'])->toBe('100.00')
         ->and($result['categories']['service']['amount_rsd'])->toBe('11725.00')
-        ->and($result['categories']['service']['item_count'])->toBe(1);
+        ->and($result['categories']['service']['item_count'])->toBe(1)
+        ->and($result['generation_readiness']['status'])->toBe('ready');
 });
 
 it('uses the persisted item total for VAT-inclusive amounts', function () {
@@ -127,16 +147,19 @@ it('uses the persisted item total for VAT-inclusive amounts', function () {
 });
 
 it('reports a deterministic residual without applying it', function () {
-    $invoice = amountCalculationInvoice('residual-amounts@example.com', 'EUR', 1.005, 10.02);
+    $invoice = amountCalculationInvoice('residual-amounts@example.com', 'EUR', 1.005, 10.07);
     addAmountItem($invoice, 5.01, 'product');
     addAmountItem($invoice, 5.01, 'service');
 
     $result = app(KpoAmountCalculationService::class)->calculate($invoice->fresh('items'));
 
     expect($result['calculated_total_rsd'])->toBe('10.08')
-        ->and($result['persisted_total_rsd'])->toBe('10.02')
-        ->and($result['reconciliation_discrepancy_rsd'])->toBe('-0.06')
-        ->and($result['proposed_reconciliation']['apply_automatically'])->toBeFalse();
+        ->and($result['persisted_total_rsd'])->toBe('10.07')
+        ->and($result['category_rounding_residual_rsd'])->toBe('0.01')
+        ->and($result['generation_readiness']['status'])->toBe('ready')
+        ->and($result['reconciliation_status'])->toBe('residual')
+        ->and($result['has_unallocated_rounding_residual'])->toBeTrue()
+        ->and($result['proposed_reconciliation'])->toBeNull();
 });
 
 it('reports discrepancies between persisted item totals and invoice snapshots', function () {
@@ -147,7 +170,8 @@ it('reports discrepancies between persisted item totals and invoice snapshots', 
 
     expect($result['calculated_total_rsd'])->toBe('100.00')
         ->and($result['persisted_total_rsd'])->toBe('99.00')
-        ->and($result['reconciliation_discrepancy_rsd'])->toBe('-1.00');
+        ->and($result['reconciliation_discrepancy_rsd'])->toBe('-1.00')
+        ->and($result['generation_readiness']['status'])->toBe('blocked');
 });
 
 it('does not modify persisted invoice or item financial fields', function () {
@@ -167,11 +191,15 @@ it('does not modify persisted invoice or item financial fields', function () {
         ->and($invoice->fresh('items')->items->first()->only(array_keys($beforeItem)))->toBe($beforeItem);
 });
 
-it('rejects an invoice without a persisted FX rate instead of fetching one', function () {
+it('blocks an invoice without a persisted FX rate instead of fetching one', function () {
     $invoice = amountCalculationInvoice('missing-rate@example.com', 'EUR', 1, 100);
     $invoice->update(['fx_rate_to_rsd' => null]);
     addAmountItem($invoice, 100, 'service');
 
-    expect(fn () => app(KpoAmountCalculationService::class)->calculate($invoice->fresh('items')))
-        ->toThrow(InvalidArgumentException::class);
+    $result = app(KpoAmountCalculationService::class)->calculate($invoice->fresh('items'));
+
+    expect($result['generation_readiness']['status'])->toBe('blocked')
+        ->and($result['generation_readiness']['reasons'])->toContain('missing_persisted_fx_rate')
+        ->and($result['categories']['service']['amount_original'])->toBe('100.00')
+        ->and($result['categories']['service']['amount_rsd'])->toBeNull();
 });

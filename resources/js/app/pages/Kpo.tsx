@@ -61,6 +61,7 @@ export default function Kpo() {
     const [includeHistorical, setIncludeHistorical] = useState(false);
     const [generationPreview, setGenerationPreview] = useState<KpoGenerationPreview | null>(null);
     const [generationSelection, setGenerationSelection] = useState<Record<number, KpoGenerationSelection>>({});
+    const [confirmManualOverlap, setConfirmManualOverlap] = useState(false);
     const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
     const [form, setForm] = useState({
         entryDate: '',
@@ -165,6 +166,7 @@ export default function Kpo() {
         try {
             const response = await previewKpoGeneration(filters.year, historical);
             setGenerationPreview(response);
+            setConfirmManualOverlap(false);
             setGenerationSelection(current => Object.fromEntries(response.entries.map(invoice => [
                 invoice.id,
                 current[invoice.id] ?? {
@@ -205,7 +207,7 @@ export default function Kpo() {
 
             const results = await Promise.all(
                 Object.entries(entriesByYear).map(([year, entries]) =>
-                    generateKpoEntries(Number(year), entries)
+                    generateKpoEntries(Number(year), entries, confirmManualOverlap, includeHistorical)
                 )
             );
             const result = results.reduce((combined, current) => ({
@@ -509,6 +511,12 @@ export default function Kpo() {
                         }}/>
                         Prikaži i fakture iz drugih godina (godina izabrana u KPO-u i dalje ne određuje datum)
                     </label>
+                    {generationPreview.manualOverlapWarning?.requiresConfirmation && includeHistorical && (
+                        <label className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+                            <input type="checkbox" checked={confirmManualOverlap} onChange={event => setConfirmManualOverlap(event.target.checked)}/>
+                            <span>Postoji {generationPreview.manualOverlapWarning.count} ručni ili odvojeni KPO zapis za {generationPreview.manualOverlapWarning.year}. Potvrđujem da želim istorijsko generisanje bez automatskog povezivanja ili menjanja tih zapisa.</span>
+                        </label>
+                    )}
                     {generationPreview.entries.length === 0 ? (
                         <p className="py-6 text-sm text-gray-500">Nema faktura bez KPO zapisa u ovom pregledu.</p>
                     ) : (
