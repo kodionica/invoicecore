@@ -44,7 +44,9 @@ class KpoEntryService
                 'entry_number' => $entryNumber,
                 'entry_date' => $entryDate->toDateString(),
                 'source_type' => $data['source_type'],
+                'origin' => $data['origin'] ?? (($data['source_type'] ?? 'manual') === 'invoice' ? 'generated' : 'manual'),
                 'income_type' => $data['income_type'] ?? ($invoice ? 'usluga' : null),
+                'income_category' => $data['income_category'] ?? null,
                 'currency' => $invoice?->currency ?? strtoupper($data['currency'] ?? 'RSD'),
                 'amount_original' => round($amountOriginal, 2),
                 'amount_rsd' => round($amountRsd, 2),
@@ -73,6 +75,8 @@ class KpoEntryService
 
             $entry->year = $entry->entry_date->year;
             $entry->total_rsd = round((float) $entry->amount_rsd + (float) ($entry->adjustment_rsd ?? 0), 2);
+            $entry->manually_edited_at = now();
+            $entry->manually_edited_by = auth()->id();
             $entry->save();
 
             return $entry->refresh();

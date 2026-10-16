@@ -15,19 +15,24 @@ class KpoEntry extends Model
         'entry_number',
         'entry_date',
         'source_type',
+        'origin',
         'income_type',
+        'income_category',
         'currency',
         'amount_original',
         'amount_rsd',
         'adjustment_rsd',
         'total_rsd',
         'description',
+        'manually_edited_at',
+        'manually_edited_by',
     ];
 
     protected $casts = [
         'year' => 'integer',
         'entry_number' => 'integer',
         'entry_date' => 'date',
+        'manually_edited_at' => 'datetime',
         'amount_original' => 'decimal:2',
         'amount_rsd' => 'decimal:2',
         'adjustment_rsd' => 'decimal:2',
@@ -42,6 +47,11 @@ class KpoEntry extends Model
     public function sourceInvoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class, 'source_invoice_id');
+    }
+
+    public function manuallyEditedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'manually_edited_by');
     }
 
     public function scopeForCompany(Builder $query, int $companyId): Builder

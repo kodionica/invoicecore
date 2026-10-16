@@ -3,6 +3,7 @@
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 
 function classificationContext(string $email): array
 {
@@ -82,8 +83,8 @@ it('rejects unsupported item income categories', function () {
     expect($company->invoices()->count())->toBe(0);
 });
 
-it('updates only item classifications and preserves financial fields', function () {
-    [$user, $company, $client] = classificationContext('classification-update@example.com');
+it('rejects missing, empty, non-array, malformed and duplicate classification payloads', function () {
+    [$user, $company, $client] = classificationContext('classification-payload@example.com');
     $this->actingAs($user);
 
     $invoice = $this->postJson('/api/invoices', [
@@ -91,6 +92,59 @@ it('updates only item classifications and preserves financial fields', function 
         'issue_date' => now()->toDateString(),
         'due_date' => now()->addDays(15)->toDateString(),
         'currency' => 'RSD',
+        'items' => [
+            ['name' => 'Prva', 'description' => 'Prva', 'quantity' => 1, 'price' => 100],
+            ['name' => 'Druga', 'description' => 'Druga', 'quantity' => 1, 'price' => 200],
+        ],
+    ])->assertCreated()->json();
+
+    $firstId = $invoice['items'][0]['id'];
+    $payloads = [
+        [],
+        ['items' => []],
+        ['items' => 'not-an-array'],
+        ['items' => [['id' => $firstId]]],
+        ['items' => [
+            ['id' => $firstId, 'income_category' => 'product'],
+            ['id' => $firstId, 'income_category' => 'service'],
+        ]],
+    ];
+
+    foreach ($payloads as $payload) {
+        $this->patchJson("/api/invoices/{$invoice['id']}/items/classifications", $payload)
+            ->assertUnprocessable();
+    }
+
+    expect($company->invoices()->findOrFail($invoice['id'])->items()->pluck('income_category')->all())
+        ->toBe([null, null]);
+});
+
+it('updates only item classifications and preserves financial fields', function () {
+    [$user, $company, $client] = classificationContext('classification-update@example.com');
+    $this->actingAs($user);
+    Http::fake([
+        'https://kurs.resenje.org/*' => Http::response([
+            'currency' => 'EUR',
+            'exchange_middle' => 117.25,
+            'date' => '2026-10-16',
+        ], 200),
+    ]);
+
+    $company->update([
+        'currency' => 'EUR',
+        'vat_enabled' => true,
+        'default_tax_percent' => 20,
+    ]);
+
+    $invoice = $this->postJson('/api/invoices', [
+        'client_id' => $client->id,
+        'invoice_number' => '2026-10-016',
+        'issue_date' => now()->toDateString(),
+        'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'EUR',
+        'payment_method' => 'bank_transfer',
+        'note' => 'Classification regression snapshot',
+        'include_in_kpo' => true,
         'items' => [[
             'name' => 'Stavka',
             'description' => 'Stavka',
@@ -101,15 +155,27 @@ it('updates only item classifications and preserves financial fields', function 
     ])->assertCreated()->json();
 
     $item = $company->invoices()->findOrFail($invoice['id'])->items()->firstOrFail();
-    $before = $item->only(['quantity', 'price', 'sub_total', 'tax_amount', 'total', 'description']);
+    $invoiceBefore = $company->invoices()->findOrFail($invoice['id'])->getAttributes();
+    $itemBefore = $item->getAttributes();
+    unset($itemBefore['income_category']);
 
     $this->patchJson("/api/invoices/{$invoice['id']}/items/classifications", [
         'items' => [['id' => $item->id, 'income_category' => 'product']],
     ])->assertOk()
         ->assertJsonPath('items.0.income_category', 'product');
 
-    expect($item->refresh()->only(['quantity', 'price', 'sub_total', 'tax_amount', 'total', 'description']))
-        ->toBe($before);
+    $invoiceAfter = $company->invoices()->findOrFail($invoice['id'])->getAttributes();
+    $itemAfterModel = $item->refresh();
+    $itemAfter = $itemAfterModel->getAttributes();
+    unset($itemAfter['income_category']);
+
+    expect($invoiceAfter)->toBe($invoiceBefore)
+        ->and($itemAfter)->toBe($itemBefore)
+        ->and($itemAfterModel->income_category)->toBe('product');
+
+    $freshInvoice = collect($this->getJson('/api/invoices')->assertOk()->json())
+        ->firstWhere('id', $invoice['id']);
+    expect($freshInvoice['items'][0]['income_category'])->toBe('product');
 });
 
 it('preserves legacy null classification until the user saves a new value', function () {
@@ -187,9 +253,14 @@ it('rejects an item that does not belong to the selected invoice', function () {
     ])->assertCreated()->json();
 
     $this->patchJson("/api/invoices/{$first['id']}/items/classifications", [
-        'items' => [['id' => $second['items'][0]['id'], 'income_category' => 'product']],
+        'items' => [
+            ['id' => $first['items'][0]['id'], 'income_category' => 'product'],
+            ['id' => $second['items'][0]['id'], 'income_category' => 'service'],
+        ],
     ])->assertUnprocessable();
 
-    expect($company->invoices()->findOrFail($second['id'])->items()->firstOrFail()->income_category)
+    expect($company->invoices()->findOrFail($first['id'])->items()->firstOrFail()->income_category)
+        ->toBeNull()
+        ->and($company->invoices()->findOrFail($second['id'])->items()->firstOrFail()->income_category)
         ->toBeNull();
 });
