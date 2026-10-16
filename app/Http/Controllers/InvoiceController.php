@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Enums\InvoiceStatus;
+use App\Http\Requests\UpdateInvoiceItemClassificationsRequest;
 use App\Http\Requests\StoreInvoiceRequest;
 use App\Mail\InvoiceMail;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Services\ExchangeRateService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -208,6 +210,7 @@ class InvoiceController extends Controller {
                         'total'       => $total,
                         'tax_amount'  => $tax_amount,
                         'description' => $item[ 'description' ] ?? null,
+                        'income_category' => $item[ 'income_category' ] ?? null,
                     ]
                 );
             }
@@ -298,6 +301,42 @@ class InvoiceController extends Controller {
         }
 
         return response()->json( $invoice->load( [ 'items', 'client' ] ) );
+    }
+
+    public function updateItemClassifications(UpdateInvoiceItemClassificationsRequest $request, Invoice $invoice)
+    {
+        $this->authorize('update', $invoice);
+
+        $activeCompany = $request->user()->activeCompany;
+        if (! $activeCompany || (int) $invoice->company_id !== (int) $activeCompany->id) {
+            return response()->json([
+                'message' => 'Faktura ne pripada aktivnoj firmi.',
+            ], 403);
+        }
+
+        $items = $request->validated()['items'];
+        $itemIds = array_map(static fn (array $item): int => (int) $item['id'], $items);
+        $invoiceItems = InvoiceItem::query()
+            ->where('invoice_id', $invoice->id)
+            ->whereIn('id', $itemIds)
+            ->get()
+            ->keyBy('id');
+
+        if ($invoiceItems->count() !== count($itemIds)) {
+            return response()->json([
+                'message' => 'Jedna ili više stavki ne pripada izabranoj fakturi.',
+            ], 422);
+        }
+
+        DB::transaction(static function () use ($items, $invoiceItems): void {
+            foreach ($items as $item) {
+                $invoiceItems->get((int) $item['id'])->update([
+                    'income_category' => $item['income_category'],
+                ]);
+            }
+        });
+
+        return response()->json($invoice->load(['items', 'client']));
     }
 
     /**

@@ -44,7 +44,10 @@ export interface InvoiceItem {
     description: string;
     quantity: number;
     price: number;
+    incomeCategory: InvoiceIncomeCategory | null;
 }
+
+export type InvoiceIncomeCategory = 'product' | 'service' | 'unclassified';
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
 
@@ -216,7 +219,7 @@ interface InvoiceCreatePayload {
     currency?: string;
     paymentMethod?: string;
     note?: string;
-    items: { description: string; quantity: number; price: number }[];
+    items: { description: string; quantity: number; price: number; incomeCategory: InvoiceIncomeCategory }[];
     includeInKpo?: boolean;
 }
 
@@ -266,6 +269,7 @@ interface AppContextType {
     deleteInvoice: (id: number) => Promise<void>;
     getNextInvoiceNumber: () => Promise<string>;
     updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
+    updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
     sendInvoiceEmail: (id: number) => Promise<void>;
     loadKpo: (filters?: KpoFilters) => Promise<KpoListResponse>;
@@ -386,6 +390,7 @@ const normalizeInvoice = (invoice: any): Invoice => {
             description: item.name ?? item.description ?? '',
             quantity: Number(item.quantity ?? 0),
             price: Number(item.price ?? 0),
+            incomeCategory: item.income_category ?? null,
         })),
     };
 };
@@ -727,6 +732,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
                 description: item.description,
                 quantity: item.quantity,
                 price: item.price,
+                income_category: item.incomeCategory,
             })),
         };
 
@@ -747,6 +753,17 @@ export function AppProvider({children}: { children: React.ReactNode }) {
 
     const updateInvoiceStatus = async (id: number, status: InvoiceStatus) => {
         const response = await api.put(`/api/invoices/${id}`, {status});
+        const updated = normalizeInvoice(response.data);
+        setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+    };
+
+    const updateInvoiceItemClassifications = async (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => {
+        const response = await api.patch(`/api/invoices/${id}/items/classifications`, {
+            items: items.map(item => ({
+                id: item.id,
+                income_category: item.incomeCategory,
+            })),
+        });
         const updated = normalizeInvoice(response.data);
         setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
     };
@@ -844,6 +861,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             deleteInvoice,
             getNextInvoiceNumber,
             updateInvoiceStatus,
+            updateInvoiceItemClassifications,
             downloadInvoicePdf,
             sendInvoiceEmail,
             loadKpo,

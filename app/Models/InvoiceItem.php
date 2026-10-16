@@ -44,6 +44,7 @@ class InvoiceItem extends Model {
         'total',
         'tax_amount',
         'description',
+        'income_category',
     ];
     protected $casts      = [
         'quantity'   => 'decimal:2',

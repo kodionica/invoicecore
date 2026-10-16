@@ -27,6 +27,7 @@ class StoreInvoiceRequest extends FormRequest {
             'items.*.description' => [ 'nullable', 'string' ],
             'items.*.quantity'    => [ 'required', 'decimal:0,4', 'min:0.0001' ],
             'items.*.price'       => [ 'required', 'decimal:0,4', 'min:0' ],
+            'items.*.income_category' => [ 'nullable', 'string', 'in:product,service,unclassified' ],
         ];
     }
 

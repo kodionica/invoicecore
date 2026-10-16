@@ -1,7 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {useParams, useNavigate} from 'react-router';
-import {useApp, type InvoiceStatus} from '../context/AppContext';
-import {ArrowLeft, Printer, Download, Mail, Trash2} from 'lucide-react';
+import {useApp, type InvoiceIncomeCategory, type InvoiceStatus} from '../context/AppContext';
+import {ArrowLeft, Printer, Download, Mail, Trash2, Pencil, Save, X} from 'lucide-react';
 import {toast} from 'sonner';
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusSelectClass} from '../utils/invoiceStatus';
 import InvoiceDocument from '../components/InvoiceDocument';
@@ -9,11 +9,14 @@ import InvoiceDocument from '../components/InvoiceDocument';
 export default function InvoiceDetails() {
     const {id} = useParams();
     const navigate = useNavigate();
-    const {invoices, clients, companies, updateInvoiceStatus, deleteInvoice, downloadInvoicePdf, sendInvoiceEmail, meta} = useApp();
+    const {invoices, clients, companies, updateInvoiceStatus, updateInvoiceItemClassifications, deleteInvoice, downloadInvoicePdf, sendInvoiceEmail, meta} = useApp();
     const printRef = useRef<HTMLDivElement>(null);
     const [sendingEmail, setSendingEmail] = useState(false);
     const [downloadingPdf, setDownloadingPdf] = useState(false);
     const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
+    const [editingClassifications, setEditingClassifications] = useState(false);
+    const [savingClassifications, setSavingClassifications] = useState(false);
+    const [classificationDraft, setClassificationDraft] = useState<Record<number, InvoiceIncomeCategory>>({});
     const pdfMenuRef = useRef<HTMLDivElement>(null);
 
     const invoiceId = id ? Number(id) : null;
@@ -22,6 +25,14 @@ export default function InvoiceDetails() {
     const company = companies.find(c => c.id === invoice?.companyId);
     const statusOptions = getInvoiceStatusOptions(meta?.invoice_statuses);
     const statusLabelMap = getInvoiceStatusLabelMap(statusOptions);
+
+    useEffect(() => {
+        if (!invoice) return;
+        setClassificationDraft(Object.fromEntries(
+            invoice.items.map(item => [item.id, item.incomeCategory ?? 'unclassified'])
+        ));
+        setEditingClassifications(false);
+    }, [invoice?.id]);
 
     useEffect(() => {
         if (!pdfMenuOpen) return;
@@ -121,6 +132,23 @@ export default function InvoiceDetails() {
         }
     };
 
+    const handleSaveClassifications = async () => {
+        if (!invoice || savingClassifications) return;
+        setSavingClassifications(true);
+        try {
+            await updateInvoiceItemClassifications(invoice.id, invoice.items.map(item => ({
+                id: item.id,
+                incomeCategory: classificationDraft[item.id] ?? 'unclassified',
+            })));
+            setEditingClassifications(false);
+            toast.success('Klasifikacije stavki su sačuvane');
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? 'Neuspešno čuvanje klasifikacija.');
+        } finally {
+            setSavingClassifications(false);
+        }
+    };
+
     const currency = invoice.currency || company.currency || 'RSD';
 
     return (
@@ -214,6 +242,45 @@ export default function InvoiceDetails() {
             <div ref={printRef}>
                 <InvoiceDocument invoice={invoice} client={client} company={company} currency={currency} meta={meta}/>
             </div>
+
+            <section className="rounded-lg bg-white shadow-sm ring-1 ring-gray-200 p-6 print:hidden">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h2 className="text-lg font-semibold text-gray-900">Klasifikacija prihoda</h2>
+                        <p className="text-sm text-gray-500">Menja se samo kategorija stavke, bez izmene iznosa fakture.</p>
+                    </div>
+                    {!editingClassifications ? (
+                        <button type="button" onClick={() => setEditingClassifications(true)} className="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                            <Pencil className="mr-2 h-4 w-4"/> Izmeni
+                        </button>
+                    ) : (
+                        <div className="flex gap-2">
+                            <button type="button" onClick={() => setEditingClassifications(false)} className="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                <X className="mr-2 h-4 w-4"/> Otkaži
+                            </button>
+                            <button type="button" onClick={handleSaveClassifications} disabled={savingClassifications} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-60">
+                                <Save className="mr-2 h-4 w-4"/> Sačuvaj
+                            </button>
+                        </div>
+                    )}
+                </div>
+                <div className="mt-4 divide-y divide-gray-200">
+                    {invoice.items.map(item => (
+                        <div key={item.id} className="flex items-center justify-between gap-4 py-3">
+                            <span className="min-w-0 truncate text-sm text-gray-700">{item.description}</span>
+                            {editingClassifications ? (
+                                <select value={classificationDraft[item.id] ?? 'unclassified'} onChange={event => setClassificationDraft(current => ({...current, [item.id]: event.target.value as InvoiceIncomeCategory}))} className="rounded-md border-gray-300 text-sm shadow-sm">
+                                    <option value="product">Proizvod</option>
+                                    <option value="service">Usluga</option>
+                                    <option value="unclassified">Nerazvrstano</option>
+                                </select>
+                            ) : (
+                                <span className="text-sm text-gray-500">{classificationDraft[item.id] === 'product' ? 'Proizvod' : classificationDraft[item.id] === 'service' ? 'Usluga' : 'Nerazvrstano'}</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </section>
         </div>
     );
 }

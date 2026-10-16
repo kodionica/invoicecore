@@ -36,6 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('invoices/next-number', [InvoiceController::class, 'nextNumber']);
     Route::apiResource('invoices', InvoiceController::class);
+    Route::patch('invoices/{invoice}/items/classifications', [InvoiceController::class, 'updateItemClassifications']);
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'generatePDF']);
     Route::post('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail']);
 

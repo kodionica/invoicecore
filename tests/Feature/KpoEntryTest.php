@@ -412,6 +412,12 @@ it('does not generate an invoice from another tenant', function () {
 
 it('generates a server-side KPO PDF from filtered database entries', function () {
     [$user, $company] = createKpoContext('kpo-pdf@example.com');
+    $company->update([
+        'tax_id' => '109876543',
+        'registration_number' => '12345678',
+        'address' => 'KPO adresa 1',
+        'city' => 'Beograd',
+    ]);
     KpoEntry::create([
         'company_id' => $company->id,
         'year' => 2026,
@@ -426,6 +432,32 @@ it('generates a server-side KPO PDF from filtered database entries', function ()
         'total_rsd' => 1244.5,
         'description' => 'Usluga sa srpskim slovima: ž, š, đ, č, ć i dugim opisom koji mora da se prelomi u PDF dokumentu bez izlaska iz tabele.',
     ]);
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'year' => 2026,
+        'entry_number' => 2,
+        'entry_date' => '2026-10-20',
+        'source_type' => 'manual',
+        'income_type' => 'proizvod',
+        'currency' => 'RSD',
+        'amount_original' => 200,
+        'amount_rsd' => 200,
+        'total_rsd' => 200,
+        'description' => 'Noviji proizvod',
+    ]);
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'year' => 2025,
+        'entry_number' => 1,
+        'entry_date' => '2025-12-31',
+        'source_type' => 'manual',
+        'income_type' => 'usluga',
+        'currency' => 'RSD',
+        'amount_original' => 999,
+        'amount_rsd' => 999,
+        'total_rsd' => 999,
+        'description' => 'Druga godina',
+    ]);
     Storage::fake('local');
     $pdfBuilder = Mockery::mock(PdfBuilder::class);
     $pdfBuilder->shouldReceive('format')->once()->andReturnSelf();
@@ -436,13 +468,66 @@ it('generates a server-side KPO PDF from filtered database entries', function ()
 
         return $pdfBuilder;
     });
-    Pdf::shouldReceive('html')->once()->andReturn($pdfBuilder);
+    Pdf::shouldReceive('html')->once()->withArgs(function (string $html): bool {
+        preg_match('/<table class="kpo-table">(.*?)<\/table>/s', $html, $matches);
+        $table = $matches[1] ?? '';
+        preg_match('/<tbody>(.*?)<\/tbody>/s', $table, $bodyMatches);
+        preg_match_all('/<tr>(.*?)<\/tr>/s', $bodyMatches[1] ?? '', $rows);
+
+        expect(substr_count($table, '<th '))->toBe(5)
+            ->and($rows[0])->toHaveCount(2)
+            ->and(array_map(fn (string $row): int => substr_count($row, '<td '), $rows[1]))->each->toBe(5)
+            ->and($table)->toContain('<th class="date-description">Datum i opis knjiženja</th>')
+            ->and($table)->not->toContain('<th class="date">Datum</th>')
+            ->and($table)->not->toContain('<th class="description">Opis</th>')
+            ->and($table)->toContain('<span class="entry-date">15.10.2026</span><br><span class="entry-description">Usluga sa srpskim slovima: ž, š, đ, č, ć i dugim opisom koji mora da se prelomi u PDF dokumentu bez izlaska iz tabele.</span>')
+            ->and($table)->toContain('Noviji proizvod')
+            ->and($table)->toContain('200,00 RSD')
+            ->and($table)->not->toContain('Druga godina')
+            ->and($table)->toContain('1.244,50 RSD')
+            ->and($html)->toContain('KPO Company')
+            ->and($html)->toContain('PIB: 109876543')
+            ->and($html)->toContain('Matični broj: 12345678')
+            ->and($html)->toContain('KPO adresa 1 · Beograd');
+
+        expect(strpos($table, 'Noviji proizvod'))->toBeLessThan(strpos($table, 'Usluga sa srpskim slovima:'));
+
+        return true;
+    })->andReturn($pdfBuilder);
     $this->actingAs($user);
 
     $response = $this->get('/api/kpo/pdf?year=2026');
 
     $response->assertOk()->assertHeader('content-type', 'application/pdf');
     Storage::disk('local')->assertExists("kpo/2026/kpo-evidencija-{$company->id}-2026.pdf");
+});
+
+it('renders an empty KPO PDF without rows', function () {
+    [$user, $company] = createKpoContext('kpo-pdf-empty@example.com');
+    Storage::fake('local');
+    $pdfBuilder = Mockery::mock(PdfBuilder::class);
+    $pdfBuilder->shouldReceive('format')->once()->andReturnSelf();
+    $pdfBuilder->shouldReceive('withBrowsershot')->once()->andReturnSelf();
+    $pdfBuilder->shouldReceive('disk')->once()->andReturnSelf();
+    $pdfBuilder->shouldReceive('save')->once()->andReturnUsing(function (string $path) use ($pdfBuilder) {
+        Storage::disk('local')->put($path, '%PDF-1.7 test');
+
+        return $pdfBuilder;
+    });
+    Pdf::shouldReceive('html')->once()->withArgs(function (string $html): bool {
+        preg_match('/<td colspan="(\d+)" class="empty">/', $html, $emptyCell);
+
+        expect($html)->toContain('<th class="date-description">Datum i opis knjiženja</th>')
+            ->and($html)->toContain('<td colspan="5" class="empty">Nema zapisa za izabrani period.</td>')
+            ->and($emptyCell[1] ?? null)->toBe('5');
+
+        return true;
+    })->andReturn($pdfBuilder);
+    $this->actingAs($user);
+
+    $this->get('/api/kpo/pdf?year=2026')
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
 });
 
 it('validates KPO PDF periods and protects the route from another tenant', function () {

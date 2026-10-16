@@ -14,7 +14,7 @@ interface InvoiceFormData {
     currency: string;
     paymentMethod: string;
     includeInKpo: boolean;
-    items: { description: string; quantity: number; price: number }[];
+    items: { description: string; quantity: number; price: number; incomeCategory: 'product' | 'service' | 'unclassified' }[];
 }
 
 export default function InvoiceForm() {
@@ -38,7 +38,8 @@ export default function InvoiceForm() {
             items: [{
                 description: `Web razvoj, računarsko programiranje i IT podrška po Ugovoru o poslovno-tehničkoj saradnji za ${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}. godine / {{ HOURS }} h / {{ PRICE }} EUR`,
                 quantity: 1,
-                price: 100
+                price: 100,
+                incomeCategory: 'unclassified'
             }]
         }
     });
@@ -265,7 +266,7 @@ export default function InvoiceForm() {
                         <h3 className="text-lg font-medium leading-6 text-gray-900">Stavke</h3>
                         <button
                             type="button"
-                            onClick={() => append({description: '', quantity: 1, price: 0})}
+                            onClick={() => append({description: '', quantity: 1, price: 0, incomeCategory: 'unclassified'})}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                         >
                             <Plus className="h-4 w-4 mr-1"/>
@@ -302,6 +303,17 @@ export default function InvoiceForm() {
                                             {...register(`items.${index}.price` as const, {required: true, min: 0})}
                                             className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm py-2 px-3 border"
                                         />
+                                    </div>
+                                    <div className="w-36">
+                                        <label className="block text-xs font-medium text-gray-500 mb-1">Kategorija prihoda</label>
+                                        <select
+                                            {...register(`items.${index}.incomeCategory` as const, {required: true})}
+                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm py-2 px-3 border"
+                                        >
+                                            <option value="product">Proizvod</option>
+                                            <option value="service">Usluga</option>
+                                            <option value="unclassified">Nerazvrstano</option>
+                                        </select>
                                     </div>
                                     <div className="pt-6">
                                         <button
