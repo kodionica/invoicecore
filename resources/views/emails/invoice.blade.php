@@ -19,7 +19,7 @@
                     <tr>
                         <td style="padding:0 28px 16px;">
                             <p style="margin:0; color:#333; line-height:1.5; white-space:pre-line;">
-                                {!! nl2br(e($message ?: 'U prilogu se nalazi PDF faktura. Ako imate pitanja, slobodno nas kontaktirajte.')) !!}
+                                {!! nl2br(e($body ?: 'U prilogu se nalazi PDF faktura. Ako imate pitanja, slobodno nas kontaktirajte.')) !!}
                             </p>
                         </td>
                     </tr>

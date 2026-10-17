@@ -32,7 +32,7 @@ class InvoiceMail extends Mailable {
                 'invoice' => $this->invoice,
                 'company' => $this->invoice->company,
                 'client'  => $this->invoice->client,
-                'message' => $this->messageText,
+                'body' => $this->messageText,
             ] )
             ->attach( Storage::disk( 'local' )->path( $this->pdfPath ), [
                 'as'   => $file_name,
