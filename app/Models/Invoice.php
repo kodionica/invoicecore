@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * @property int                                                                         $id
@@ -141,5 +142,37 @@ class Invoice extends Model {
 
     public function scopeForActiveCompany( Builder $query, int $companyId ): Builder {
         return $query->where( 'company_id', $companyId );
+    }
+
+    public function scopeOverdue(Builder $query, ?Carbon $today = null): Builder
+    {
+        $today ??= Carbon::today();
+
+        return $query
+            ->whereNotNull('due_date')
+            ->whereDate('due_date', '<', $today->toDateString())
+            ->whereNotIn('status', ['paid', 'cancelled', 'draft']);
+    }
+
+    public function isOverdue(?Carbon $today = null): bool
+    {
+        if (! $this->due_date || in_array($this->status, ['paid', 'cancelled', 'draft'], true)) {
+            return false;
+        }
+
+        $today ??= Carbon::today();
+
+        return $this->due_date->copy()->startOfDay()->lt($today->copy()->startOfDay());
+    }
+
+    public function overdueDays(?Carbon $today = null): int
+    {
+        if (! $this->isOverdue($today)) {
+            return 0;
+        }
+
+        $today ??= Carbon::today();
+
+        return $this->due_date->copy()->startOfDay()->diffInDays($today->copy()->startOfDay());
     }
 }

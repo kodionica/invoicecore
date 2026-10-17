@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useForm, useFieldArray} from 'react-hook-form';
 import {useNavigate, useParams} from 'react-router';
 import {useApp, type InvoiceKpoConfirmation} from '../context/AppContext';
@@ -35,6 +35,7 @@ export default function InvoiceForm() {
     const [confirmKpoConflict, setConfirmKpoConflict] = useState(false);
     const [confirmManualKpoOverwrite, setConfirmManualKpoOverwrite] = useState(false);
     const [saving, setSaving] = useState(false);
+    const editInitialCurrency = useRef<string | null>(null);
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
     const today = new Date();
     const todayString = formatLocalDate(today);
@@ -83,6 +84,7 @@ export default function InvoiceForm() {
                 incomeCategory: item.incomeCategory ?? 'unclassified',
             })),
         });
+        editInitialCurrency.current = editingInvoice.currency;
     }, [editingInvoice?.id, reset]);
 
     const {fields, append, remove} = useFieldArray({
@@ -100,6 +102,23 @@ export default function InvoiceForm() {
         [activeCompany?.bankAccounts, selectedCurrency]
     );
     const selectedBankAccount = (activeCompany?.bankAccounts ?? []).find(account => account.id === Number(selectedBankAccountId));
+    const historicalBankAccount = !selectedBankAccount && isEdit && editingInvoice?.bankAccountId
+        ? {
+            id: editingInvoice.bankAccountId,
+            companyId: editingInvoice.companyId,
+            label: null,
+            bankName: editingInvoice.bankAccountBankName ?? 'Sačuvani račun',
+            accountNumber: editingInvoice.bankAccountNumber ?? '',
+            iban: editingInvoice.bankAccountIban ?? null,
+            swiftBic: editingInvoice.bankAccountSwiftBic ?? null,
+            currency: editingInvoice.bankAccountCurrency ?? editingInvoice.currency,
+            accountType: 'foreign' as const,
+            paymentInstructions: editingInvoice.bankAccountPaymentInstructions ?? null,
+            isDefault: false,
+            isActive: false,
+        }
+        : undefined;
+    const displayedBankAccount = selectedBankAccount ?? historicalBankAccount;
     const currencyOptions = useMemo(() => {
         if (!meta?.currencies) return [];
         if (Array.isArray(meta.currencies)) {
@@ -150,7 +169,7 @@ export default function InvoiceForm() {
     }, [activeCompanyId, dirtyFields.number, getNextInvoiceNumber, isEdit, setValue]);
 
     useEffect(() => {
-        if (!activeCompany?.currency) return;
+        if (isEdit || !activeCompany?.currency) return;
         if (!dirtyFields.currency) {
             setValue('currency', activeCompany.currency);
         }
@@ -167,7 +186,10 @@ export default function InvoiceForm() {
     }, [activeCompany?.payment_due_days, dirtyFields.dueDate, setValue, watchDate]);
 
     useEffect(() => {
-        if (isEdit || dirtyFields.bankAccountId || !selectedCurrency) return;
+        if (!selectedCurrency) return;
+        const currencyChangedInEdit = isEdit && editInitialCurrency.current !== selectedCurrency;
+        if (dirtyFields.bankAccountId && !currencyChangedInEdit) return;
+        if (isEdit && !currencyChangedInEdit) return;
         const defaultAccount = matchingBankAccounts.find(account => account.isDefault) ?? (matchingBankAccounts.length === 1 ? matchingBankAccounts[0] : undefined);
         setValue('bankAccountId', defaultAccount ? String(defaultAccount.id) : '', {shouldDirty: false});
     }, [dirtyFields.bankAccountId, isEdit, matchingBankAccounts, selectedCurrency, setValue]);
@@ -472,9 +494,10 @@ export default function InvoiceForm() {
                         <label className="block text-sm font-medium text-gray-700">Račun za plaćanje</label>
                         <select {...register('bankAccountId')} className="mt-1 block w-full rounded-md border-gray-300 py-2 px-3 text-sm shadow-sm">
                             <option value="">Bez izabranog računa</option>
-                            {selectedBankAccount && !selectedBankAccount.isActive && <option value={selectedBankAccount.id}>{selectedBankAccount.currency} · {selectedBankAccount.bankName} · neaktivan (sačuvani izbor)</option>}
+                            {displayedBankAccount && !displayedBankAccount.isActive && <option value={displayedBankAccount.id}>{displayedBankAccount.currency} · {displayedBankAccount.bankName} · neaktivan (sačuvani izbor)</option>}
                             {matchingBankAccounts.map(account => <option key={account.id} value={account.id}>{account.currency} · {account.label || account.bankName} · {account.accountNumber}{account.isDefault ? ' · podrazumevani' : ''}</option>)}
                         </select>
+                        {displayedBankAccount && !displayedBankAccount.isActive && <p className="mt-1 text-sm text-amber-700">Sačuvani račun je neaktivan. Biće zadržan dok ga izričito ne promenite.</p>}
                         {matchingBankAccounts.length === 0 && <p className="mt-1 text-sm text-amber-700">Nema aktivnog računa u valuti fakture. Faktura može biti sačuvana bez računa.</p>}
                         {matchingBankAccounts.length > 1 && !matchingBankAccounts.some(account => account.isDefault) && <p className="mt-1 text-sm text-amber-700">Izaberite račun jer postoji više aktivnih računa bez podrazumevanog izbora.</p>}
                     </div>

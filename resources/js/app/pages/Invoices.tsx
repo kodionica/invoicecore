@@ -1,4 +1,4 @@
-import React, { useState }                                    from 'react';
+import React, { useEffect, useState }                          from 'react';
 import { type InvoiceStatus, useApp }                         from '../context/AppContext';
 import { formatCurrency }                                     from '../utils/format';
 import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Trash2, Send } from 'lucide-react';
@@ -15,7 +15,7 @@ type SortColumn = 'status' | 'number' | 'client' | 'date' | 'dueDate' | 'total';
 type SortDirection = 'asc' | 'desc';
 
 export default function Invoices() {
-    const { invoices, clients, activeCompanyId, updateInvoiceStatus, deleteInvoice, sendInvoiceEmail, meta } = useApp();
+    const { invoices, clients, activeCompanyId, updateInvoiceStatus, deleteInvoice, sendInvoiceEmail, loadInvoices, meta } = useApp();
     const navigate = useNavigate();
     const [ searchTerm, setSearchTerm ] = useState( '' );
     const [ sort, setSort ] = useState<{ column: SortColumn; direction: SortDirection } | null>( null );
@@ -23,7 +23,12 @@ export default function Invoices() {
     const [ updatingStatusId, setUpdatingStatusId ] = useState<number | null>( null );
     const [ deletingInvoiceId, setDeletingInvoiceId ] = useState<number | null>( null );
     const [ kpoDeletionConfirmation, setKpoDeletionConfirmation ] = useState<{invoiceId: number; entries: any[]} | null>(null);
+    const [ overdueOnly, setOverdueOnly ] = useState(false);
     const statusOptions = getInvoiceStatusOptions( meta?.invoice_statuses );
+
+    useEffect(() => {
+        loadInvoices(overdueOnly).catch(() => undefined);
+    }, [overdueOnly, activeCompanyId]);
 
     const filteredInvoices = invoices
         .filter( inv => ( activeCompanyId ? inv.companyId === activeCompanyId : false ) )
@@ -145,7 +150,7 @@ export default function Invoices() {
             )}
 
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
-                <Filters searchTerm={ searchTerm } onSearchTermChange={ setSearchTerm }/>
+                <Filters searchTerm={ searchTerm } onSearchTermChange={ setSearchTerm } overdueOnly={ overdueOnly } onOverdueOnlyChange={ setOverdueOnly }/>
 
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
@@ -200,6 +205,7 @@ export default function Invoices() {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                         <Link to={ `/dashboard/invoices/${ invoice.id }` }>#{ invoice.number }</Link>
+                                        {invoice.isOverdue && <span className="ml-2 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Dospela</span>}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         { client?.id && <Link to={ `/dashboard/clients/${ client.id }` }>{ client.name || 'Nepoznat' }</Link> }

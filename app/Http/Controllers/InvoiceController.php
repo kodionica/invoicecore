@@ -35,7 +35,7 @@ class InvoiceController extends Controller {
     /**
      * Display a listing of the resource.
      */
-    public function index() {
+    public function index(Request $request) {
         $active_company = auth()->user()->activeCompany;
 
         if ( ! $active_company ) {
@@ -44,11 +44,19 @@ class InvoiceController extends Controller {
             ], 422 );
         }
 
-        $invoices = Invoice::query()
+        $query = Invoice::query()
             ->forActiveCompany( $active_company->id )
             ->with( [ 'client', 'items' ] )
-            ->latest()
-            ->get();
+            ->latest();
+
+        if ($request->boolean('overdue')) {
+            $query->overdue();
+        }
+
+        $today = Carbon::today();
+        $invoices = $query->get()->each(function (Invoice $invoice) use ($today): void {
+            $this->addDueStatusAttributes($invoice, $today);
+        });
 
         return response()->json( $invoices );
     }
@@ -258,12 +266,19 @@ class InvoiceController extends Controller {
      */
     public function show( Invoice $invoice ) {
         $this->authorize( 'view', $invoice );
+        $this->addDueStatusAttributes($invoice, Carbon::today());
         $user          = auth()->user();
         $invoice_items = $invoice->items;
         $company       = $invoice->company;
         $client        = $invoice->client;
 
         return response()->json( compact( 'invoice', 'user', 'invoice_items', 'company', 'client' ) );
+    }
+
+    private function addDueStatusAttributes(Invoice $invoice, Carbon $today): void
+    {
+        $invoice->setAttribute('is_overdue', $invoice->isOverdue($today));
+        $invoice->setAttribute('overdue_days', $invoice->overdueDays($today));
     }
 
     public function history(Invoice $invoice)

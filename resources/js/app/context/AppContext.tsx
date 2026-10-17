@@ -76,6 +76,8 @@ export interface Invoice {
     number: string;
     date: string;
     dueDate: string;
+    isOverdue?: boolean;
+    overdueDays?: number;
     currency: string;
     items: InvoiceItem[];
     status: InvoiceStatus;
@@ -438,6 +440,7 @@ interface AppContextType {
     deleteInvoice: (id: number, confirmKpoRemoval?: boolean) => Promise<void>;
     getNextInvoiceNumber: () => Promise<string>;
     updateInvoiceStatus: (id: number, status: InvoiceStatus, payment?: {paidAt?: string | null; paymentNote?: string | null}) => Promise<void>;
+    loadInvoices: (overdue?: boolean) => Promise<void>;
     updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
     sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string }) => Promise<any>;
@@ -579,6 +582,8 @@ const normalizeInvoice = (invoice: any): Invoice => {
         number: invoice.invoice_number ?? '',
         date: normalizeDateInput(invoice.issue_date),
         dueDate: normalizeDateInput(invoice.due_date),
+        isOverdue: Boolean(invoice.is_overdue),
+        overdueDays: Number(invoice.overdue_days ?? 0),
         currency: invoice.currency ?? 'RSD',
         status: invoice.status as InvoiceStatus,
         paidAt: normalizeDateInput(invoice.paid_at),
@@ -718,9 +723,9 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         }
     };
 
-    const loadInvoices = async () => {
+    const loadInvoices = async (overdue = false) => {
         try {
-            const response = await api.get('/api/invoices');
+            const response = await api.get('/api/invoices', {params: overdue ? {overdue: 1} : undefined});
             const data = Array.isArray(response.data) ? response.data : [];
             setInvoices(data.map(normalizeInvoice));
         } catch (error: any) {
@@ -1357,6 +1362,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             deleteInvoice,
             getNextInvoiceNumber,
             updateInvoiceStatus,
+            loadInvoices,
             updateInvoiceItemClassifications,
             downloadInvoicePdf,
             downloadInvoicePdfVersion,

@@ -339,6 +339,8 @@ export default function InvoiceDetails() {
                     </button>
                     <div className="flex-1 flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-gray-900">Faktura #{invoice.number}</h1>
+                        {invoice.isOverdue && <span className="inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800">Dospela</span>}
+                        {invoice.isOverdue && <span className="text-sm text-red-700">Kasni {invoice.overdueDays ?? 0} dana</span>}
                         <span className="inline-flex items-center gap-2" aria-busy={updatingStatus}>
                             {updatingStatus && <LoadingSpinner label="Čuvanje statusa..." size="sm"/>}
                             <select
