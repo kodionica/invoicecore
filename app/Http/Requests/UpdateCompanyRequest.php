@@ -14,6 +14,14 @@ class UpdateCompanyRequest extends FormRequest {
     }
 
     protected function prepareForValidation() {
+        $otherSettings = $this->input('other_settings');
+        if (is_string($otherSettings)) {
+            $decoded = json_decode($otherSettings, true);
+            if (is_array($decoded)) {
+                $this->merge(['other_settings' => $decoded]);
+            }
+        }
+
         $this->merge(
             [
                 'vat_enabled' => $this->boolean( 'vat_enabled' ),
@@ -49,6 +57,7 @@ class UpdateCompanyRequest extends FormRequest {
             'invoice_note'         => [ 'sometimes', 'string', 'nullable' ],
             'vat_enabled'          => [ 'sometimes', 'boolean' ],
             'other_settings'       => [ 'sometimes', 'nullable', 'array' ],
+            'other_settings.invoice_pdf.max_unprotected_versions' => [ 'sometimes', 'integer', 'min:0', 'max:100' ],
             'logo'                 => [ 'sometimes', 'mimes:png,jpg,jpeg,webp,svg', 'max:2048' ],
             'remove_logo'          => [ 'sometimes', 'boolean' ],
         ];

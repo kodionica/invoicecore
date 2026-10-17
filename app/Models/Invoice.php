@@ -113,6 +113,18 @@ class Invoice extends Model {
         return $this->hasMany( KpoEntry::class, 'source_invoice_id' );
     }
 
+    public function revisions(): HasMany {
+        return $this->hasMany(InvoiceRevision::class);
+    }
+
+    public function pdfVersions(): HasMany {
+        return $this->hasMany(InvoicePdfVersion::class)->orderByDesc('version');
+    }
+
+    public function emailSends(): HasMany {
+        return $this->hasMany(InvoiceEmailSend::class)->latest();
+    }
+
     public function scopeForActiveCompany( Builder $query, int $companyId ): Builder {
         return $query->where( 'company_id', $companyId );
     }

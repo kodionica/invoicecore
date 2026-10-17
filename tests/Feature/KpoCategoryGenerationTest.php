@@ -326,3 +326,171 @@ it('rolls back all category entries when an unexpected creation failure occurs',
     expect(KpoEntry::where('source_invoice_id', $invoice->id)->count())->toBe(0);
     KpoEntry::flushEventListeners();
 });
+
+it('previews unchanged, changed, missing and obsolete KPO categories without mutation', function () {
+    [$user, $company, $client] = phaseThreeContext('phase-fivea-diff@example.com');
+    $changed = phaseThreeInvoice($company, $client->id, 'PHASE-016', 300);
+    phaseThreeItem($changed, 100, 'product');
+    phaseThreeItem($changed, 200, 'service');
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'source_invoice_id' => $changed->id,
+        'year' => 2026,
+        'entry_number' => 1,
+        'entry_date' => '2026-10-20',
+        'source_type' => 'invoice',
+        'origin' => 'generated',
+        'income_category' => 'product',
+        'currency' => 'RSD',
+        'amount_original' => 100,
+        'amount_rsd' => 100,
+        'total_rsd' => 100,
+    ]);
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'source_invoice_id' => $changed->id,
+        'year' => 2026,
+        'entry_number' => 2,
+        'entry_date' => '2026-10-20',
+        'source_type' => 'invoice',
+        'origin' => 'generated',
+        'income_category' => 'service',
+        'currency' => 'RSD',
+        'amount_original' => 150,
+        'amount_rsd' => 150,
+        'total_rsd' => 150,
+    ]);
+    $missing = phaseThreeInvoice($company, $client->id, 'PHASE-017', 100);
+    phaseThreeItem($missing, 100, 'product');
+    $obsolete = phaseThreeInvoice($company, $client->id, 'PHASE-018', 100);
+    phaseThreeItem($obsolete, 100, 'product');
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'source_invoice_id' => $obsolete->id,
+        'year' => 2026,
+        'entry_number' => 3,
+        'entry_date' => '2026-10-20',
+        'source_type' => 'invoice',
+        'origin' => 'generated',
+        'income_category' => 'service',
+        'currency' => 'RSD',
+        'amount_original' => 100,
+        'amount_rsd' => 100,
+        'total_rsd' => 100,
+    ]);
+    $beforeEntries = KpoEntry::query()->where('company_id', $company->id)->get()->toJson();
+    $beforeCounters = DB::table('kpo_counters')->where('company_id', $company->id)->get()->toJson();
+    $beforeInvoices = Invoice::query()->where('company_id', $company->id)->get()->toJson();
+    $this->actingAs($user);
+
+    $response = $this->getJson('/api/kpo/regeneration-preview?year=2026')->assertOk();
+
+    $response->assertJsonPath('read_only', true)
+        ->assertJsonPath('invoices.0.proposed_entries.0.action', 'retain')
+        ->assertJsonPath('invoices.0.proposed_entries.1.action', 'update')
+        ->assertJsonPath('invoices.0.amount_differences.1.difference_rsd', '50.00');
+    expect($response->json('invoices'))->toHaveCount(3);
+    expect(collect($response->json('invoices'))->firstWhere('invoice_id', $missing->id)['missing_categories'])
+        ->toBe(['product']);
+    expect(collect($response->json('invoices'))->firstWhere('invoice_id', $obsolete->id)['obsolete_categories'][0]['income_category'])
+        ->toBe('service');
+    expect(KpoEntry::query()->where('company_id', $company->id)->get()->toJson())->toBe($beforeEntries)
+        ->and(DB::table('kpo_counters')->where('company_id', $company->id)->get()->toJson())->toBe($beforeCounters)
+        ->and(Invoice::query()->where('company_id', $company->id)->get()->toJson())->toBe($beforeInvoices);
+});
+
+it('reports manual edits and legacy category conflicts explicitly', function () {
+    [$user, $company, $client] = phaseThreeContext('phase-fivea-legacy@example.com');
+    $invoice = phaseThreeInvoice($company, $client->id, 'PHASE-019', 100);
+    phaseThreeItem($invoice, 100, 'service');
+    $entry = KpoEntry::create([
+        'company_id' => $company->id,
+        'source_invoice_id' => $invoice->id,
+        'year' => 2026,
+        'entry_number' => 1,
+        'entry_date' => '2026-10-20',
+        'source_type' => 'invoice',
+        'origin' => 'generated',
+        'income_category' => null,
+        'currency' => 'RSD',
+        'amount_original' => 100,
+        'amount_rsd' => 100,
+        'total_rsd' => 100,
+    ]);
+    $entry->update(['manually_edited_at' => now(), 'manually_edited_by' => $user->id]);
+    $this->actingAs($user);
+
+    $response = $this->getJson('/api/kpo/regeneration-preview?year=2026')->assertOk();
+
+    $response->assertJsonPath('invoices.0.status', 'blocked')
+        ->assertJsonPath('invoices.0.legacy_classification_conflicts.0.reason', 'legacy_null_income_category_requires_resolution')
+        ->assertJsonPath('invoices.0.existing_entries.0.manually_edited', true);
+    expect(collect($response->json('invoices.0.proposed_actions'))->pluck('action')->all())
+        ->toContain('resolve_legacy_category');
+});
+
+it('reports partial, financial and VAT blocking states without generating entries', function () {
+    [$user, $company, $client] = phaseThreeContext('phase-fivea-blocks@example.com');
+    $partial = phaseThreeInvoice($company, $client->id, 'PHASE-020', 150);
+    phaseThreeItem($partial, 100, 'product');
+    phaseThreeItem($partial, 50, null);
+    $missingFx = phaseThreeInvoice($company, $client->id, 'PHASE-021', 100, 'EUR', null);
+    phaseThreeItem($missingFx, 100, 'service');
+    $vat = phaseThreeInvoice($company, $client->id, 'PHASE-022', 100);
+    $vat->update(['vat_enabled_at_issue' => true]);
+    phaseThreeItem($vat, 100, 'service');
+    $otherUser = User::create([
+        'first_name' => 'Other',
+        'last_name' => 'Company',
+        'email' => 'phase-fivea-other@example.com',
+        'username' => 'phase-fivea-other',
+        'password' => 'password',
+    ]);
+    $otherCompany = Company::create(['name' => 'Other Company', 'user_id' => $otherUser->id]);
+    $otherClient = $otherCompany->clients()->create(['name' => 'Other Client']);
+    $otherInvoice = phaseThreeInvoice($otherCompany, $otherClient->id, 'PHASE-023', 100);
+    phaseThreeItem($otherInvoice, 100, 'service');
+    $this->actingAs($user);
+
+    $response = $this->getJson('/api/kpo/regeneration-preview?year=2026')->assertOk();
+    $reports = collect($response->json('invoices'));
+
+    expect($reports->pluck('invoice_id')->all())->not->toContain($otherInvoice->id)
+        ->and($reports->firstWhere('invoice_id', $partial->id)['status'])->toBe('partial')
+        ->and($reports->firstWhere('invoice_id', $partial->id)['unresolved']['amount_rsd'])->toBe('50.00')
+        ->and($reports->firstWhere('invoice_id', $missingFx->id)['blocking_reasons'])->toContain('missing_persisted_fx_rate')
+        ->and($reports->firstWhere('invoice_id', $vat->id)['blocking_reasons'])->toContain('vat_policy_not_approved')
+        ->and(KpoEntry::count())->toBe(0);
+});
+
+it('does not recreate a soft-deleted category entry during generation', function () {
+    [$user, $company, $client] = phaseThreeContext('phase-three-soft-deleted@example.com');
+    $invoice = phaseThreeInvoice($company, $client->id, 'PHASE-SOFT-001', 100);
+    phaseThreeItem($invoice, 100, 'service');
+    $entry = KpoEntry::create([
+        'company_id' => $company->id,
+        'source_invoice_id' => $invoice->id,
+        'year' => 2026,
+        'entry_number' => 1,
+        'entry_date' => '2026-10-20',
+        'source_type' => 'invoice',
+        'origin' => 'generated',
+        'income_category' => 'service',
+        'currency' => 'RSD',
+        'amount_original' => 100,
+        'amount_rsd' => 100,
+        'total_rsd' => 100,
+    ]);
+    $entry->delete();
+    $this->actingAs($user);
+
+    $this->getJson('/api/kpo/generation-preview?year=2026')
+        ->assertOk()
+        ->assertJsonCount(0, 'entries');
+    $this->postJson('/api/kpo/generate', phaseThreePayload($invoice))
+        ->assertOk()
+        ->assertJsonPath('skipped.0.income_category', 'service');
+
+    expect(KpoEntry::query()->count())->toBe(0)
+        ->and(KpoEntry::withTrashed()->whereKey($entry->id)->count())->toBe(1);
+});

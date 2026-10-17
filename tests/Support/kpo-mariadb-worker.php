@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\KpoEntry;
+use App\Models\KpoEntryRevision;
 use App\Services\KpoEntryService;
 use Illuminate\Support\Facades\DB;
 
@@ -40,8 +41,19 @@ if ($mode === 'fail_after_first') {
     });
 }
 
-if ($mode !== 'fail_after_first') {
-    file_put_contents((string) $readyFile.'.ready', 'ready', LOCK_EX);
+if ($mode === 'fail_regeneration_revision') {
+    KpoEntryRevision::creating(static function (): void {
+        throw new RuntimeException('Concurrency regeneration audit failure.');
+    });
+}
+
+if (! in_array($mode, ['fail_after_first', 'fail_regeneration_revision'], true)) {
+    $readyPath = (string) $readyFile.'.ready';
+    if (file_put_contents($readyPath, 'ready', LOCK_EX) === false) {
+        fwrite(STDERR, "Unable to create worker ready signal: {$readyPath}\n");
+        exit(4);
+    }
+
     $deadline = microtime(true) + 30;
     while (! file_exists((string) $releaseFile) && microtime(true) < $deadline) {
         usleep(10_000);
@@ -53,11 +65,19 @@ if ($mode !== 'fail_after_first') {
 }
 
 try {
-    app(KpoEntryService::class)->generateFromInvoices(
-        Company::query()->findOrFail((int) $companyId),
-        (int) $year,
-        $entries
-    );
+    $company = Company::query()->findOrFail((int) $companyId);
+    if ($mode === 'regenerate' || $mode === 'fail_regeneration_revision') {
+        app(KpoEntryService::class)->regenerateFromInvoices(
+            $company,
+            (int) $year,
+            array_map('intval', $entries['invoice_ids']),
+            (string) $entries['preview_fingerprint'],
+            (bool) ($entries['confirm_manual_overwrite'] ?? false),
+            (bool) ($entries['include_historical'] ?? false),
+        );
+    } else {
+        app(KpoEntryService::class)->generateFromInvoices($company, (int) $year, $entries);
+    }
     echo json_encode(['ok' => true], JSON_THROW_ON_ERROR);
 } catch (Throwable $exception) {
     $chain = [];

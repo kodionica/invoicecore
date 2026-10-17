@@ -25,6 +25,8 @@
         <env name="CACHE_STORE" value="array"/>
         <env name="DB_CONNECTION" value="sqlite"/>
         <env name="DB_DATABASE" value=":memory:"/>
+        <env name="RUN_KPO_MARIADB_CONCURRENCY" value="0"/>
+        <env name="KPO_MARIADB_TEST_DATABASE" value="invoicecore_kpo_concurrency_test_20261016"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

@@ -2,13 +2,16 @@
 
 namespace App\Services;
 
+use App\Exceptions\KpoInvoiceConflictException;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\KpoEntry;
+use App\Models\KpoEntryRevision;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 use Throwable;
 
 class KpoEntryService
@@ -27,7 +30,7 @@ class KpoEntryService
                     ->where('company_id', $company->id)
                     ->firstOrFail();
 
-                if (KpoEntry::query()->where('source_invoice_id', $invoice->id)->exists()) {
+                if (KpoEntry::withTrashed()->where('source_invoice_id', $invoice->id)->exists()) {
                     abort(422, 'Za izabranu fakturu KPO zapis već postoji.');
                 }
 
@@ -42,7 +45,7 @@ class KpoEntryService
             $amountRsd = $invoice ? (float) ($invoice->total_rsd ?? $invoice->total) : (float) $data['amount_rsd'];
             $adjustment = (float) ($data['adjustment_rsd'] ?? 0);
 
-            return KpoEntry::create([
+            $entry = KpoEntry::create([
                 'company_id' => $company->id,
                 'source_invoice_id' => $invoice?->id,
                 'year' => $entryDate->year,
@@ -59,12 +62,25 @@ class KpoEntryService
                 'total_rsd' => round($amountRsd + $adjustment, 2),
                 'description' => $data['description'] ?? null,
             ]);
+
+            KpoEntryRevision::create([
+                'kpo_entry_id' => $entry->id,
+                'acting_user_id' => auth()->id(),
+                'action_type' => 'created',
+                'previous_values' => null,
+                'new_values' => $this->revisionValues($entry),
+                'manual_edit_overwritten' => false,
+            ]);
+
+            return $entry;
         });
     }
 
     public function update(KpoEntry $entry, array $data): KpoEntry
     {
         return DB::transaction(function () use ($entry, $data): KpoEntry {
+            $previous = $this->revisionValues($entry);
+            $previousAdjustment = (string) $entry->adjustment_rsd;
             $entry->fill($data);
 
             if ($entry->source_type === 'invoice') {
@@ -80,11 +96,151 @@ class KpoEntryService
 
             $entry->year = $entry->entry_date->year;
             $entry->total_rsd = round((float) $entry->amount_rsd + (float) ($entry->adjustment_rsd ?? 0), 2);
+
+            $nextValues = $this->revisionValues($entry);
+            if ($previous === $nextValues) {
+                return $entry->refresh();
+            }
+
             $entry->manually_edited_at = now();
             $entry->manually_edited_by = auth()->id();
             $entry->save();
 
+            KpoEntryRevision::create([
+                'kpo_entry_id' => $entry->id,
+                'acting_user_id' => auth()->id(),
+                'action_type' => $previousAdjustment !== (string) $entry->adjustment_rsd ? 'manually_adjusted' : 'updated',
+                'previous_values' => $previous,
+                'new_values' => $this->revisionValues($entry),
+                'manual_edit_overwritten' => false,
+            ]);
+
             return $entry->refresh();
+        });
+    }
+
+    /**
+     * Update only safe, generated invoice-linked KPO snapshots after an invoice edit.
+     * Category changes, eligibility changes and manual edits require the explicit
+     * regeneration flow instead of being silently resolved here.
+     *
+     * @return array{status: string, updated: array<int, int>}
+     */
+    public function synchronizeAfterInvoiceUpdate(
+        Invoice $invoice,
+        bool $allowManualOverwrite = false,
+        bool $allowEligibilityConflict = false
+    ): array
+    {
+        $invoice->load('items');
+        $entries = KpoEntry::withTrashed()
+            ->where('company_id', $invoice->company_id)
+            ->where('source_invoice_id', $invoice->id)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        if ($entries->isEmpty()) {
+            return ['status' => 'unlinked', 'updated' => []];
+        }
+
+        if (! $invoice->include_in_kpo) {
+            if ($allowEligibilityConflict) {
+                return ['status' => 'retained_ineligible', 'updated' => []];
+            }
+            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'kpo_exclusion'));
+        }
+
+        if ($entries->contains(fn (KpoEntry $entry): bool => $entry->income_category === null)) {
+            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'legacy_category'));
+        }
+
+        if ($invoice->vat_enabled_at_issue === null || (bool) $invoice->vat_enabled_at_issue) {
+            if ($allowEligibilityConflict) {
+                return ['status' => 'retained_ineligible', 'updated' => []];
+            }
+            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'vat_ineligibility'));
+        }
+
+        $calculation = $this->amountCalculator->calculate($invoice);
+        if (($calculation['generation_readiness']['status'] ?? null) === 'blocked') {
+            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'financial_block'));
+        }
+
+        $expectedCategories = collect(['product', 'service'])
+            ->filter(fn (string $category): bool => ($calculation['categories'][$category]['amount_rsd'] ?? '0.00') !== '0.00')
+            ->values();
+        $existingCategories = $entries->pluck('income_category')->filter()->unique()->values();
+
+        if ($expectedCategories->diff($existingCategories)->isNotEmpty() || $existingCategories->diff($expectedCategories)->isNotEmpty()) {
+            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'category_change'));
+        }
+
+        $updated = [];
+        foreach ($entries as $entry) {
+            if ($entry->trashed()) {
+                throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'deleted_entry'));
+            }
+
+            $amounts = $calculation['categories'][$entry->income_category];
+            $nextTotal = $this->decimalSum($amounts['amount_rsd'], $entry->adjustment_rsd);
+            $changed = (string) $entry->amount_original !== (string) $amounts['amount_original']
+                || (string) $entry->amount_rsd !== (string) $amounts['amount_rsd']
+                || (string) $entry->total_rsd !== $nextTotal;
+
+            if (! $changed) {
+                continue;
+            }
+
+            $manuallyEdited = $this->isManuallyEdited($entry);
+            if ($manuallyEdited && ! $allowManualOverwrite) {
+                throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'manual_edit'));
+            }
+
+            $previous = $this->revisionValues($entry);
+            $entry->update([
+                'amount_original' => $amounts['amount_original'],
+                'amount_rsd' => $amounts['amount_rsd'],
+                'total_rsd' => $nextTotal,
+                'currency' => $invoice->currency,
+            ]);
+            KpoEntryRevision::create([
+                'kpo_entry_id' => $entry->id,
+                'acting_user_id' => auth()->id(),
+                'action_type' => 'regenerated',
+                'previous_values' => $previous,
+                'new_values' => $this->revisionValues($entry->refresh()),
+                'manual_edit_overwritten' => $manuallyEdited,
+            ]);
+            $updated[] = $entry->id;
+        }
+
+        return ['status' => $updated === [] ? 'unchanged' : 'updated', 'updated' => $updated];
+    }
+
+    public function delete(KpoEntry $entry): void
+    {
+        DB::transaction(function () use ($entry): void {
+            if ($entry->source_type !== 'manual') {
+                throw ValidationException::withMessages([
+                    'entry' => 'Automatski KPO zapisi se ne mogu obrisati ovom radnjom.',
+                ]);
+            }
+
+            if ($entry->trashed()) {
+                return;
+            }
+
+            $previous = $this->revisionValues($entry);
+            $entry->delete();
+            KpoEntryRevision::create([
+                'kpo_entry_id' => $entry->id,
+                'acting_user_id' => auth()->id(),
+                'action_type' => 'deleted',
+                'previous_values' => $previous,
+                'new_values' => null,
+                'manual_edit_overwritten' => false,
+            ]);
         });
     }
 
@@ -93,7 +249,7 @@ class KpoEntryService
         $query = Invoice::query()
             ->where('company_id', $company->id)
             ->where('include_in_kpo', true)
-            ->with(['items', 'kpoEntries'])
+            ->with(['items', 'kpoEntries' => static fn ($query) => $query->withTrashed()])
             ->orderBy('issue_date')
             ->orderBy('invoice_number');
 
@@ -164,6 +320,591 @@ class KpoEntryService
         ];
     }
 
+    /**
+     * Build a read-only comparison between persisted invoice KPO entries and
+     * the current category calculation. This deliberately does not reuse the
+     * append-only generation report or reserve entry numbers.
+     *
+     * @return array<string, mixed>
+     */
+    public function regenerationPreviewFromInvoices(
+        Company $company,
+        int $year,
+        bool $includeHistorical = false,
+        ?array $invoiceIds = null
+    ): array
+    {
+        $query = Invoice::query()
+            ->where('company_id', $company->id)
+            ->where('include_in_kpo', true)
+            ->with(['items', 'kpoEntries' => static fn ($query) => $query->withTrashed()])
+            ->orderBy('issue_date')
+            ->orderBy('invoice_number');
+
+        if (! $includeHistorical) {
+            $query->whereYear('issue_date', $year);
+        }
+        if ($invoiceIds !== null) {
+            $query->whereIn('id', array_map('intval', $invoiceIds));
+        }
+
+        $invoices = $query->get();
+        $reports = $invoices
+            ->map(fn (Invoice $invoice): array => $this->regenerationInvoiceReport($invoice))
+            ->values();
+        $actionableReports = $reports->filter(
+            static fn (array $report): bool => (bool) ($report['actionable'] ?? true)
+        )->values();
+
+        return [
+            'year' => $year,
+            'include_historical' => $includeHistorical,
+            'read_only' => true,
+            'invoices' => $reports->all(),
+            'actionable_invoices' => $actionableReports->all(),
+            'actionable_count' => $actionableReports->count(),
+            'unchanged_count' => $reports->count() - $actionableReports->count(),
+            'preview_fingerprint' => $this->regenerationFingerprint($company, $year, $includeHistorical, $invoices),
+        ];
+    }
+
+    /**
+     * Execute an explicitly confirmed regeneration against the current locked
+     * state. Amounts are always recalculated server-side.
+     *
+     * @param array<int, int> $invoiceIds
+     * @return array<string, mixed>
+     */
+    public function regenerateFromInvoices(
+        Company $company,
+        int $year,
+        array $invoiceIds,
+        string $previewFingerprint,
+        bool $confirmManualOverwrite = false,
+        bool $includeHistorical = false
+    ): array {
+        $invoiceIds = collect($invoiceIds)->map(fn (mixed $id): int => (int) $id)->unique()->sort()->values()->all();
+        $operationId = (string) Str::uuid();
+
+        return DB::transaction(function () use (
+            $company,
+            $year,
+            $invoiceIds,
+            $previewFingerprint,
+            $confirmManualOverwrite,
+            $includeHistorical,
+            $operationId
+        ): array {
+            $query = Invoice::query()
+                ->where('company_id', $company->id)
+                ->whereIn('id', $invoiceIds)
+                    ->with('items')
+                ->orderBy('id')
+                ->lockForUpdate();
+            if (! $includeHistorical) {
+                $query->whereYear('issue_date', $year);
+            }
+            $invoices = $query->get();
+
+            if ($invoices->count() !== count($invoiceIds)) {
+                throw ValidationException::withMessages([
+                    'invoice_ids' => 'Jedna ili više faktura nije dostupna u aktivnoj firmi.',
+                ]);
+            }
+
+            foreach ($invoices as $invoice) {
+                $invoice->setRelation('kpoEntries', $invoice->kpoEntries()
+                    ->withTrashed()
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get());
+            }
+
+            $currentFingerprint = $this->regenerationFingerprint($company, $year, $includeHistorical, $invoices);
+            if (! hash_equals($previewFingerprint, $currentFingerprint)) {
+                throw ValidationException::withMessages([
+                    'preview_fingerprint' => 'Preview je zastareo; podaci fakture ili KPO zapisi su se promenili.',
+                ]);
+            }
+
+            $result = [
+                'operation_id' => $operationId,
+                'created' => [],
+                'updated' => [],
+                'unchanged' => [],
+                'protected' => [],
+                'blocked' => [],
+                'obsolete' => [],
+                'partial' => [],
+                'unresolved' => [],
+                'rounding_residuals' => [],
+            ];
+
+            foreach ($invoices as $invoice) {
+                $report = $this->regenerationInvoiceReport($invoice);
+                if ($report['blocking_reasons'] !== []) {
+                    $result['blocked'][] = [
+                        'invoice_id' => $invoice->id,
+                        'reasons' => $report['blocking_reasons'],
+                    ];
+                    continue;
+                }
+                if ($report['status'] === 'partial') {
+                    $result['partial'][] = ['invoice_id' => $invoice->id];
+                    $result['unresolved'][] = [
+                        'invoice_id' => $invoice->id,
+                        ...$report['unresolved'],
+                    ];
+                }
+                if ($report['rounding']['has_unallocated_rounding_residual']) {
+                    $result['rounding_residuals'][] = [
+                        'invoice_id' => $invoice->id,
+                        ...$report['rounding'],
+                    ];
+                }
+                foreach ($report['obsolete_categories'] as $obsolete) {
+                    $result['obsolete'][] = ['invoice_id' => $invoice->id, ...$obsolete];
+                }
+
+                foreach ($report['proposed_entries'] as $proposal) {
+                    $existing = $invoice->kpoEntries->firstWhere('id', $proposal['existing_entry_id']);
+                    if (! $existing) {
+                        $entry = $this->createRegeneratedEntry($company, $invoice, $proposal, $operationId);
+                        $result['created'][] = [
+                            'invoice_id' => $invoice->id,
+                            'kpo_entry_id' => $entry->id,
+                            'income_category' => $proposal['income_category'],
+                            'entry_number' => $entry->entry_number,
+                        ];
+                        continue;
+                    }
+
+                    $difference = $this->decimalDifference($proposal['amount_rsd'], $existing->amount_rsd);
+                    if ($difference === '0.00') {
+                        $result['unchanged'][] = ['invoice_id' => $invoice->id, 'kpo_entry_id' => $existing->id];
+                        continue;
+                    }
+                    $manuallyEdited = $this->isManuallyEdited($existing);
+                    if ($manuallyEdited && ! $confirmManualOverwrite) {
+                        $result['protected'][] = [
+                            'invoice_id' => $invoice->id,
+                            'kpo_entry_id' => $existing->id,
+                            'income_category' => $proposal['income_category'],
+                            'reason' => 'manual_overwrite_confirmation_required',
+                        ];
+                        continue;
+                    }
+
+                    $previous = $this->revisionValues($existing);
+                    $existing->update([
+                        'amount_original' => $proposal['amount_original'],
+                        'amount_rsd' => $proposal['amount_rsd'],
+                        'total_rsd' => $this->decimalSum($proposal['amount_rsd'], $existing->adjustment_rsd),
+                    ]);
+                    $existing->refresh();
+                    KpoEntryRevision::create([
+                        'kpo_entry_id' => $existing->id,
+                        'acting_user_id' => auth()->id(),
+                        'action_type' => 'regenerated',
+                        'previous_values' => $previous,
+                        'new_values' => $this->revisionValues($existing),
+                        'manual_edit_overwritten' => $manuallyEdited,
+                        'operation_id' => $operationId,
+                    ]);
+                    $result['updated'][] = [
+                        'invoice_id' => $invoice->id,
+                        'kpo_entry_id' => $existing->id,
+                        'income_category' => $proposal['income_category'],
+                        'manual_edit_overwritten' => $manuallyEdited,
+                    ];
+                }
+            }
+
+            return $result;
+        }, 3);
+    }
+
+    /** @param array<string, mixed> $proposal */
+    private function createRegeneratedEntry(Company $company, Invoice $invoice, array $proposal, string $operationId): KpoEntry
+    {
+        $entryDate = $invoice->issue_date;
+        $entryNumber = $this->nextNumber($company->id, (int) $entryDate->year);
+        $entry = KpoEntry::create([
+            'company_id' => $company->id,
+            'source_invoice_id' => $invoice->id,
+            'year' => $entryDate->year,
+            'entry_number' => $entryNumber,
+            'entry_date' => $entryDate->toDateString(),
+            'source_type' => 'invoice',
+            'origin' => 'generated',
+            'income_type' => $proposal['income_category'] === 'product' ? 'proizvod' : 'usluga',
+            'income_category' => $proposal['income_category'],
+            'currency' => $invoice->currency,
+            'amount_original' => $proposal['amount_original'],
+            'amount_rsd' => $proposal['amount_rsd'],
+            'adjustment_rsd' => '0.00',
+            'total_rsd' => $proposal['total_rsd'],
+            'description' => 'Faktura '.$invoice->invoice_number.' - '.($proposal['income_category'] === 'product' ? 'proizvodi' : 'usluge'),
+        ]);
+        KpoEntryRevision::create([
+            'kpo_entry_id' => $entry->id,
+            'acting_user_id' => auth()->id(),
+            'action_type' => 'regenerated',
+            'previous_values' => null,
+            'new_values' => $this->revisionValues($entry),
+            'manual_edit_overwritten' => false,
+            'operation_id' => $operationId,
+        ]);
+
+        return $entry;
+    }
+
+    /** @return array<string, mixed> */
+    public function invoiceEditConflict(Invoice $invoice, string $reason): array
+    {
+        $report = $this->regenerationInvoiceReport($invoice);
+        $requiresManualOverwrite = $reason === 'manual_edit';
+        $requiresRegeneration = in_array($reason, [
+            'category_change',
+            'legacy_category',
+            'financial_block',
+            'deleted_entry',
+        ], true);
+
+        return [
+            'reason' => $reason,
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'existing_entries' => $report['existing_entries'],
+            'proposed_entries' => $report['proposed_entries'],
+            'amount_differences' => $report['amount_differences'],
+            'obsolete_categories' => $report['obsolete_categories'],
+            'warnings' => array_values(array_unique(array_merge(
+                $report['blocking_reasons'],
+                $reason === 'kpo_exclusion' ? ['invoice_will_be_excluded_from_future_kpo_generation'] : [],
+                $reason === 'vat_ineligibility' ? ['invoice_will_be_ineligible_for_automatic_kpo_generation'] : [],
+            ))),
+            'requires_manual_overwrite' => $requiresManualOverwrite,
+            'requires_regeneration' => $requiresRegeneration,
+        ];
+    }
+
+    public function invoiceEditConfirmationFingerprint(Invoice $invoice, array $data): string
+    {
+        $invoice->load('items');
+        $invoice->setRelation('kpoEntries', $invoice->kpoEntries()
+            ->withTrashed()
+            ->orderBy('id')
+            ->get());
+        $base = $this->regenerationFingerprint(
+            $invoice->company,
+            (int) ($invoice->issue_date?->year ?? now()->year),
+            false,
+            collect([$invoice])
+        );
+
+        return hash('sha256', $base.'|'.json_encode($data, JSON_THROW_ON_ERROR));
+    }
+
+    private function regenerationFingerprint(Company $company, int $year, bool $includeHistorical, $invoices): string
+    {
+        $payload = [
+            'company_id' => $company->id,
+            'year' => $year,
+            'include_historical' => $includeHistorical,
+            'invoices' => $invoices->sortBy('id')->map(static function (Invoice $invoice): array {
+                return [
+                    'id' => $invoice->id,
+                    'updated_at' => $invoice->updated_at?->toISOString(),
+                    'issue_date' => $invoice->issue_date?->toDateString(),
+                    'total_original' => (string) $invoice->total_original,
+                    'total_rsd' => (string) $invoice->total_rsd,
+                    'fx_rate_to_rsd' => (string) $invoice->fx_rate_to_rsd,
+                    'vat_enabled_at_issue' => $invoice->vat_enabled_at_issue,
+                    'items' => $invoice->items->sortBy('id')->map(static fn ($item): array => [
+                        'id' => $item->id,
+                        'updated_at' => $item->updated_at?->toISOString(),
+                        'total' => (string) $item->total,
+                        'income_category' => $item->income_category,
+                    ])->values()->all(),
+                    'kpo_entries' => $invoice->kpoEntries->sortBy('id')->map(static fn (KpoEntry $entry): array => [
+                        'id' => $entry->id,
+                        'company_id' => $entry->company_id,
+                        'source_invoice_id' => $entry->source_invoice_id,
+                        'year' => $entry->year,
+                        'entry_number' => $entry->entry_number,
+                        'entry_date' => $entry->entry_date?->toDateString(),
+                        'source_type' => $entry->source_type,
+                        'currency' => $entry->currency,
+                        'description' => $entry->description,
+                        'updated_at' => $entry->updated_at?->toISOString(),
+                        'income_category' => $entry->income_category,
+                        'amount_original' => (string) $entry->amount_original,
+                        'amount_rsd' => (string) $entry->amount_rsd,
+                        'adjustment_rsd' => (string) $entry->adjustment_rsd,
+                        'total_rsd' => (string) $entry->total_rsd,
+                        'origin' => $entry->origin,
+                        'manually_edited_at' => $entry->manually_edited_at?->toISOString(),
+                        'manually_edited_by' => $entry->manually_edited_by,
+                        'deleted_at' => $entry->deleted_at?->toISOString(),
+                    ])->values()->all(),
+                ];
+            })->values()->all(),
+        ];
+
+        return hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
+    }
+
+    /** @return array<string, mixed> */
+    private function revisionValues(KpoEntry $entry): array
+    {
+        return [
+            'id' => $entry->id,
+            'entry_number' => $entry->entry_number,
+            'income_category' => $entry->income_category,
+            'amount_original' => $entry->amount_original,
+            'amount_rsd' => $entry->amount_rsd,
+            'adjustment_rsd' => $entry->adjustment_rsd,
+            'total_rsd' => $entry->total_rsd,
+            'entry_date' => $entry->entry_date?->toDateString(),
+            'description' => $entry->description,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function regenerationInvoiceReport(Invoice $invoice): array
+    {
+        $calculation = $this->amountCalculator->calculate($invoice);
+        $existingEntries = $invoice->kpoEntries->sortBy([
+            ['entry_date', 'asc'],
+            ['entry_number', 'asc'],
+        ])->values();
+        $existingByCategory = $existingEntries
+            ->filter(fn (KpoEntry $entry): bool => ! $entry->trashed()
+                && in_array($entry->income_category, ['product', 'service'], true))
+            ->keyBy('income_category');
+        $deletedCategories = $existingEntries
+            ->filter(fn (KpoEntry $entry): bool => $entry->trashed()
+                && in_array($entry->income_category, ['product', 'service'], true))
+            ->pluck('income_category')
+            ->unique()
+            ->values()
+            ->all();
+        $proposedCategories = collect(['product', 'service'])
+            ->filter(fn (string $category): bool => ($calculation['categories'][$category]['amount_rsd'] ?? '0.00') !== '0.00')
+            ->values();
+
+        $legacyConflicts = $existingEntries
+            ->filter(fn (KpoEntry $entry): bool => $entry->income_category === null)
+            ->map(fn (KpoEntry $entry): array => [
+                'entry_id' => $entry->id,
+                'entry_number' => $entry->entry_number,
+                'reason' => 'legacy_null_income_category_requires_resolution',
+                'total_rsd' => $entry->total_rsd,
+            ])->values()->all();
+        $unknownExistingCategories = $existingEntries
+            ->filter(fn (KpoEntry $entry): bool => $entry->income_category !== null
+                && ! in_array($entry->income_category, ['product', 'service'], true))
+            ->map(fn (KpoEntry $entry): array => [
+                'entry_id' => $entry->id,
+                'entry_number' => $entry->entry_number,
+                'income_category' => $entry->income_category,
+                'reason' => 'unknown_existing_income_category',
+                'total_rsd' => $entry->total_rsd,
+            ])->values()->all();
+
+        $missingCategories = $proposedCategories
+            ->reject(fn (string $category): bool => $existingByCategory->has($category))
+            ->values()->all();
+        $obsoleteCategories = $existingEntries
+            ->filter(fn (KpoEntry $entry): bool => ! $entry->trashed()
+                && in_array($entry->income_category, ['product', 'service'], true)
+                && ! $proposedCategories->contains($entry->income_category))
+            ->map(fn (KpoEntry $entry): array => [
+                'entry_id' => $entry->id,
+                'entry_number' => $entry->entry_number,
+                'income_category' => $entry->income_category,
+                'reason' => 'category_no_longer_present',
+                'total_rsd' => $entry->total_rsd,
+                'manually_edited' => $this->isManuallyEdited($entry),
+            ])->values()->all();
+
+        $proposedEntries = [];
+        $amountDifferences = [];
+        $proposedActions = [];
+        foreach ($proposedCategories as $category) {
+            $amounts = $calculation['categories'][$category];
+            $existing = $existingByCategory->get($category);
+            $proposedTotal = $existing
+                ? $this->decimalSum($amounts['amount_rsd'], $existing->adjustment_rsd)
+                : $amounts['amount_rsd'];
+            $difference = $existing
+                ? $this->decimalDifference($proposedTotal, $existing->total_rsd)
+                : $amounts['amount_rsd'];
+            $action = ! $existing ? 'create' : ($difference === '0.00' ? 'retain' : 'update');
+
+            $proposedEntries[] = [
+                'income_category' => $category,
+                'amount_original' => $amounts['amount_original'],
+                'amount_rsd' => $amounts['amount_rsd'],
+                'total_rsd' => $proposedTotal,
+                'existing_entry_id' => $existing?->id,
+                'action' => $action,
+                'manually_edited' => $existing ? $this->isManuallyEdited($existing) : false,
+            ];
+            $amountDifferences[] = [
+                'income_category' => $category,
+                'existing_entry_id' => $existing?->id,
+                'existing_amount_rsd' => $existing?->amount_rsd,
+                'proposed_amount_rsd' => $amounts['amount_rsd'],
+                'existing_total_rsd' => $existing?->total_rsd,
+                'proposed_total_rsd' => $proposedTotal,
+                'difference_rsd' => $difference,
+                'manually_edited' => $existing ? $this->isManuallyEdited($existing) : false,
+            ];
+            $proposedActions[] = [
+                'action' => $action,
+                'income_category' => $category,
+                'entry_id' => $existing?->id,
+                'requires_confirmation' => $action !== 'retain' || ($existing && $this->isManuallyEdited($existing)),
+            ];
+        }
+
+        foreach ($obsoleteCategories as $obsolete) {
+            $proposedActions[] = [
+                'action' => 'review_obsolete',
+                'income_category' => $obsolete['income_category'],
+                'entry_id' => $obsolete['entry_id'],
+                'requires_confirmation' => true,
+            ];
+        }
+        foreach ($legacyConflicts as $legacy) {
+            $proposedActions[] = [
+                'action' => 'resolve_legacy_category',
+                'income_category' => null,
+                'entry_id' => $legacy['entry_id'],
+                'requires_confirmation' => true,
+            ];
+        }
+
+        $blockingReasons = [];
+        if ($legacyConflicts !== []) {
+            $blockingReasons[] = 'legacy_null_income_category_requires_resolution';
+        }
+        if ($unknownExistingCategories !== []) {
+            $blockingReasons[] = 'unknown_existing_income_category';
+        }
+        if ($deletedCategories !== []) {
+            $blockingReasons[] = 'deleted_category_requires_resolution';
+        }
+        if (($calculation['generation_readiness']['status'] ?? null) === 'blocked') {
+            $blockingReasons = array_merge($blockingReasons, $calculation['generation_readiness']['reasons'] ?? ['financial_inconsistency']);
+        }
+        if ($invoice->vat_enabled_at_issue === null) {
+            $blockingReasons[] = 'unknown_historical_vat_status';
+        } elseif ((bool) $invoice->vat_enabled_at_issue) {
+            $blockingReasons[] = 'vat_policy_not_approved';
+        }
+        $blockingReasons = array_values(array_unique($blockingReasons));
+        $status = $blockingReasons !== []
+            ? 'blocked'
+            : (($calculation['generation_readiness']['status'] ?? null) === 'partial' ? 'partial' : 'ready');
+        $hasActionableChanges = collect($proposedEntries)->contains(
+            static fn (array $proposal): bool => $proposal['action'] !== 'retain'
+        ) || $status !== 'ready'
+            || $missingCategories !== []
+            || $obsoleteCategories !== []
+            || $deletedCategories !== []
+            || $legacyConflicts !== []
+            || $unknownExistingCategories !== []
+            || $calculation['unresolved_amount_rsd'] !== '0.00'
+            || (bool) $calculation['has_unallocated_rounding_residual'];
+
+        return [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'issue_date' => $invoice->issue_date?->toDateString(),
+            'status' => $status,
+            'actionable' => $hasActionableChanges,
+            'blocking_reasons' => $blockingReasons,
+            'existing_entries' => $existingEntries->map(fn (KpoEntry $entry): array => $this->regenerationEntry($entry))->all(),
+            'proposed_entries' => $proposedEntries,
+            'amount_differences' => $amountDifferences,
+            'legacy_classification_conflicts' => $legacyConflicts,
+            'deleted_categories' => $deletedCategories,
+            'missing_categories' => $missingCategories,
+            'obsolete_categories' => $obsoleteCategories,
+            'unresolved' => [
+                'amount_original' => $calculation['unresolved_amount_original'],
+                'amount_rsd' => $calculation['unresolved_amount_rsd'],
+            ],
+            'rounding' => [
+                'category_residual_rsd' => $calculation['category_rounding_residual_rsd'],
+                'snapshot_discrepancy_rsd' => $calculation['snapshot_discrepancy_rsd'],
+                'reconciliation_status' => $calculation['reconciliation_status'],
+                'has_unallocated_rounding_residual' => $calculation['has_unallocated_rounding_residual'],
+            ],
+            'proposed_actions' => $proposedActions,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function regenerationEntry(KpoEntry $entry): array
+    {
+        return [
+            'id' => $entry->id,
+            'entry_number' => $entry->entry_number,
+            'entry_date' => $entry->entry_date?->toDateString(),
+            'income_category' => $entry->income_category,
+            'income_type' => $entry->income_type,
+            'amount_original' => $entry->amount_original,
+            'amount_rsd' => $entry->amount_rsd,
+            'adjustment_rsd' => $entry->adjustment_rsd,
+            'total_rsd' => $entry->total_rsd,
+            'origin' => $entry->origin,
+            'manually_edited_at' => $entry->manually_edited_at?->toISOString(),
+            'manually_edited_by' => $entry->manually_edited_by,
+            'manually_edited' => $this->isManuallyEdited($entry),
+            'deleted_at' => $entry->deleted_at?->toISOString(),
+        ];
+    }
+
+    private function isManuallyEdited(KpoEntry $entry): bool
+    {
+        return $entry->origin !== 'generated'
+            || $entry->manually_edited_at !== null
+            || $entry->manually_edited_by !== null;
+    }
+
+    private function decimalDifference(string $proposed, mixed $existing): string
+    {
+        $proposedCents = $this->decimalToCents($proposed);
+        $existingCents = $this->decimalToCents($existing);
+
+        return number_format(($proposedCents - $existingCents) / 100, 2, '.', '');
+    }
+
+    private function decimalSum(mixed $left, mixed $right): string
+    {
+        return number_format(
+            ($this->decimalToCents($left) + $this->decimalToCents($right)) / 100,
+            2,
+            '.',
+            ''
+        );
+    }
+
+    private function decimalToCents(mixed $value): int
+    {
+        $value = trim((string) $value);
+        $negative = str_starts_with($value, '-');
+        $value = ltrim($value, '+-');
+        [$whole, $fraction] = array_pad(explode('.', $value, 2), 2, '');
+        $cents = ((int) $whole * 100) + (int) str_pad(substr($fraction, 0, 2), 2, '0');
+
+        return $negative ? -$cents : $cents;
+    }
+
     public function generateFromInvoices(
         Company $company,
         int $year,
@@ -225,7 +966,7 @@ class KpoEntryService
                 $invoice = Invoice::query()
                     ->whereKey($invoiceId)
                     ->where('company_id', $company->id)
-                    ->with(['items', 'kpoEntries'])
+                    ->with(['items', 'kpoEntries' => static fn ($query) => $query->withTrashed()])
                     ->lockForUpdate()
                     ->first();
 
@@ -306,6 +1047,14 @@ class KpoEntryService
                         'adjustment_rsd' => '0.00',
                         'total_rsd' => $amounts['amount_rsd'],
                         'description' => 'Faktura '.$invoice->invoice_number.' - '.($category === 'product' ? 'proizvodi' : 'usluge'),
+                    ]);
+                    KpoEntryRevision::create([
+                        'kpo_entry_id' => $entry->id,
+                        'acting_user_id' => auth()->id(),
+                        'action_type' => 'created',
+                        'previous_values' => null,
+                        'new_values' => $this->revisionValues($entry),
+                        'manual_edit_overwritten' => false,
                     ]);
 
                     $result['created'][] = [

@@ -22,6 +22,7 @@ export interface Company {
     vat_enabled: boolean;
     payment_due_days?: number;
     logoUrl?: string;
+    otherSettings?: { invoice_pdf?: { max_unprotected_versions?: number } };
 }
 
 export interface Client {
@@ -67,6 +68,19 @@ export interface Invoice {
     totalRsd: number;
     fxRateToRsd?: number;
     includeInKpo: boolean;
+    vatEnabledAtIssue?: boolean | null;
+    note?: string | null;
+    pdfPath?: string | null;
+}
+
+export interface InvoicePdfVersion {
+    id: number;
+    invoiceId: number | null;
+    version: number;
+    path: string;
+    createdAt?: string;
+    protectedAt?: string | null;
+    sentAt?: string | null;
 }
 
 export interface KpoEntry {
@@ -78,12 +92,14 @@ export interface KpoEntry {
     entryDate: string;
     sourceType: 'manual' | 'invoice' | string;
     incomeType?: string | null;
+    incomeCategory?: 'product' | 'service' | 'unclassified' | string | null;
     currency: string;
     amountOriginal: number;
     amountRsd: number;
     adjustmentRsd: number;
     totalRsd: number;
     description?: string | null;
+    deletedAt?: string | null;
     sourceInvoice?: {
         id: number;
         invoiceNumber?: string;
@@ -110,6 +126,7 @@ export interface KpoListResponse {
 export interface KpoUpdatePayload {
     entry_date?: string;
     income_type?: string | null;
+    income_category?: 'product' | 'service' | 'unclassified' | null;
     adjustment_rsd?: string | number;
     description?: string | null;
 }
@@ -143,6 +160,96 @@ export interface KpoGenerationResult {
     created: Array<{invoice_id: number; kpo_entry_id: number; entry_number: number}>;
     skipped: Array<{invoice_id: number; reason: string}>;
     failed: Array<{invoice_id: number; reason: string}>;
+}
+
+export interface KpoRegenerationEntry {
+    id: number;
+    entryNumber: number;
+    entryDate: string;
+    incomeCategory: string | null;
+    incomeType?: string | null;
+    amountOriginal: string | number;
+    amountRsd: string | number;
+    adjustmentRsd: string | number;
+    totalRsd: string | number;
+    origin?: string | null;
+    manuallyEdited: boolean;
+}
+
+export interface KpoRegenerationProposal {
+    incomeCategory: string;
+    amountOriginal: string | number;
+    amountRsd: string | number;
+    totalRsd: string | number;
+    existingEntryId?: number | null;
+    action: 'create' | 'retain' | 'update' | string;
+    manuallyEdited: boolean;
+}
+
+export interface KpoRegenerationInvoice {
+    invoiceId: number;
+    invoiceNumber: string;
+    issueDate: string;
+    status: 'ready' | 'partial' | 'blocked' | string;
+    actionable: boolean;
+    blockingReasons: string[];
+    existingEntries: KpoRegenerationEntry[];
+    proposedEntries: KpoRegenerationProposal[];
+    amountDifferences: Array<{
+        incomeCategory: string;
+        existingEntryId?: number | null;
+        existingTotalRsd?: string | number | null;
+        proposedTotalRsd: string | number;
+        differenceRsd: string | number;
+        manuallyEdited: boolean;
+    }>;
+    legacyClassificationConflicts: Array<{entryId: number; reason: string; totalRsd: string | number}>;
+    missingCategories: string[];
+    deletedCategories: string[];
+    obsoleteCategories: Array<{entryId: number; entryNumber: number; incomeCategory: string; totalRsd: string | number; manuallyEdited: boolean}>;
+    unresolved: {amountOriginal: string | number; amountRsd: string | number};
+    rounding: {
+        categoryResidualRsd: string | number;
+        snapshotDiscrepancyRsd: string | number;
+        reconciliationStatus: string;
+        hasUnallocatedRoundingResidual: boolean;
+    };
+}
+
+export interface KpoRegenerationPreview {
+    year: number;
+    includeHistorical: boolean;
+    readOnly: boolean;
+    invoices: KpoRegenerationInvoice[];
+    actionableCount: number;
+    unchangedCount: number;
+    previewFingerprint: string;
+}
+
+export interface KpoRegenerationResult {
+    operationId?: string;
+    created: any[];
+    updated: any[];
+    unchanged: any[];
+    protected: any[];
+    blocked: any[];
+    obsolete: any[];
+    partial: any[];
+    unresolved: any[];
+    roundingResiduals: any[];
+}
+
+export interface InvoiceKpoConflict {
+    reason: string;
+    invoiceId: number;
+    invoiceNumber: string;
+    existingEntries: KpoRegenerationEntry[];
+    proposedEntries: KpoRegenerationProposal[];
+    amountDifferences: KpoRegenerationInvoice['amountDifferences'];
+    obsoleteCategories: KpoRegenerationInvoice['obsoleteCategories'];
+    warnings: string[];
+    requiresManualOverwrite: boolean;
+    requiresRegeneration: boolean;
 }
 
 interface User {
@@ -192,6 +299,7 @@ interface CompanyCreatePayload {
     swift: string;
     currency: string;
     vat_enabled: boolean;
+    other_settings?: Record<string, unknown>;
     logoFile?: File;
 }
 
@@ -220,8 +328,15 @@ interface InvoiceCreatePayload {
     currency?: string;
     paymentMethod?: string;
     note?: string;
-    items: { description: string; quantity: number; price: number; incomeCategory: InvoiceIncomeCategory }[];
+    items: { id?: number; description: string; quantity: number; price: number; incomeCategory: InvoiceIncomeCategory }[];
     includeInKpo?: boolean;
+    vatEnabledAtIssue?: boolean;
+}
+
+export interface InvoiceKpoConfirmation {
+    confirmed: boolean;
+    previewFingerprint: string;
+    confirmManualOverwrite?: boolean;
 }
 
 export interface MetaData {
@@ -267,18 +382,28 @@ interface AppContextType {
     updateClient: (id: number, data: ClientCreatePayload) => Promise<void>;
     deleteClient: (id: number) => Promise<void>;
     addInvoice: (invoice: InvoiceCreatePayload) => Promise<void>;
+    updateInvoice: (id: number, invoice: InvoiceCreatePayload, confirmation?: InvoiceKpoConfirmation) => Promise<void>;
+    refreshInvoice: (id: number) => Promise<Invoice>;
+    getInvoiceHistory: (id: number) => Promise<{invoice: any; revisions: any[]} >;
+    getInvoicePdfVersions: (id: number) => Promise<InvoicePdfVersion[]>;
+    downloadInvoicePdfVersion: (id: number, version: number, invoiceNumber?: string) => Promise<void>;
     deleteInvoice: (id: number) => Promise<void>;
     getNextInvoiceNumber: () => Promise<string>;
     updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
     updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
-    sendInvoiceEmail: (id: number) => Promise<void>;
+    sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string }) => Promise<any>;
+    getInvoiceEmailHistory: (id: number) => Promise<any[]>;
     loadKpo: (filters?: KpoFilters) => Promise<KpoListResponse>;
     downloadKpoPdf: (filters?: KpoFilters) => Promise<void>;
     getKpoEntry: (id: number) => Promise<KpoEntry>;
     updateKpoEntry: (id: number, payload: KpoUpdatePayload) => Promise<KpoEntry>;
+    deleteKpoEntry: (id: number) => Promise<void>;
+    getKpoHistory: (id: number) => Promise<{entry: any; revisions: any[]}>;
     previewKpoGeneration: (year: number, includeHistorical?: boolean) => Promise<KpoGenerationPreview>;
     generateKpoEntries: (year: number, entries: KpoGenerationSelection[], confirmManualOverlap?: boolean, includeHistorical?: boolean) => Promise<KpoGenerationResult>;
+    previewKpoRegeneration: (year: number, invoiceIds?: number[], includeHistorical?: boolean) => Promise<KpoRegenerationPreview>;
+    regenerateKpoEntries: (year: number, invoiceIds: number[], previewFingerprint: string, confirmManualOverwrite?: boolean, includeHistorical?: boolean) => Promise<KpoRegenerationResult>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -342,6 +467,7 @@ const normalizeCompany = (company: any): Company => {
         currency: company.currency ?? 'RSD',
         vat_enabled: Boolean(company.vat_enabled),
         payment_due_days: company.payment_due_days !== undefined ? Number(company.payment_due_days) : undefined,
+        otherSettings: company.other_settings ?? undefined,
         logoUrl,
     };
 };
@@ -363,6 +489,13 @@ const normalizeClient = (client: any): Client => {
     };
 };
 
+const normalizeDateInput = (value: unknown): string => {
+    if (value === null || value === undefined || value === '') return '';
+    const text = String(value);
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+    return '';
+};
+
 const normalizeInvoice = (invoice: any): Invoice => {
     const items = Array.isArray(invoice.items) ? invoice.items : [];
     const total = Number(invoice.total ?? 0);
@@ -374,8 +507,8 @@ const normalizeInvoice = (invoice: any): Invoice => {
         companyId: Number(invoice.company_id ?? 0),
         clientId: Number(invoice.client_id ?? 0),
         number: invoice.invoice_number ?? '',
-        date: invoice.issue_date ?? '',
-        dueDate: invoice.due_date ?? '',
+        date: normalizeDateInput(invoice.issue_date),
+        dueDate: normalizeDateInput(invoice.due_date),
         currency: invoice.currency ?? 'RSD',
         status: invoice.status as InvoiceStatus,
         paymentMethod: invoice.payment_method,
@@ -386,6 +519,9 @@ const normalizeInvoice = (invoice: any): Invoice => {
             ? Number(invoice.fx_rate_to_rsd)
             : undefined,
         includeInKpo: invoice.include_in_kpo !== false,
+        vatEnabledAtIssue: invoice.vat_enabled_at_issue ?? null,
+        note: invoice.note ?? null,
+        pdfPath: invoice.pdf_path ?? null,
         items: items.map((item: any) => ({
             id: Number(item.id ?? 0),
             description: item.name ?? item.description ?? '',
@@ -407,12 +543,14 @@ const normalizeKpoEntry = (entry: any): KpoEntry => ({
     entryDate: entry.entry_date ?? '',
     sourceType: entry.source_type ?? 'manual',
     incomeType: entry.income_type ?? null,
+    incomeCategory: entry.income_category ?? null,
     currency: entry.currency ?? 'RSD',
     amountOriginal: Number(entry.amount_original ?? 0),
     amountRsd: Number(entry.amount_rsd ?? 0),
     adjustmentRsd: Number(entry.adjustment_rsd ?? 0),
     totalRsd: Number(entry.total_rsd ?? 0),
     description: entry.description ?? null,
+    deletedAt: entry.deleted_at ?? null,
     sourceInvoice: entry.source_invoice
         ? {
             id: Number(entry.source_invoice.id),
@@ -428,6 +566,10 @@ const buildCompanyFormData = (data: CompanyCreatePayload | CompanyUpdatePayload)
         if (key === 'logoFile') return;
         if (key === 'vat_enabled') {
             form.append('vat_enabled', value ? '1' : '0');
+            return;
+        }
+        if (key === 'other_settings') {
+            form.append(key, JSON.stringify(value));
             return;
         }
         if (key === 'remove_logo') {
@@ -550,6 +692,18 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         return normalizeKpoEntry(response.data);
     };
 
+    const deleteKpoEntry = async (id: number): Promise<void> => {
+        await api.delete(`/api/kpo/${id}`);
+    };
+
+    const getKpoHistory = async (id: number): Promise<{entry: any; revisions: any[]}> => {
+        const response = await api.get(`/api/kpo/${id}/history`);
+        return {
+            entry: response.data?.entry ?? {},
+            revisions: Array.isArray(response.data?.revisions) ? response.data.revisions : [],
+        };
+    };
+
     const previewKpoGeneration = async (year: number, includeHistorical = false): Promise<KpoGenerationPreview> => {
         const response = await api.get('/api/kpo/generation-preview', {
             params: {year, include_historical: includeHistorical ? 1 : 0},
@@ -579,6 +733,112 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             created: response.data?.created ?? [],
             skipped: response.data?.skipped ?? [],
             failed: response.data?.failed ?? [],
+        };
+    };
+
+    const previewKpoRegeneration = async (year: number, invoiceIds: number[] = [], includeHistorical = false): Promise<KpoRegenerationPreview> => {
+        const response = await api.get('/api/kpo/regeneration-preview', {
+            params: {
+                year,
+                include_historical: includeHistorical ? 1 : 0,
+                ...(invoiceIds.length ? {invoice_ids: invoiceIds} : {}),
+            },
+        });
+        const data = response.data ?? {};
+
+        return {
+            year: Number(data.year ?? year),
+            includeHistorical: Boolean(data.include_historical),
+            readOnly: Boolean(data.read_only),
+            actionableCount: Number(data.actionable_count ?? 0),
+            unchangedCount: Number(data.unchanged_count ?? 0),
+            previewFingerprint: String(data.preview_fingerprint ?? ''),
+            invoices: Array.isArray(data.invoices) ? data.invoices.map((invoice: any) => ({
+                invoiceId: Number(invoice.invoice_id),
+                invoiceNumber: String(invoice.invoice_number ?? invoice.invoice_id),
+                issueDate: String(invoice.issue_date ?? ''),
+                status: String(invoice.status ?? 'blocked'),
+                actionable: Boolean(invoice.actionable),
+                blockingReasons: Array.isArray(invoice.blocking_reasons) ? invoice.blocking_reasons : [],
+                existingEntries: Array.isArray(invoice.existing_entries) ? invoice.existing_entries.map((entry: any) => ({
+                    id: Number(entry.id),
+                    entryNumber: Number(entry.entry_number),
+                    entryDate: String(entry.entry_date ?? ''),
+                    incomeCategory: entry.income_category ?? null,
+                    incomeType: entry.income_type ?? null,
+                    amountOriginal: entry.amount_original ?? 0,
+                    amountRsd: entry.amount_rsd ?? 0,
+                    adjustmentRsd: entry.adjustment_rsd ?? 0,
+                    totalRsd: entry.total_rsd ?? 0,
+                    origin: entry.origin ?? null,
+                    manuallyEdited: Boolean(entry.manually_edited),
+                })) : [],
+                proposedEntries: Array.isArray(invoice.proposed_entries) ? invoice.proposed_entries.map((proposal: any) => ({
+                    incomeCategory: String(proposal.income_category ?? 'unknown'),
+                    amountOriginal: proposal.amount_original ?? 0,
+                    amountRsd: proposal.amount_rsd ?? 0,
+                    totalRsd: proposal.total_rsd ?? 0,
+                    existingEntryId: proposal.existing_entry_id ?? null,
+                    action: String(proposal.action ?? 'review'),
+                    manuallyEdited: Boolean(proposal.manually_edited),
+                })) : [],
+                amountDifferences: Array.isArray(invoice.amount_differences) ? invoice.amount_differences.map((difference: any) => ({
+                    incomeCategory: String(difference.income_category ?? 'unknown'),
+                    existingEntryId: difference.existing_entry_id ?? null,
+                    existingTotalRsd: difference.existing_total_rsd ?? null,
+                    proposedTotalRsd: difference.proposed_total_rsd ?? 0,
+                    differenceRsd: difference.difference_rsd ?? 0,
+                    manuallyEdited: Boolean(difference.manually_edited),
+                })) : [],
+                legacyClassificationConflicts: Array.isArray(invoice.legacy_classification_conflicts) ? invoice.legacy_classification_conflicts.map((conflict: any) => ({
+                    entryId: Number(conflict.entry_id),
+                    reason: String(conflict.reason ?? 'legacy_conflict'),
+                    totalRsd: conflict.total_rsd ?? 0,
+                })) : [],
+                missingCategories: Array.isArray(invoice.missing_categories) ? invoice.missing_categories : [],
+                deletedCategories: Array.isArray(invoice.deleted_categories) ? invoice.deleted_categories : [],
+                obsoleteCategories: Array.isArray(invoice.obsolete_categories) ? invoice.obsolete_categories.map((obsolete: any) => ({
+                    entryId: Number(obsolete.entry_id),
+                    entryNumber: Number(obsolete.entry_number),
+                    incomeCategory: String(obsolete.income_category ?? 'unknown'),
+                    totalRsd: obsolete.total_rsd ?? 0,
+                    manuallyEdited: Boolean(obsolete.manually_edited),
+                })) : [],
+                unresolved: {
+                    amountOriginal: invoice.unresolved?.amount_original ?? 0,
+                    amountRsd: invoice.unresolved?.amount_rsd ?? 0,
+                },
+                rounding: {
+                    categoryResidualRsd: invoice.rounding?.category_residual_rsd ?? 0,
+                    snapshotDiscrepancyRsd: invoice.rounding?.snapshot_discrepancy_rsd ?? 0,
+                    reconciliationStatus: String(invoice.rounding?.reconciliation_status ?? 'unknown'),
+                    hasUnallocatedRoundingResidual: Boolean(invoice.rounding?.has_unallocated_rounding_residual),
+                },
+            })) : [],
+        };
+    };
+
+    const regenerateKpoEntries = async (year: number, invoiceIds: number[], previewFingerprint: string, confirmManualOverwrite = false, includeHistorical = false): Promise<KpoRegenerationResult> => {
+        const response = await api.post('/api/kpo/regenerate', {
+            year,
+            invoice_ids: invoiceIds,
+            preview_fingerprint: previewFingerprint,
+            confirm_regeneration: true,
+            confirm_manual_overwrite: confirmManualOverwrite,
+            include_historical: includeHistorical,
+        });
+        const data = response.data ?? {};
+        return {
+            operationId: data.operation_id,
+            created: data.created ?? [],
+            updated: data.updated ?? [],
+            unchanged: data.unchanged ?? [],
+            protected: data.protected ?? [],
+            blocked: data.blocked ?? [],
+            obsolete: data.obsolete ?? [],
+            partial: data.partial ?? [],
+            unresolved: data.unresolved ?? [],
+            roundingResiduals: data.rounding_residuals ?? [],
         };
     };
 
@@ -738,6 +998,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             payment_method: invoice.paymentMethod,
             note: invoice.note,
             include_in_kpo: invoice.includeInKpo !== false,
+            vat_enabled_at_issue: invoice.vatEnabledAtIssue,
             items: invoice.items.map(item => ({
                 name: item.description,
                 description: item.description,
@@ -752,6 +1013,37 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         setInvoices(current => [...current, created]);
     };
 
+    const updateInvoice = async (id: number, invoice: InvoiceCreatePayload, confirmation?: InvoiceKpoConfirmation) => {
+        const response = await api.put(`/api/invoices/${id}`, {
+            client_id: invoice.clientId,
+            invoice_number: invoice.number,
+            issue_date: invoice.date || undefined,
+            due_date: invoice.dueDate || undefined,
+            currency: invoice.currency,
+            payment_method: invoice.paymentMethod,
+            note: invoice.note,
+            include_in_kpo: invoice.includeInKpo !== false,
+            vat_enabled_at_issue: invoice.vatEnabledAtIssue,
+            items: invoice.items.map((item: any) => ({
+                id: item.id,
+                name: item.description,
+                description: item.description,
+                quantity: item.quantity,
+                price: item.price,
+                income_category: item.incomeCategory,
+            })),
+            ...(confirmation ? {
+                kpo_confirmation: {
+                    confirmed: confirmation.confirmed,
+                    preview_fingerprint: confirmation.previewFingerprint,
+                    confirm_manual_overwrite: confirmation.confirmManualOverwrite ?? false,
+                },
+            } : {}),
+        });
+        const updated = normalizeInvoice(response.data);
+        setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+    };
+
     const deleteInvoice = async (id: number) => {
         await api.delete(`/api/invoices/${id}`);
         setInvoices(current => current.filter(c => c.id !== id));
@@ -762,10 +1054,39 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         return response.data?.invoice_number ?? '';
     };
 
+    const refreshInvoice = async (id: number): Promise<Invoice> => {
+        const response = await api.get(`/api/invoices/${id}`);
+        const rawInvoice = response.data?.invoice ?? response.data;
+        const updated = normalizeInvoice({
+            ...rawInvoice,
+            items: rawInvoice?.items ?? response.data?.invoice_items ?? [],
+        });
+        setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+        return updated;
+    };
+
     const updateInvoiceStatus = async (id: number, status: InvoiceStatus) => {
         const response = await api.put(`/api/invoices/${id}`, {status});
         const updated = normalizeInvoice(response.data);
         setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+    };
+
+    const getInvoiceHistory = async (id: number) => {
+        const response = await api.get(`/api/invoices/${id}/history`);
+        return response.data;
+    };
+
+    const getInvoicePdfVersions = async (id: number): Promise<InvoicePdfVersion[]> => {
+        const response = await api.get(`/api/invoices/${id}/pdf-versions`);
+        return (Array.isArray(response.data) ? response.data : []).map((version: any) => ({
+            id: Number(version.id),
+            invoiceId: version.invoice_id === null ? null : Number(version.invoice_id),
+            version: Number(version.version),
+            path: version.path ?? '',
+            createdAt: version.created_at,
+            protectedAt: version.protected_at,
+            sentAt: version.sent_at,
+        }));
     };
 
     const updateInvoiceItemClassifications = async (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => {
@@ -798,8 +1119,29 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         window.URL.revokeObjectURL(url);
     };
 
-    const sendInvoiceEmail = async (id: number) => {
-        await api.post(`/api/invoices/${id}/email`);
+    const downloadInvoicePdfVersion = async (id: number, version: number, invoiceNumber?: string) => {
+        const response = await api.get(`/api/invoices/${id}/pdf-versions/${version}/download`, {responseType: 'blob'});
+        const contentDisposition = response.headers?.['content-disposition'] as string | undefined;
+        const match = contentDisposition?.match(/filename=\"?([^\";]+)\"?/i);
+        const blob = new Blob([response.data], {type: 'application/pdf'});
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = match?.[1] || `faktura-${invoiceNumber ?? id}-v${version}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+    };
+
+    const sendInvoiceEmail = async (id: number, payload?: { recipient?: string; subject?: string; message?: string }) => {
+        const response = await api.post(`/api/invoices/${id}/email`, payload ?? {});
+        return response.data;
+    };
+
+    const getInvoiceEmailHistory = async (id: number): Promise<any[]> => {
+        const response = await api.get(`/api/invoices/${id}/email-history`);
+        return Array.isArray(response.data) ? response.data : [];
     };
 
     const resetPassword = async (payload: PasswordPayload) => {
@@ -869,18 +1211,28 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             updateClient,
             deleteClient,
             addInvoice,
+            updateInvoice,
+            refreshInvoice,
+            getInvoiceHistory,
+            getInvoicePdfVersions,
             deleteInvoice,
             getNextInvoiceNumber,
             updateInvoiceStatus,
             updateInvoiceItemClassifications,
             downloadInvoicePdf,
+            downloadInvoicePdfVersion,
             sendInvoiceEmail,
+            getInvoiceEmailHistory,
             loadKpo,
             downloadKpoPdf,
             getKpoEntry,
             updateKpoEntry,
+            deleteKpoEntry,
+            getKpoHistory,
             previewKpoGeneration,
             generateKpoEntries,
+            previewKpoRegeneration,
+            regenerateKpoEntries,
         }}>
             {children}
         </AppContext.Provider>

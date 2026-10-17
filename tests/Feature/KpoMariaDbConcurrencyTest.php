@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\KpoEntry;
+use App\Models\KpoEntryRevision;
 use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -115,12 +116,13 @@ function runConcurrentKpoWorkers(
     array $workerEntries,
     string $suffix,
     ?string $mode = null,
-    int $expectedExitCode = 0,
+    array $allowedExitCodes = [0],
 ): array {
     $root = createKpoConcurrencyTempDirectory($suffix);
     $release = $root.'/release';
     $workerPath = base_path('tests/Support/kpo-mariadb-worker.php');
     $processes = [];
+    $barrierEnabled = ! in_array($mode, ['fail_after_first', 'fail_regeneration_revision'], true);
 
     try {
         foreach ($workerEntries as $index => $entries) {
@@ -138,34 +140,61 @@ function runConcurrentKpoWorkers(
             $processes[] = $process;
         }
 
-        if ($mode === null) {
+        if ($barrierEnabled) {
             $deadline = microtime(true) + 15;
+            $missingReady = [];
             foreach ($workerEntries as $index => $_) {
                 $ready = $root.'/worker-'.$index.'.ready';
                 while (! file_exists($ready) && microtime(true) < $deadline) {
                     usleep(10_000);
                 }
                 if (! file_exists($ready)) {
-                    throw new RuntimeException("Worker {$index} did not reach the concurrency barrier.");
+                    $missingReady[] = $index;
                 }
             }
+
+            if ($missingReady !== []) {
+                $diagnostics = [];
+                foreach ($processes as $index => $process) {
+                    $diagnostics[] = sprintf(
+                        "worker %s: running=%s exit=%s stderr=%s stdout=%s",
+                        (string) $index,
+                        $process->isRunning() ? 'yes' : 'no',
+                        (string) $process->getExitCode(),
+                        trim($process->getErrorOutput()),
+                        trim($process->getOutput()),
+                    );
+                }
+
+                throw new RuntimeException(sprintf(
+                    'Workers %s did not reach the concurrency barrier. Missing ready signals: %s.\n%s',
+                    implode(', ', array_map('strval', $missingReady)),
+                    implode(', ', array_map(static fn (int $index): string => $root.'/worker-'.$index.'.ready', $missingReady)),
+                    implode("\n", $diagnostics),
+                ));
+            }
+
             touch($release);
         }
 
         foreach ($processes as $process) {
             $process->wait();
-            if ($process->getExitCode() !== $expectedExitCode) {
+            if (! in_array($process->getExitCode(), $allowedExitCodes, true)) {
                 throw new RuntimeException(sprintf(
-                    "MariaDB worker failed with exit code %s (expected %s).\nSTDERR:\n%s\nSTDOUT:\n%s",
+                    "MariaDB worker failed with exit code %s (allowed: %s).\nSTDERR:\n%s\nSTDOUT:\n%s",
                     (string) $process->getExitCode(),
-                    (string) $expectedExitCode,
+                    implode(',', array_map('strval', $allowedExitCodes)),
                     $process->getErrorOutput(),
                     $process->getOutput()
                 ));
             }
         }
 
-        return array_map(static fn (Process $process): string => $process->getOutput(), $processes);
+        return [
+            'outputs' => array_map(static fn (Process $process): string => $process->getOutput(), $processes),
+            'errors' => array_map(static fn (Process $process): string => $process->getErrorOutput(), $processes),
+            'exit_codes' => array_map(static fn (Process $process): ?int => $process->getExitCode(), $processes),
+        ];
     } finally {
         foreach ($processes as $process) {
             if ($process->isRunning()) {
@@ -245,9 +274,109 @@ final class KpoMariaDbConcurrencyTest extends BaseTestCase
     [$company, $invoices] = createKpoConcurrencyContext('rollback');
     $entries = [['invoice_id' => $invoices[0]->id, 'entry_date' => '2026-10-20']];
 
-    runConcurrentKpoWorkers($company->id, [$entries], 'rollback', 'fail_after_first', 1);
+    runConcurrentKpoWorkers($company->id, [$entries], 'rollback', 'fail_after_first', [1]);
 
         $this->assertSame(0, KpoEntry::where('company_id', $company->id)->count());
         $this->assertSame(0, DB::table('kpo_counters')->where('company_id', $company->id)->count());
+    }
+
+    public function test_concurrent_regeneration_creates_missing_categories_once_and_rejects_stale_worker(): void
+    {
+        [$company, $invoices] = createKpoConcurrencyContext('regeneration-create');
+        $service = app(\App\Services\KpoEntryService::class);
+        $fingerprint = $service->regenerationPreviewFromInvoices($company, 2026, false, [$invoices[0]->id])['preview_fingerprint'];
+        $payload = [
+            'invoice_ids' => [$invoices[0]->id],
+            'preview_fingerprint' => $fingerprint,
+            'confirm_manual_overwrite' => false,
+        ];
+
+        $run = runConcurrentKpoWorkers($company->id, [$payload, $payload], 'regeneration-create', 'regenerate', [0, 1]);
+
+        $this->assertCount(2, KpoEntry::where('source_invoice_id', $invoices[0]->id)->get());
+        $this->assertSame(2, KpoEntryRevision::whereIn('kpo_entry_id', KpoEntry::where('source_invoice_id', $invoices[0]->id)->pluck('id'))->count());
+        sort($run['exit_codes']);
+        $this->assertSame([0, 1], $run['exit_codes']);
+        $this->assertSame(3, DB::table('kpo_counters')->where('company_id', $company->id)->where('year', 2026)->value('next_number'));
+    }
+
+    public function test_concurrent_regeneration_failure_rolls_back_entries_revisions_and_counter(): void
+    {
+        [$company, $invoices] = createKpoConcurrencyContext('regeneration-rollback');
+        $service = app(\App\Services\KpoEntryService::class);
+        $fingerprint = $service->regenerationPreviewFromInvoices($company, 2026, false, [$invoices[0]->id])['preview_fingerprint'];
+        $payload = [
+            'invoice_ids' => [$invoices[0]->id],
+            'preview_fingerprint' => $fingerprint,
+        ];
+
+        runConcurrentKpoWorkers($company->id, [$payload], 'regeneration-rollback', 'fail_regeneration_revision', [1]);
+
+        $this->assertSame(0, KpoEntry::where('source_invoice_id', $invoices[0]->id)->count());
+        $this->assertSame(0, KpoEntryRevision::count());
+        $this->assertSame(0, DB::table('kpo_counters')->where('company_id', $company->id)->count());
+    }
+
+    public function test_concurrent_regeneration_cannot_overwrite_manual_entry_without_permission(): void
+    {
+        [$company, $invoices] = createKpoConcurrencyContext('regeneration-manual');
+        $entry = KpoEntry::create([
+            'company_id' => $company->id,
+            'source_invoice_id' => $invoices[0]->id,
+            'year' => 2026,
+            'entry_number' => 1,
+            'entry_date' => '2026-10-20',
+            'source_type' => 'invoice',
+            'origin' => 'manual',
+            'income_category' => 'product',
+            'currency' => 'RSD',
+            'amount_original' => 50,
+            'amount_rsd' => 50,
+            'total_rsd' => 50,
+            'manually_edited_at' => now(),
+        ]);
+        $before = $entry->getAttributes();
+        $fingerprint = app(\App\Services\KpoEntryService::class)
+            ->regenerationPreviewFromInvoices($company, 2026, false, [$invoices[0]->id])['preview_fingerprint'];
+        $payload = [
+            'invoice_ids' => [$invoices[0]->id],
+            'preview_fingerprint' => $fingerprint,
+            'confirm_manual_overwrite' => false,
+        ];
+
+        $run = runConcurrentKpoWorkers($company->id, [$payload, $payload], 'regeneration-manual', 'regenerate', [0, 1]);
+
+        $this->assertContains(0, $run['exit_codes'], 'At least one worker must complete the protected operation.');
+        foreach ($run['exit_codes'] as $index => $exitCode) {
+            if ($exitCode === 0) {
+                continue;
+            }
+
+            $this->assertSame(1, $exitCode, "Unexpected exit code for worker {$index}.");
+            $this->assertStringContainsString(
+                'Preview je zastareo; podaci fakture ili KPO zapisi su se promenili.',
+                $run['errors'][$index]
+            );
+            $this->assertStringContainsString(
+                'Illuminate\\Validation\\ValidationException',
+                $run['errors'][$index]
+            );
+        }
+
+        $after = $entry->refresh()->getAttributes();
+        foreach (['id', 'entry_number', 'amount_original', 'amount_rsd', 'adjustment_rsd', 'total_rsd', 'origin', 'income_category', 'manually_edited_at'] as $field) {
+            $this->assertSame($before[$field], $after[$field], "Protected manual field {$field} changed.");
+        }
+
+        $invoiceEntries = KpoEntry::where('source_invoice_id', $invoices[0]->id)->get();
+        $this->assertSame(['product', 'service'], $invoiceEntries->pluck('income_category')->sort()->values()->all());
+        $this->assertSame(
+            $invoiceEntries->count(),
+            $invoiceEntries->pluck('income_category')->filter()->unique()->count(),
+            'Concurrent regeneration created duplicate categorized entries.'
+        );
+        $this->assertSame('200.00', $invoiceEntries->firstWhere('income_category', 'service')->total_rsd);
+        $this->assertSame(0, KpoEntryRevision::where('kpo_entry_id', $entry->id)->count());
+        $this->assertSame(0, KpoEntryRevision::where('manual_edit_overwritten', true)->count());
     }
 }

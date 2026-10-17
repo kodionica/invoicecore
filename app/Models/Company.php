@@ -145,6 +145,12 @@ class Company extends Model {
         return $this->hasMany( KpoEntry::class );
     }
 
+    public function invoicePdfMaxUnprotectedVersions(): int {
+        $value = data_get($this->other_settings ?? [], 'invoice_pdf.max_unprotected_versions', 5);
+
+        return max(0, min(100, (int) $value));
+    }
+
     public function scopeForUser( Builder $query, int $userId ): Builder {
         return $query->where( 'user_id', $userId );
     }

@@ -36,6 +36,7 @@ export const router = createBrowserRouter([
       { path: "clients/:id", Component: ClientForm },
       { path: "invoices", Component: Invoices },
       { path: "invoices/new", Component: InvoiceForm },
+      { path: "invoices/:id/edit", Component: InvoiceForm },
       { path: "invoices/:id", Component: InvoiceDetails },
       { path: "companies", Component: Companies },
       { path: "companies/new", Component: CompanyForm },

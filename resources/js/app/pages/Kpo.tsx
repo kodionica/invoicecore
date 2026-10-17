@@ -4,7 +4,7 @@ import {Link} from 'react-router';
 import {toast} from 'sonner';
 import {formatCurrency} from '../utils/format';
 import {useApp} from '../context/AppContext';
-import type {KpoEntry, KpoFilters, KpoGenerationPreview, KpoGenerationResult, KpoGenerationSelection, KpoTotals} from '../context/AppContext';
+import type {KpoEntry, KpoFilters, KpoGenerationPreview, KpoGenerationResult, KpoGenerationSelection, KpoRegenerationPreview, KpoRegenerationResult, KpoTotals} from '../context/AppContext';
 
 const currentYear = new Date().getFullYear();
 
@@ -32,8 +32,30 @@ const isService = (incomeType?: string | null) => {
 };
 
 const incomeByType = (entry: KpoEntry, type: 'product' | 'service') => {
-    const matches = type === 'product' ? isProduct(entry.incomeType) : isService(entry.incomeType);
+    const matches = entry.incomeCategory === 'product'
+        ? type === 'product'
+        : entry.incomeCategory === 'service'
+            ? type === 'service'
+            : type === 'product' ? isProduct(entry.incomeType) : isService(entry.incomeType);
     return matches ? entry.totalRsd : null;
+};
+
+const regenerationStatusLabel = (status: string) => ({
+    ready: 'Spremno',
+    partial: 'Delimično',
+    blocked: 'Blokirano',
+}[status] ?? status);
+
+const regenerationActionLabel = (action: string) => ({
+    create: 'Nedostaje — kreiranje',
+    update: 'Izmenjeno — ažuriranje',
+    retain: 'Bez promene',
+}[action] ?? action);
+
+const revisionChangedFields = (revision: any) => {
+    const previous = revision.previous_values ?? {};
+    const next = revision.new_values ?? {};
+    return [...new Set([...Object.keys(previous), ...Object.keys(next)])].filter(key => JSON.stringify(previous[key]) !== JSON.stringify(next[key]));
 };
 
 const emptyTotals: KpoTotals = {amountRsd: 0, adjustmentRsd: 0, totalRsd: 0};
@@ -42,7 +64,7 @@ type SortColumn = 'entryNumber' | 'date' | 'description' | 'product' | 'service'
 type SortDirection = 'asc' | 'desc';
 
 export default function Kpo() {
-    const {activeCompanyId, loadKpo, downloadKpoPdf, getKpoEntry, updateKpoEntry, previewKpoGeneration, generateKpoEntries} = useApp();
+    const {activeCompanyId, loadKpo, downloadKpoPdf, getKpoEntry, updateKpoEntry, deleteKpoEntry, getKpoHistory, previewKpoGeneration, generateKpoEntries, previewKpoRegeneration, regenerateKpoEntries} = useApp();
     const [entries, setEntries] = useState<KpoEntry[]>([]);
     const [totals, setTotals] = useState<KpoTotals>(emptyTotals);
     const [selectedYear, setSelectedYear] = useState(String(currentYear));
@@ -55,6 +77,8 @@ export default function Kpo() {
     const [selectedEntry, setSelectedEntry] = useState<KpoEntry | null>(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState<string | null>(null);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [history, setHistory] = useState<any[] | null>(null);
     const [saving, setSaving] = useState(false);
     const [generationLoading, setGenerationLoading] = useState(false);
     const [generationOpen, setGenerationOpen] = useState(false);
@@ -62,10 +86,18 @@ export default function Kpo() {
     const [generationPreview, setGenerationPreview] = useState<KpoGenerationPreview | null>(null);
     const [generationSelection, setGenerationSelection] = useState<Record<number, KpoGenerationSelection>>({});
     const [confirmManualOverlap, setConfirmManualOverlap] = useState(false);
+    const [regenerationLoading, setRegenerationLoading] = useState(false);
+    const [regenerationOpen, setRegenerationOpen] = useState(false);
+    const [regenerationPreview, setRegenerationPreview] = useState<KpoRegenerationPreview | null>(null);
+    const [confirmRegeneration, setConfirmRegeneration] = useState(false);
+    const [confirmManualOverwrite, setConfirmManualOverwrite] = useState(false);
+    const [regenerationStale, setRegenerationStale] = useState(false);
+    const [lastRegenerationResult, setLastRegenerationResult] = useState<KpoRegenerationResult | null>(null);
     const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
     const [form, setForm] = useState({
         entryDate: '',
         incomeType: '',
+        incomeCategory: 'unclassified' as 'product' | 'service' | 'unclassified',
         adjustmentRsd: '0.00',
         description: '',
     });
@@ -230,6 +262,68 @@ export default function Kpo() {
         }
     };
 
+    const openRegenerationPreview = async () => {
+        if (!activeCompanyId || !filters.year) return;
+
+        const invoiceIds = [...new Set(entries.map(entry => entry.sourceInvoiceId).filter((id): id is number => Boolean(id)))];
+        if (!invoiceIds.length) {
+            toast.error('Za proveru regeneracije nema faktura povezanih sa prikazanim KPO zapisima.');
+            return;
+        }
+
+        setRegenerationLoading(true);
+        setRegenerationStale(false);
+        setLastRegenerationResult(null);
+        try {
+            const response = await previewKpoRegeneration(filters.year, invoiceIds);
+            setRegenerationPreview(response);
+            setConfirmRegeneration(false);
+            setConfirmManualOverwrite(false);
+            setRegenerationOpen(true);
+        } catch (requestError: any) {
+            toast.error(getErrorMessage(requestError, 'Nije moguće proveriti promene KPO zapisa.'));
+        } finally {
+            setRegenerationLoading(false);
+        }
+    };
+
+    const submitRegeneration = async () => {
+        if (!regenerationPreview || !confirmRegeneration || regenerationStale) return;
+
+        const invoiceIds = regenerationPreview.invoices
+            .filter(invoice => invoice.actionable)
+            .map(invoice => invoice.invoiceId);
+        setRegenerationLoading(true);
+        try {
+            const result = await regenerateKpoEntries(
+                regenerationPreview.year,
+                invoiceIds,
+                regenerationPreview.previewFingerprint,
+                confirmManualOverwrite,
+                regenerationPreview.includeHistorical,
+            );
+            setLastRegenerationResult(result);
+            toast.success(`Regeneracija završena: ${result.created.length} kreirano, ${result.updated.length} ažurirano, ${result.unchanged.length} bez promene.`);
+            if (result.protected.length || result.blocked.length || result.obsolete.length || result.roundingResiduals.length) {
+                toast.warning('Neke stavke su zaštićene, blokirane ili zahtevaju dodatnu odluku.');
+            }
+            setRegenerationOpen(false);
+            setRegenerationPreview(null);
+            await loadEntries();
+        } catch (requestError: any) {
+            const message = getErrorMessage(requestError, 'Nije moguće izvršiti regeneraciju KPO zapisa.');
+            if (requestError?.response?.status === 422 && message.toLowerCase().includes('zastareo')) {
+                setRegenerationStale(true);
+                setConfirmRegeneration(false);
+                toast.error('Preview je zastareo. Proverite promene ponovo pre regeneracije.');
+            } else {
+                toast.error(message);
+            }
+        } finally {
+            setRegenerationLoading(false);
+        }
+    };
+
     useEffect(() => {
         setSelectedId(null);
         setSelectedEntry(null);
@@ -249,6 +343,7 @@ export default function Kpo() {
                 setForm({
                     entryDate: inputDate(entry.entryDate),
                     incomeType: entry.incomeType ?? '',
+                    incomeCategory: entry.incomeCategory === 'product' || entry.incomeCategory === 'service' ? entry.incomeCategory : 'unclassified',
                     adjustmentRsd: entry.adjustmentRsd.toFixed(2),
                     description: entry.description ?? '',
                 });
@@ -275,6 +370,7 @@ export default function Kpo() {
         setSelectedId(null);
         setSelectedEntry(null);
         setDetailError(null);
+        setHistory(null);
     };
 
     const saveEntry = async (event: React.FormEvent) => {
@@ -294,7 +390,7 @@ export default function Kpo() {
         try {
             await updateKpoEntry(selectedEntry.id, {
                 entry_date: form.entryDate,
-                income_type: form.incomeType || null,
+                income_category: form.incomeCategory,
                 adjustment_rsd: adjustment,
                 description: form.description || null,
             });
@@ -302,9 +398,10 @@ export default function Kpo() {
             await loadEntries();
             const refreshed = await getKpoEntry(selectedEntry.id);
             setSelectedEntry(refreshed);
-            setForm({
-                entryDate: inputDate(refreshed.entryDate),
-                incomeType: refreshed.incomeType ?? '',
+                setForm({
+                    entryDate: inputDate(refreshed.entryDate),
+                    incomeType: refreshed.incomeType ?? '',
+                    incomeCategory: refreshed.incomeCategory === 'product' || refreshed.incomeCategory === 'service' ? refreshed.incomeCategory : 'unclassified',
                 adjustmentRsd: refreshed.adjustmentRsd.toFixed(2),
                 description: refreshed.description ?? '',
             });
@@ -315,7 +412,44 @@ export default function Kpo() {
         }
     };
 
+    const deleteSelectedEntry = async () => {
+        if (!selectedEntry || selectedEntry.sourceType !== 'manual') return;
+        if (! window.confirm('Obrisati ručni KPO zapis? Zapis će ostati sačuvan u istoriji.')) return;
+
+        setSaving(true);
+        try {
+            await deleteKpoEntry(selectedEntry.id);
+            toast.success('Ručni KPO zapis je obrisan.');
+            closeDetails();
+            await loadEntries();
+        } catch (requestError: any) {
+            toast.error(getErrorMessage(requestError, 'Nije moguće obrisati KPO zapis.'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const openHistory = async () => {
+        if (!selectedEntry) return;
+        setHistoryLoading(true);
+        try {
+            const response = await getKpoHistory(selectedEntry.id);
+            setHistory(response.revisions);
+        } catch (requestError: any) {
+            toast.error(getErrorMessage(requestError, 'Nije moguće učitati istoriju KPO zapisa.'));
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
+
     const years = Array.from({length: 7}, (_, index) => currentYear - 3 + index);
+    const calculatedFinal = selectedEntry
+        ? selectedEntry.amountRsd + (Number(form.adjustmentRsd.replace(',', '.')) || 0)
+        : 0;
+    const actionableRegenerationInvoices = regenerationPreview?.invoices.filter(invoice => invoice.actionable) ?? [];
+    const unchangedRegenerationCount = regenerationPreview
+        ? regenerationPreview.invoices.length - actionableRegenerationInvoices.length
+        : 0;
 
     return (
         <div className="space-y-6">
@@ -339,6 +473,15 @@ export default function Kpo() {
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {generationLoading ? 'Učitavanje...' : 'Generiši KPO iz faktura'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => void openRegenerationPreview()}
+                        disabled={regenerationLoading || !activeCompanyId || !filters.year}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <RefreshCw className={`h-4 w-4 ${regenerationLoading ? 'animate-spin' : ''}`}/>
+                        {regenerationLoading ? 'Provera...' : 'Proveri promene'}
                     </button>
                     <button
                         type="button"
@@ -454,7 +597,11 @@ export default function Kpo() {
                             <h2 className="text-lg font-bold text-gray-900">KPO zapis</h2>
                             {selectedEntry && <p className="mt-1 text-sm text-gray-500">#{selectedEntry.entryNumber} · {selectedEntry.sourceType === 'invoice' ? 'Iz fakture' : 'Ručni zapis'}</p>}
                         </div>
-                        <button type="button" onClick={closeDetails} className="text-gray-400 hover:text-gray-600" title="Zatvori"><X className="h-5 w-5"/></button>
+                        <div className="flex items-center gap-3">
+                            {selectedEntry && <button type="button" onClick={() => void openHistory()} className="text-sm font-medium text-indigo-600 hover:text-indigo-900">Istorija</button>}
+                            {selectedEntry?.sourceType === 'manual' && <button type="button" onClick={() => void deleteSelectedEntry()} disabled={saving} className="text-sm font-medium text-red-600 hover:text-red-900 disabled:opacity-60">Obriši</button>}
+                            <button type="button" onClick={closeDetails} className="text-gray-400 hover:text-gray-600" title="Zatvori"><X className="h-5 w-5"/></button>
+                        </div>
                     </div>
 
                     {detailLoading && <p className="text-sm text-gray-500">Učitavanje zapisa...</p>}
@@ -473,12 +620,18 @@ export default function Kpo() {
                                 <label className="block text-sm font-medium text-gray-700">Datum evidencije
                                     <input required type="date" value={form.entryDate} onChange={event => setForm(current => ({...current, entryDate: event.target.value}))} className="mt-1 block w-full rounded-md border-gray-300 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"/>
                                 </label>
-                                <label className="block text-sm font-medium text-gray-700">Tip prihoda
-                                    <input value={form.incomeType} onChange={event => setForm(current => ({...current, incomeType: event.target.value}))} placeholder="npr. proizvod ili usluga" className="mt-1 block w-full rounded-md border-gray-300 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"/>
+                                <label className="block text-sm font-medium text-gray-700">Kategorija prihoda
+                                    <select value={form.incomeCategory} onChange={event => setForm(current => ({...current, incomeCategory: event.target.value as 'product' | 'service' | 'unclassified'}))} className="mt-1 block w-full rounded-md border-gray-300 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                        <option value="product">Proizvod</option>
+                                        <option value="service">Usluga</option>
+                                        <option value="unclassified">Nerazvrstano</option>
+                                    </select>
                                 </label>
-                                <label className="block text-sm font-medium text-gray-700">Ručna korekcija (RSD)
+                                <label className="block text-sm font-medium text-gray-700">Korekcija (+/−) RSD
                                     <input inputMode="decimal" value={form.adjustmentRsd} onChange={event => setForm(current => ({...current, adjustmentRsd: event.target.value}))} className="mt-1 block w-full rounded-md border-gray-300 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"/>
+                                    <span className="mt-1 block text-xs font-normal text-gray-500">Pozitivna vrednost povećava, a negativna smanjuje ukupan iznos.</span>
                                 </label>
+                                <div className="rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-900">Konačan iznos: <strong>{formatCurrency(calculatedFinal, 'RSD')}</strong></div>
                                 <label className="block text-sm font-medium text-gray-700">Opis
                                     <textarea rows={3} value={form.description} onChange={event => setForm(current => ({...current, description: event.target.value}))} className="mt-1 block w-full rounded-md border-gray-300 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"/>
                                 </label>
@@ -486,6 +639,12 @@ export default function Kpo() {
                                     <Save className="h-4 w-4"/> {saving ? 'Čuvanje...' : 'Sačuvaj izmene'}
                                 </button>
                             </form>
+                        </div>
+                    )}
+                    {(history || historyLoading) && (
+                        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
+                            <div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-gray-900">Istorija izmena</h3><button type="button" onClick={() => setHistory(null)} className="text-sm text-gray-500">Zatvori</button></div>
+                            {historyLoading ? <p className="text-sm text-gray-500">Učitavanje istorije...</p> : history?.length === 0 ? <p className="text-sm text-gray-500">Nema zabeleženih događaja.</p> : <div className="space-y-3">{history?.map((revision, index) => <div key={revision.id ?? index} className="rounded-md bg-gray-50 p-3 text-sm"><div className="flex flex-wrap justify-between gap-2 font-medium text-gray-800"><span>{revision.action_type}</span><span>{revision.created_at ? formatDate(revision.created_at) : '—'} · {revision.acting_user?.display_name || revision.acting_user?.email || 'Sistem'}</span></div><p className="mt-2 text-xs text-gray-500">Promenjena polja: {revisionChangedFields(revision).join(', ') || '—'}</p><div className="mt-2 grid gap-2 text-xs text-gray-600 sm:grid-cols-2"><pre className="overflow-auto rounded bg-white p-2">Pre: {JSON.stringify(revision.previous_values ?? {}, null, 2)}</pre><pre className="overflow-auto rounded bg-white p-2">Posle: {JSON.stringify(revision.new_values ?? {}, null, 2)}</pre></div></div>)}</div>}
                         </div>
                     )}
                 </div>
@@ -565,6 +724,117 @@ export default function Kpo() {
                     )}
                 </div>
             )}
+
+            {regenerationOpen && regenerationPreview && (
+                <div className="rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
+                    <div className="mb-5 flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-900">Provera promena KPO zapisa</h2>
+                            <p className="mt-1 text-sm text-gray-500">Pregled je samo za čitanje. Nema automatskog prepisivanja ručnih izmena.</p>
+                        </div>
+                        <button type="button" onClick={() => setRegenerationOpen(false)} className="text-gray-400 hover:text-gray-600" title="Zatvori"><X className="h-5 w-5"/></button>
+                    </div>
+
+                    {regenerationStale && (
+                        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                            <span>Podaci su se promenili od pregleda. Učitajte novi preview pre regeneracije.</span>
+                            <button type="button" onClick={() => void openRegenerationPreview()} className="rounded-md bg-red-100 px-3 py-1.5 font-medium hover:bg-red-200">Novi preview</button>
+                        </div>
+                    )}
+
+                    <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-6">
+                        <CountCard label="Fakture" value={regenerationPreview.invoices.length}/>
+                        <CountCard label="Promene" value={actionableRegenerationInvoices.length}/>
+                        <CountCard label="Bez promena" value={unchangedRegenerationCount}/>
+                        <CountCard label="Blokirane" value={regenerationPreview.invoices.filter(invoice => invoice.status === 'blocked').length}/>
+                        <CountCard label="Delimične" value={regenerationPreview.invoices.filter(invoice => invoice.status === 'partial').length}/>
+                        <CountCard label="Sa upozorenjem" value={regenerationPreview.invoices.filter(invoice => invoice.rounding.hasUnallocatedRoundingResidual || Number(invoice.unresolved.amountRsd) !== 0).length}/>
+                    </div>
+
+                    {actionableRegenerationInvoices.length === 0 ? (
+                        <p className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                            KPO evidencija je usklađena sa fakturama. Nema promena za primenu.
+                        </p>
+                    ) : <div className="space-y-4">
+                        {actionableRegenerationInvoices.map(invoice => (
+                            <div key={invoice.invoiceId} className="rounded-lg border border-gray-200 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900">Faktura #{invoice.invoiceNumber}</h3>
+                                        <p className="text-xs text-gray-500">Datum izdavanja: {formatDate(invoice.issueDate)}</p>
+                                    </div>
+                                    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${invoice.status === 'ready' ? 'bg-green-100 text-green-800' : invoice.status === 'partial' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
+                                        {regenerationStatusLabel(invoice.status)}
+                                    </span>
+                                </div>
+
+                                {invoice.blockingReasons.length > 0 && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">Blokade: {invoice.blockingReasons.join(', ')}</p>}
+                                {invoice.legacyClassificationConflicts.length > 0 && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">Legacy zapis bez klasifikacije zahteva ručnu odluku.</p>}
+                                {invoice.deletedCategories.length > 0 && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">Obrisane kategorije ({invoice.deletedCategories.join(', ')}) ostaju u istoriji i neće biti automatski vraćene.</p>}
+                                {(Number(invoice.unresolved.amountRsd) !== 0 || invoice.rounding.hasUnallocatedRoundingResidual) && (
+                                    <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                                        Nerazrešeno: {formatCurrency(Number(invoice.unresolved.amountRsd), 'RSD')}; rezidual zaokruživanja: {formatCurrency(Number(invoice.rounding.categoryResidualRsd), 'RSD')}. Rezidual se ne raspoređuje automatski.
+                                    </p>
+                                )}
+
+                                <div className="mt-3 overflow-x-auto">
+                                    <table className="min-w-full text-sm">
+                                        <thead className="border-b border-gray-200 text-left text-xs uppercase text-gray-500"><tr><th className="px-2 py-2">Kategorija</th><th className="px-2 py-2">Postojeći</th><th className="px-2 py-2">Predloženi</th><th className="px-2 py-2">Status</th></tr></thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                        {invoice.proposedEntries.map(proposal => (
+                                            <tr key={`${invoice.invoiceId}-${proposal.incomeCategory}`}>
+                                                <td className="px-2 py-2 font-medium">{proposal.incomeCategory}</td>
+                                                <td className="px-2 py-2">{proposal.existingEntryId ? formatCurrency(Number(invoice.amountDifferences.find(item => item.existingEntryId === proposal.existingEntryId)?.existingTotalRsd ?? 0), 'RSD') : 'Nema zapisa'}</td>
+                                                <td className="px-2 py-2">{formatCurrency(Number(proposal.totalRsd), 'RSD')}</td>
+                                                <td className="px-2 py-2">{proposal.manuallyEdited ? 'Zaštićeno — ručna izmena' : regenerationActionLabel(proposal.action)}</td>
+                                            </tr>
+                                        ))}
+                                        {invoice.proposedEntries.length === 0 && <tr><td colSpan={4} className="px-2 py-3 text-gray-500">Nema predloženih kategorija.</td></tr>}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {invoice.existingEntries.some(entry => entry.manuallyEdited) && <p className="mt-3 text-sm text-amber-800">Postoje ručno izmenjeni zapisi. Oni ostaju zaštićeni dok posebno ne dozvolite prepisivanje.</p>}
+                                {invoice.obsoleteCategories.length > 0 && <p className="mt-2 text-sm text-gray-700">Zastarele kategorije: {invoice.obsoleteCategories.map(item => item.incomeCategory).join(', ')} — ostaju nepromenjene.</p>}
+                            </div>
+                        ))}
+                    </div>}
+
+                    {actionableRegenerationInvoices.length > 0 && <div className="mt-5 space-y-3 rounded-lg bg-gray-50 p-4">
+                        <label className="flex items-start gap-2 text-sm text-gray-700">
+                            <input type="checkbox" checked={confirmManualOverwrite} onChange={event => setConfirmManualOverwrite(event.target.checked)}/>
+                            <span>Dozvoli prepisivanje ručno izmenjenih KPO zapisa (nije uključeno po podrazumevanom).</span>
+                        </label>
+                        <label className="flex items-start gap-2 text-sm font-medium text-gray-900">
+                            <input type="checkbox" checked={confirmRegeneration} onChange={event => setConfirmRegeneration(event.target.checked)} disabled={regenerationStale}/>
+                            <span>Pregledao/la sam promene i potvrđujem regeneraciju. Zaštićeni i blokirani zapisi neće biti menjani.</span>
+                        </label>
+                        <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => setRegenerationOpen(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700">Otkaži</button>
+                            <button type="button" onClick={() => void submitRegeneration()} disabled={regenerationLoading || !confirmRegeneration || regenerationStale} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
+                                {regenerationLoading ? 'Regeneracija...' : 'Potvrdi regeneraciju'}
+                            </button>
+                        </div>
+                    </div>}
+                </div>
+            )}
+
+            {lastRegenerationResult && !regenerationOpen && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="font-semibold text-green-900">Rezultat regeneracije</h2>
+                            <p className="mt-1 text-sm text-green-800">
+                                Kreirano: {lastRegenerationResult.created.length} · Ažurirano: {lastRegenerationResult.updated.length} · Bez promene: {lastRegenerationResult.unchanged.length} · Zaštićeno: {lastRegenerationResult.protected.length} · Blokirano: {lastRegenerationResult.blocked.length}
+                            </p>
+                            {(lastRegenerationResult.obsolete.length > 0 || lastRegenerationResult.roundingResiduals.length > 0) && (
+                                <p className="mt-2 text-sm text-amber-800">Zastarele stavke i/ili reziduali zahtevaju zasebnu odluku i nisu automatski menjani.</p>
+                            )}
+                        </div>
+                        <button type="button" onClick={() => setLastRegenerationResult(null)} className="text-sm text-green-700 hover:text-green-900">Skloni</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -574,6 +844,10 @@ function SummaryCard({label, value, emphasized = false}: {label: string; value: 
         <p className="text-sm font-medium text-gray-500">{label}</p>
         <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(value, 'RSD')}</p>
     </div>;
+}
+
+function CountCard({label, value}: {label: string; value: number}) {
+    return <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p className="text-sm font-medium text-gray-500">{label}</p><p className="mt-2 text-2xl font-bold text-gray-900">{value.toLocaleString('sr-RS')}</p></div>;
 }
 
 function DetailRow({label, value, emphasized = false}: {label: string; value: React.ReactNode; emphasized?: boolean}) {

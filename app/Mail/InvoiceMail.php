@@ -13,21 +13,26 @@ class InvoiceMail extends Mailable {
 
     public Invoice $invoice;
     public string $pdfPath;
+    public string $subjectText;
+    public ?string $messageText;
 
-    public function __construct( Invoice $invoice, string $pdfPath ) {
+    public function __construct( Invoice $invoice, string $pdfPath, ?string $subject = null, ?string $message = null ) {
         $this->invoice = $invoice;
         $this->pdfPath = $pdfPath;
+        $this->subjectText = $subject ?: "Faktura #{$invoice->invoice_number}";
+        $this->messageText = $message;
     }
 
     public function build(): self {
         $file_name = "faktura-{$this->invoice->invoice_number}.pdf";
 
         return $this
-            ->subject( "Faktura #{$this->invoice->invoice_number}" )
+            ->subject( $this->subjectText )
             ->view( 'emails.invoice', [
                 'invoice' => $this->invoice,
                 'company' => $this->invoice->company,
                 'client'  => $this->invoice->client,
+                'message' => $this->messageText,
             ] )
             ->attach( Storage::disk( 'local' )->path( $this->pdfPath ), [
                 'as'   => $file_name,

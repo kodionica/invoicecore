@@ -36,17 +36,25 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('invoices/next-number', [InvoiceController::class, 'nextNumber']);
     Route::apiResource('invoices', InvoiceController::class);
+    Route::get('invoices/{invoice}/history', [InvoiceController::class, 'history']);
     Route::patch('invoices/{invoice}/items/classifications', [InvoiceController::class, 'updateItemClassifications']);
+    Route::get('invoices/{invoice}/pdf-versions', [InvoiceController::class, 'pdfVersions']);
+    Route::get('invoices/{invoice}/pdf-versions/{version}/download', [InvoiceController::class, 'downloadPdfVersion']);
+    Route::get('invoices/{invoice}/email-history', [InvoiceController::class, 'emailHistory']);
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'generatePDF']);
     Route::post('invoices/{invoice}/email', [InvoiceController::class, 'sendEmail']);
 
     Route::get('kpo', [KpoController::class, 'index']);
     Route::post('kpo', [KpoController::class, 'store']);
     Route::get('kpo/generation-preview', [KpoController::class, 'generationPreview']);
+    Route::get('kpo/regeneration-preview', [KpoController::class, 'regenerationPreview']);
+    Route::post('kpo/regenerate', [KpoController::class, 'regenerate']);
     Route::post('kpo/generate', [KpoController::class, 'generate']);
     Route::get('kpo/pdf', [KpoController::class, 'generatePDF']);
+    Route::get('kpo/{kpo}/history', [KpoController::class, 'history']);
     Route::get('kpo/{kpo}', [KpoController::class, 'show']);
     Route::put('kpo/{kpo}', [KpoController::class, 'update']);
+    Route::delete('kpo/{kpo}', [KpoController::class, 'destroy']);
 
     Route::put('profile', [ProfileController::class, 'update']);
     Route::put('password', [PasswordController::class, 'update']);

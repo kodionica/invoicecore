@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\GenerateKpoEntriesRequest;
 use App\Http\Requests\KpoGenerationPreviewRequest;
+use App\Http\Requests\KpoRegenerationPreviewRequest;
+use App\Http\Requests\RegenerateKpoEntriesRequest;
 use App\Http\Requests\KpoPdfRequest;
 use App\Http\Requests\StoreKpoEntryRequest;
 use App\Http\Requests\UpdateKpoEntryRequest;
@@ -70,6 +72,48 @@ class KpoController extends Controller
         return response()->json($service->previewFromInvoices($company, $year, $includeHistorical));
     }
 
+    public function regenerationPreview(KpoRegenerationPreviewRequest $request, KpoEntryService $service)
+    {
+        $company = auth()->user()->activeCompany;
+        if (! $company) {
+            return response()->json(['message' => 'Korisnik nema aktivnu firmu.'], 422);
+        }
+        $this->authorize('view', $company);
+
+        $year = (int) $request->validated('year');
+        $includeHistorical = filter_var(
+            $request->validated('include_historical', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        return response()->json($service->regenerationPreviewFromInvoices(
+            $company,
+            $year,
+            $includeHistorical,
+            $request->validated('invoice_ids')
+        ));
+    }
+
+    public function regenerate(RegenerateKpoEntriesRequest $request, KpoEntryService $service)
+    {
+        $company = auth()->user()->activeCompany;
+        if (! $company) {
+            return response()->json(['message' => 'Korisnik nema aktivnu firmu.'], 422);
+        }
+        $this->authorize('view', $company);
+
+        $validated = $request->validated();
+
+        return response()->json($service->regenerateFromInvoices(
+            $company,
+            (int) $validated['year'],
+            array_map('intval', $validated['invoice_ids']),
+            $validated['preview_fingerprint'],
+            (bool) ($validated['confirm_manual_overwrite'] ?? false),
+            (bool) ($validated['include_historical'] ?? false)
+        ));
+    }
+
     public function generate(GenerateKpoEntriesRequest $request, KpoEntryService $service)
     {
         $company = auth()->user()->activeCompany;
@@ -103,6 +147,25 @@ class KpoController extends Controller
         $entry = $service->update($kpo, $request->validated());
 
         return response()->json($entry->load('sourceInvoice'));
+    }
+
+    public function destroy(KpoEntry $kpo, KpoEntryService $service)
+    {
+        $this->authorize('delete', $kpo);
+        $service->delete($kpo);
+
+        return response()->json(['message' => 'Ručni KPO zapis je obrisan.']);
+    }
+
+    public function history(int $kpo)
+    {
+        $entry = KpoEntry::withTrashed()->findOrFail($kpo);
+        $this->authorize('view', $entry);
+
+        return response()->json([
+            'entry' => $entry->only(['id', 'company_id', 'entry_number', 'deleted_at']),
+            'revisions' => $entry->revisions()->with('actingUser:id,first_name,last_name,email')->latest()->get(),
+        ]);
     }
 
     public function generatePDF(KpoPdfRequest $request)
@@ -171,12 +234,16 @@ class KpoController extends Controller
     private function renderKpoPdfHtml(Company $company, $entries, array $totals, string $periodLabel): string
     {
         $rows = $entries->map(function (KpoEntry $entry): string {
-            $product = $this->isProductIncome($entry->income_type) ? $entry->total_rsd : null;
-            $service = $this->isServiceIncome($entry->income_type) ? $entry->total_rsd : null;
+            $category = $this->pdfIncomeCategory($entry);
+            $product = $category === 'product' ? $entry->total_rsd : null;
+            $service = $category === 'service' ? $entry->total_rsd : null;
+            $status = $category === null
+                ? '<span class="classification-warning">Nerazvrstano: klasifikacija prihoda nije poznata</span>'
+                : '';
 
-            return '<tr>'
+            return '<tr'.($category === null ? ' data-income-status="unresolved"' : '').'>'
                 .'<td class="number">'.e($entry->entry_number).'</td>'
-                .'<td class="date-description"><span class="entry-date">'.e($entry->entry_date?->format('d.m.Y')).'</span><br><span class="entry-description">'.e($entry->description ?: 'Bez opisa').'</span></td>'
+                .'<td class="date-description"><span class="entry-date">'.e($entry->entry_date?->format('d.m.Y')).'</span><br><span class="entry-description">'.e($entry->description ?: 'Bez opisa').'</span>'.$status.'</td>'
                 .'<td class="product-amount">'.$this->formatPdfAmount($product).'</td>'
                 .'<td class="service-amount">'.$this->formatPdfAmount($service).'</td>'
                 .'<td class="total-amount">'.$this->formatPdfAmount($entry->total_rsd).'</td>'
@@ -212,5 +279,26 @@ class KpoController extends Controller
         $incomeType = mb_strtolower((string) $incomeType);
 
         return str_contains($incomeType, 'uslug') || str_contains($incomeType, 'servic');
+    }
+
+    private function pdfIncomeCategory(KpoEntry $entry): ?string
+    {
+        if ($entry->income_category === 'product' || $entry->income_category === 'service') {
+            return $entry->income_category;
+        }
+
+        if ($entry->income_category !== null) {
+            return null;
+        }
+
+        if ($this->isProductIncome($entry->income_type)) {
+            return 'product';
+        }
+
+        if ($this->isServiceIncome($entry->income_type)) {
+            return 'service';
+        }
+
+        return null;
     }
 }

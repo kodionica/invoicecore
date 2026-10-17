@@ -13,6 +13,7 @@ class StoreKpoEntryRequest extends FormRequest
             'invoice_id' => ['nullable', 'integer', 'exists:invoices,id'],
             'entry_date' => ['required', 'date'],
             'income_type' => ['nullable', 'string', 'max:100'],
+            'income_category' => ['nullable', Rule::in(['product', 'service', 'unclassified'])],
             'source_type' => ['required', Rule::in(['manual', 'invoice'])],
             'currency' => ['required_if:source_type,manual', 'nullable', 'string', 'size:3'],
             'amount_original' => ['required_if:source_type,manual', 'nullable', 'numeric', 'min:0'],

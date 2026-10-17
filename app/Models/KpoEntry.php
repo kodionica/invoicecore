@@ -5,9 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class KpoEntry extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'company_id',
         'source_invoice_id',
@@ -52,6 +56,11 @@ class KpoEntry extends Model
     public function manuallyEditedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'manually_edited_by');
+    }
+
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(KpoEntryRevision::class);
     }
 
     public function scopeForCompany(Builder $query, int $companyId): Builder

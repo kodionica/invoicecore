@@ -28,6 +28,7 @@ export default function CompanyDetails() {
         swift: company?.swift || '',
         currency: company?.currency || '',
         vat_enabled: company?.vat_enabled || false,
+        max_unprotected_versions: company?.otherSettings?.invoice_pdf?.max_unprotected_versions ?? 5,
         logoFile: undefined as File | undefined,
         remove_logo: false,
     });
@@ -54,9 +55,13 @@ export default function CompanyDetails() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const {logoFile, remove_logo, ...payload} = formData;
+        const {logoFile, remove_logo, max_unprotected_versions, ...payload} = formData;
         await updateCompany(company.id, {
             ...payload,
+            other_settings: {
+                ...(company.otherSettings ?? {}),
+                invoice_pdf: {max_unprotected_versions},
+            },
             logoFile,
             remove_logo,
         });
@@ -193,7 +198,8 @@ export default function CompanyDetails() {
                                         iban: company.iban,
                                         swift: company.swift,
                                         currency: company.currency,
-                                        vat_enabled: company.vat_enabled,
+            vat_enabled: company.vat_enabled,
+            max_unprotected_versions: company.otherSettings?.invoice_pdf?.max_unprotected_versions ?? 5,
                                         logoFile: undefined,
                                         remove_logo: false,
                                     });
@@ -221,6 +227,7 @@ export default function CompanyDetails() {
                                             swift: company.swift,
                                             currency: company.currency,
                                             vat_enabled: company.vat_enabled,
+                                            max_unprotected_versions: company.otherSettings?.invoice_pdf?.max_unprotected_versions ?? 5,
                                             logoFile: undefined,
                                             remove_logo: false,
                                         });
@@ -546,6 +553,26 @@ export default function CompanyDetails() {
                                     <p className="text-sm text-gray-900 py-2">{company.vat_enabled ? 'Da' : 'Ne'}</p>
                                 )}
                             </div>
+                        </div>
+
+                        <div>
+                            <label htmlFor="max_unprotected_versions" className="block text-sm font-medium text-gray-700">
+                                Maksimalan broj nezaštićenih PDF verzija
+                            </label>
+                            <p className="mt-1 text-xs text-gray-500">Podrazumevano 5. Zaštićene verzije se nikada ne brišu automatski.</p>
+                            {isEditing ? (
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    id="max_unprotected_versions"
+                                    value={formData.max_unprotected_versions}
+                                    onChange={(e) => setFormData({...formData, max_unprotected_versions: Number(e.target.value)})}
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3"
+                                />
+                            ) : (
+                                <p className="text-sm text-gray-900 py-2">{company.otherSettings?.invoice_pdf?.max_unprotected_versions ?? 5}</p>
+                            )}
                         </div>
 
                         {isEditing && (

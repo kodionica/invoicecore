@@ -563,6 +563,119 @@ it('renders an empty KPO PDF without rows', function () {
         ->assertHeader('content-type', 'application/pdf');
 });
 
+it('uses KPO income categories in PDF columns and marks unresolved legacy entries', function () {
+    [$user, $company] = createKpoContext('kpo-pdf-categories@example.com');
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'year' => 2026,
+        'entry_number' => 1,
+        'entry_date' => '2026-10-15',
+        'source_type' => 'invoice',
+        'income_category' => 'product',
+        'income_type' => 'usluga',
+        'currency' => 'RSD',
+        'amount_original' => 100,
+        'amount_rsd' => 100,
+        'total_rsd' => 100,
+        'description' => 'Kategorisani proizvod',
+    ]);
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'year' => 2026,
+        'entry_number' => 2,
+        'entry_date' => '2026-10-16',
+        'source_type' => 'invoice',
+        'income_category' => 'service',
+        'income_type' => 'proizvod',
+        'currency' => 'RSD',
+        'amount_original' => 200,
+        'amount_rsd' => 200,
+        'total_rsd' => 200,
+        'description' => 'Kategorisana usluga',
+    ]);
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'year' => 2026,
+        'entry_number' => 3,
+        'entry_date' => '2026-10-17',
+        'source_type' => 'manual',
+        'income_type' => 'usluga',
+        'currency' => 'RSD',
+        'amount_original' => 300,
+        'amount_rsd' => 300,
+        'total_rsd' => 300,
+        'description' => 'Legacy usluga',
+    ]);
+    KpoEntry::create([
+        'company_id' => $company->id,
+        'year' => 2026,
+        'entry_number' => 4,
+        'entry_date' => '2026-10-18',
+        'source_type' => 'manual',
+        'income_type' => 'ostalo',
+        'currency' => 'RSD',
+        'amount_original' => 400,
+        'amount_rsd' => 400,
+        'total_rsd' => 400,
+        'description' => 'Nepoznata legacy klasifikacija',
+    ]);
+
+    Storage::fake('local');
+    $pdfBuilder = Mockery::mock(PdfBuilder::class);
+    $pdfBuilder->shouldReceive('format')->once()->andReturnSelf();
+    $pdfBuilder->shouldReceive('withBrowsershot')->once()->andReturnSelf();
+    $pdfBuilder->shouldReceive('disk')->once()->andReturnSelf();
+    $pdfBuilder->shouldReceive('save')->once()->andReturnUsing(function (string $path) use ($pdfBuilder) {
+        Storage::disk('local')->put($path, '%PDF-1.7 test');
+
+        return $pdfBuilder;
+    });
+    Pdf::shouldReceive('html')->once()->withArgs(function (string $html) use ($company): bool {
+        preg_match('/<table class="kpo-table">(.*?)<\/table>/s', $html, $matches);
+        $table = $matches[1] ?? '';
+        preg_match('/<tbody>(.*?)<\/tbody>/s', $table, $bodyMatches);
+        preg_match_all('/(<tr.*?>.*?<\/tr>)/s', $bodyMatches[1] ?? '', $rows);
+        $rowFor = static function (string $description) use ($rows): string {
+            foreach ($rows[1] as $row) {
+                if (str_contains($row, $description)) {
+                    return $row;
+                }
+            }
+
+            return '';
+        };
+        $productRow = $rowFor('Kategorisani proizvod');
+        $serviceRow = $rowFor('Kategorisana usluga');
+        $legacyServiceRow = $rowFor('Legacy usluga');
+        $unresolvedRow = $rowFor('Nepoznata legacy klasifikacija');
+
+        expect($rows[1])->toHaveCount(4)
+            ->and($productRow)->toContain('class="product-amount">100,00 RSD')
+            ->and($productRow)->toContain('class="service-amount">&mdash;')
+            ->and($serviceRow)->toContain('class="product-amount">&mdash;')
+            ->and($serviceRow)->toContain('class="service-amount">200,00 RSD')
+            ->and($legacyServiceRow)->toContain('class="service-amount">300,00 RSD')
+            ->and($unresolvedRow)->toContain('data-income-status="unresolved"')
+            ->and($unresolvedRow)->toContain('class="product-amount">&mdash;')
+            ->and($unresolvedRow)->toContain('class="service-amount">&mdash;')
+            ->and($unresolvedRow)->toContain('Nerazvrstano: klasifikacija prihoda nije poznata')
+            ->and($html)->toContain('100,00 RSD')
+            ->and($html)->toContain('200,00 RSD')
+            ->and($html)->toContain('300,00 RSD')
+            ->and($html)->toContain('400,00 RSD');
+
+        expect(KpoEntry::query()->where('company_id', $company->id)->orderBy('entry_number')->pluck('total_rsd')->all())
+            ->toBe(['100.00', '200.00', '300.00', '400.00']);
+
+        return true;
+    })->andReturn($pdfBuilder);
+    $this->actingAs($user);
+
+    $this->get('/api/kpo/pdf?year=2026')
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+});
+
 it('validates KPO PDF periods and protects the route from another tenant', function () {
     [$owner, $company] = createKpoContext('kpo-pdf-owner@example.com');
     [$otherUser] = createKpoContext('kpo-pdf-other@example.com');

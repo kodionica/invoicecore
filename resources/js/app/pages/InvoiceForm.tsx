@@ -1,7 +1,7 @@
-import React, {useEffect, useMemo} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {useForm, useFieldArray} from 'react-hook-form';
-import {useNavigate} from 'react-router';
-import {useApp} from '../context/AppContext';
+import {useNavigate, useParams} from 'react-router';
+import {useApp, type InvoiceKpoConfirmation} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft, Plus, Trash2, Calendar, User}         from 'lucide-react';
 import { addDaysToDate, formatCurrency, formatLocalDate } from "../utils/format";
@@ -14,12 +14,23 @@ interface InvoiceFormData {
     currency: string;
     paymentMethod: string;
     includeInKpo: boolean;
-    items: { description: string; quantity: number; price: number; incomeCategory: 'product' | 'service' | 'unclassified' }[];
+    vatEnabledAtIssue: boolean | null;
+    note: string;
+    items: { id?: number; description: string; quantity: number; price: number; incomeCategory: 'product' | 'service' | 'unclassified' }[];
 }
 
 export default function InvoiceForm() {
-    const {clients, addInvoice, activeCompanyId, companies, meta, getNextInvoiceNumber} = useApp();
+    const {clients, invoices, addInvoice, updateInvoice, activeCompanyId, companies, meta, getNextInvoiceNumber} = useApp();
     const navigate = useNavigate();
+    const {id} = useParams();
+    const editingInvoiceId = id ? Number(id) : null;
+    const editingInvoice = editingInvoiceId ? invoices.find(invoice => invoice.id === editingInvoiceId) : undefined;
+    const isEdit = Boolean(editingInvoiceId);
+    const [formError, setFormError] = useState<string | null>(null);
+    const [serverErrors, setServerErrors] = useState<Record<string, string[]>>({});
+    const [kpoConflict, setKpoConflict] = useState<any | null>(null);
+    const [confirmKpoConflict, setConfirmKpoConflict] = useState(false);
+    const [confirmManualKpoOverwrite, setConfirmManualKpoOverwrite] = useState(false);
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
     const today = new Date();
     const todayString = formatLocalDate(today);
@@ -27,7 +38,7 @@ export default function InvoiceForm() {
     const lastDayOfMonthString = formatLocalDate(lastDayOfMonth);
     const dueDate = addDaysToDate(lastDayOfMonth, 15);
 
-    const {register, control, handleSubmit, watch, setValue, formState: {errors, dirtyFields}} = useForm<InvoiceFormData>({
+    const {register, control, handleSubmit, watch, setValue, reset, formState: {errors, dirtyFields}} = useForm<InvoiceFormData>({
         defaultValues: {
             number: '',
             date: lastDayOfMonthString,
@@ -35,6 +46,8 @@ export default function InvoiceForm() {
             currency: '',
             paymentMethod: '',
             includeInKpo: true,
+            vatEnabledAtIssue: activeCompany?.vat_enabled ?? false,
+            note: '',
             items: [{
                 description: `Web razvoj, računarsko programiranje i IT podrška po Ugovoru o poslovno-tehničkoj saradnji za ${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}. godine / {{ HOURS }} h / {{ PRICE }} EUR`,
                 quantity: 1,
@@ -43,6 +56,28 @@ export default function InvoiceForm() {
             }]
         }
     });
+
+    useEffect(() => {
+        if (!editingInvoice) return;
+        reset({
+            clientId: String(editingInvoice.clientId),
+            number: editingInvoice.number,
+            date: editingInvoice.date,
+            dueDate: editingInvoice.dueDate,
+            currency: editingInvoice.currency,
+            paymentMethod: editingInvoice.paymentMethod ?? '',
+            includeInKpo: editingInvoice.includeInKpo,
+            vatEnabledAtIssue: editingInvoice.vatEnabledAtIssue ?? null,
+            note: editingInvoice.note ?? '',
+            items: editingInvoice.items.map(item => ({
+                id: item.id,
+                description: item.description,
+                quantity: item.quantity,
+                price: item.price,
+                incomeCategory: item.incomeCategory ?? 'unclassified',
+            })),
+        });
+    }, [editingInvoice?.id, reset]);
 
     const {fields, append, remove} = useFieldArray({
         control,
@@ -85,6 +120,7 @@ export default function InvoiceForm() {
 
     useEffect(() => {
         if (!activeCompanyId) return;
+        if (isEdit) return;
         if (!dirtyFields.number) {
             getNextInvoiceNumber()
                 .then(number => {
@@ -94,7 +130,7 @@ export default function InvoiceForm() {
                 })
                 .catch(() => undefined);
         }
-    }, [activeCompanyId, dirtyFields.number, getNextInvoiceNumber, setValue]);
+    }, [activeCompanyId, dirtyFields.number, getNextInvoiceNumber, isEdit, setValue]);
 
     useEffect(() => {
         if (!activeCompany?.currency) return;
@@ -113,13 +149,21 @@ export default function InvoiceForm() {
         setValue('dueDate', dueDate.toISOString().split('T')[0], {shouldDirty: false});
     }, [activeCompany?.payment_due_days, dirtyFields.dueDate, setValue, watchDate]);
 
-    const onSubmit = async (data: InvoiceFormData) => {
+    useEffect(() => {
+        if (!isEdit && activeCompany && !dirtyFields.vatEnabledAtIssue) {
+            setValue('vatEnabledAtIssue', activeCompany.vat_enabled);
+        }
+    }, [activeCompany?.id, activeCompany?.vat_enabled, dirtyFields.vatEnabledAtIssue, isEdit, setValue]);
+
+    const submitInvoice = async (data: InvoiceFormData, kpoConfirmation?: InvoiceKpoConfirmation) => {
+        setFormError(null);
+        setServerErrors({});
         if (!activeCompanyId) {
             toast.error('Molimo izaberite aktivnu firmu');
             return;
         }
 
-        await addInvoice({
+        const payload = {
             clientId: Number(data.clientId),
             number: data.number,
             date: data.date,
@@ -127,12 +171,40 @@ export default function InvoiceForm() {
             currency: data.currency,
             paymentMethod: data.paymentMethod,
             includeInKpo: data.includeInKpo,
+            vatEnabledAtIssue: data.vatEnabledAtIssue ?? undefined,
+            note: data.note,
             items: data.items.map((item) => ({...item}))
-        });
+        };
 
-        toast.success('Faktura uspešno kreirana');
-        navigate('/dashboard/invoices');
+        try {
+            if (isEdit && editingInvoiceId) {
+                if (editingInvoice?.status === 'sent' || editingInvoice?.status === 'paid') {
+                    if (! confirm('Faktura je već izdata ili poslata. Izmene ne predstavljaju automatski formalnu ispravku prethodno izdate fakture. Da li želite da nastavite?')) return;
+                }
+                await updateInvoice(editingInvoiceId, payload, kpoConfirmation);
+            } else {
+                await addInvoice(payload);
+            }
+
+            toast.success(isEdit ? 'Faktura uspešno izmenjena' : 'Faktura uspešno kreirana');
+            navigate('/dashboard/invoices');
+        } catch (error: any) {
+            const responseData = error?.response?.data;
+            if (error?.response?.status === 409 && responseData?.conflict) {
+                setKpoConflict(responseData);
+                setConfirmKpoConflict(false);
+                setConfirmManualKpoOverwrite(false);
+                toast.warning('Izmena zahteva potvrdu promena u KPO evidenciji.');
+                return;
+            }
+            const errors = responseData?.errors && typeof responseData.errors === 'object' ? responseData.errors : {};
+            setServerErrors(errors);
+            setFormError(responseData?.message ?? 'Čuvanje fakture nije uspelo.');
+            toast.error(responseData?.message ?? 'Čuvanje fakture nije uspelo.');
+        }
     };
+
+    const onSubmit = (data: InvoiceFormData) => submitInvoice(data);
 
     const activeClients = activeCompanyId ? clients.filter(c => c.companyId === activeCompanyId) : [];
 
@@ -145,10 +217,93 @@ export default function InvoiceForm() {
                 >
                     <ArrowLeft className="h-5 w-5"/>
                 </button>
-                <h1 className="text-2xl font-bold text-gray-900">Nova Faktura</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{isEdit ? 'Izmeni fakturu' : 'Nova Faktura'}</h1>
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                {formError && (
+                    <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                        <p className="font-semibold">{formError}</p>
+                        {serverErrors.kpo?.map(message => <p key={message} className="mt-1">{message}</p>)}
+                        {serverErrors.invoice_number?.map(message => <p key={message} className="mt-1">{message}</p>)}
+                    </div>
+                )}
+
+                {kpoConflict && (
+                    <div role="dialog" aria-label="KPO konflikt" className="rounded-lg border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950">
+                        <h2 className="font-semibold">Izmena utiče na postojeće KPO zapise</h2>
+                        <p className="mt-1">{kpoConflict.message ?? 'Potrebna je eksplicitna potvrda pre čuvanja fakture.'}</p>
+
+                        <div className="mt-3 overflow-x-auto">
+                            <table className="min-w-full text-left text-xs">
+                                <thead className="border-b border-amber-200">
+                                <tr>
+                                    <th className="px-2 py-2">Trenutna kategorija</th>
+                                    <th className="px-2 py-2">Predložena kategorija</th>
+                                    <th className="px-2 py-2">Trenutni osnovni iznos</th>
+                                    <th className="px-2 py-2">Predloženi osnovni iznos</th>
+                                    <th className="px-2 py-2">Korekcija</th>
+                                    <th className="px-2 py-2">Novi ukupno</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {(kpoConflict.conflict?.proposed_entries ?? []).map((proposal: any) => {
+                                    const existing = (kpoConflict.conflict?.existing_entries ?? []).find((entry: any) => entry.id === proposal.existing_entry_id);
+                                    return (
+                                        <tr key={proposal.income_category} className="border-b border-amber-100">
+                                            <td className="px-2 py-2">{existing?.income_category ?? 'nema zapisa'}</td>
+                                            <td className="px-2 py-2">{proposal.income_category ?? 'nerazvrstano'}</td>
+                                            <td className="px-2 py-2">{existing ? formatCurrency(Number(existing.amount_rsd), 'RSD') : 'Nema zapisa'}</td>
+                                            <td className="px-2 py-2">{formatCurrency(Number(proposal.amount_rsd), 'RSD')}</td>
+                                            <td className="px-2 py-2">{existing ? formatCurrency(Number(existing.adjustment_rsd), 'RSD') : '—'}</td>
+                                            <td className="px-2 py-2">{formatCurrency(Number(proposal.total_rsd), 'RSD')}</td>
+                                        </tr>
+                                    );
+                                })}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {(kpoConflict.conflict?.warnings ?? []).map((warning: string) => (
+                            <p key={warning} className="mt-2 text-amber-900">Upozorenje: {warning}</p>
+                        ))}
+                        {(kpoConflict.conflict?.obsolete_categories ?? []).length > 0 && (
+                            <p className="mt-2 text-amber-900">Postojeće zastarele KPO kategorije ostaju sačuvane i neće biti automatski obrisane.</p>
+                        )}
+
+                        {kpoConflict.conflict?.requires_regeneration ? (
+                            <p className="mt-3 font-medium text-red-800">Ovaj konflikt zahteva zaseban KPO preview/regeneraciju i ne može se potvrditi iz forme fakture.</p>
+                        ) : (
+                            <div className="mt-4 space-y-3">
+                                <label className="flex items-start gap-2">
+                                    <input type="checkbox" checked={confirmKpoConflict} onChange={event => setConfirmKpoConflict(event.target.checked)}/>
+                                    <span>Potvrđujem prikazane KPO promene i upozorenja.</span>
+                                </label>
+                                {kpoConflict.conflict?.requires_manual_overwrite && (
+                                    <label className="flex items-start gap-2">
+                                        <input type="checkbox" checked={confirmManualKpoOverwrite} onChange={event => setConfirmManualKpoOverwrite(event.target.checked)}/>
+                                        <span>Dozvoljavam prepisivanje ručno izmenjenog KPO zapisa.</span>
+                                    </label>
+                                )}
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={() => setKpoConflict(null)} className="rounded-md border border-amber-300 px-3 py-2">Otkaži</button>
+                                    <button
+                                        type="button"
+                                        disabled={!confirmKpoConflict}
+                                        onClick={() => void handleSubmit(data => submitInvoice(data, {
+                                            confirmed: true,
+                                            previewFingerprint: String(kpoConflict.preview_fingerprint ?? ''),
+                                            confirmManualOverwrite: confirmManualKpoOverwrite,
+                                        }))()}
+                                        className="rounded-md bg-amber-700 px-3 py-2 font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        Potvrdi i sačuvaj
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Header Info */}
                 <div className="bg-white shadow rounded-lg p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -190,12 +345,13 @@ export default function InvoiceForm() {
                                 type="date"
                                 {...register("date", {
                                     required: true,
-                                    validate: value => value >= todayString || 'Datum izdavanja ne može biti pre današnjeg datuma',
+                                    validate: value => isEdit || value >= todayString || 'Datum izdavanja ne može biti pre današnjeg datuma',
                                 })}
                                 className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border"
                             />
                         </div>
                         {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date.message}</p>}
+                        {serverErrors.issue_date?.map(message => <p key={message} className="mt-1 text-sm text-red-600">{message}</p>)}
                     </div>
 
                     <div>
@@ -217,6 +373,7 @@ export default function InvoiceForm() {
                             />
                         </div>
                         {errors.dueDate && <p className="mt-1 text-sm text-red-600">{errors.dueDate.message}</p>}
+                        {serverErrors.due_date?.map(message => <p key={message} className="mt-1 text-sm text-red-600">{message}</p>)}
                     </div>
 
                     <div>
@@ -258,6 +415,28 @@ export default function InvoiceForm() {
                             <span className="block text-xs text-gray-500">Isključite za testne ili druge fakture koje ne treba da budu ponuđene za KPO.</span>
                         </span>
                     </label>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">PDV status u trenutku izdavanja</label>
+                        <select
+                            {...register('vatEnabledAtIssue', {
+                                validate: value => value === true || value === false || 'Potvrdite istorijski PDV status',
+                                setValueAs: value => value === '' ? null : value === true || value === 'true',
+                            })}
+                            className="mt-1 block w-full rounded-md border-gray-300 py-2 px-3 text-sm shadow-sm"
+                        >
+                            <option value="">{isEdit && editingInvoice?.vatEnabledAtIssue == null ? 'Istorijski status nije potvrđen — izaberite' : 'Izaberite status'}</option>
+                            <option value="true">PDV uključen</option>
+                            <option value="false">PDV nije uključen</option>
+                        </select>
+                        {errors.vatEnabledAtIssue && <p className="mt-1 text-sm text-red-600">{errors.vatEnabledAtIssue.message}</p>}
+                        {serverErrors.vat_enabled_at_issue?.map(message => <p key={message} className="mt-1 text-sm text-red-600">{message}</p>)}
+                    </div>
+
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">Napomena</label>
+                        <textarea {...register('note')} className="mt-1 block w-full rounded-md border-gray-300 py-2 px-3 text-sm shadow-sm" rows={2}/>
+                    </div>
                 </div>
 
                 {/* Line Items */}
