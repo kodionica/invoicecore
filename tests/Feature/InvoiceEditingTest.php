@@ -568,6 +568,51 @@ it('requires confirmation before excluding an invoice with KPO entries and then 
         ->and(KpoEntryRevision::where('kpo_entry_id', $entry->id)->latest()->value('action_type'))->toBe('deleted');
 });
 
+it('reenables KPO after exclusion without duplicating active entries', function () {
+    [$user, $company, $client] = editableInvoiceFixture('invoice-kpo-reenable@example.com');
+    $this->actingAs($user);
+    $created = $this->postJson('/api/invoices', [
+        'client_id' => $client->id, 'invoice_number' => 'KPO-REENABLE',
+        'issue_date' => now()->toDateString(), 'due_date' => now()->addDays(15), 'currency' => 'RSD',
+        'vat_enabled_at_issue' => false,
+        'items' => [['name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 100, 'income_category' => 'service']],
+    ])->assertCreated();
+    $invoice = Invoice::with('items')->findOrFail($created->json('id'));
+    $entry = KpoEntry::create([
+        'company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => now()->year,
+        'entry_number' => 1, 'entry_date' => now()->toDateString(), 'source_type' => 'invoice',
+        'origin' => 'generated', 'income_category' => 'service', 'currency' => 'RSD',
+        'amount_original' => 100, 'amount_rsd' => 100, 'adjustment_rsd' => 0, 'total_rsd' => 100,
+    ]);
+
+    $off = $this->putJson('/api/invoices/'.$invoice->id, [
+        'include_in_kpo' => false, 'vat_enabled_at_issue' => false,
+    ])->assertStatus(409);
+    $this->putJson('/api/invoices/'.$invoice->id, [
+        'include_in_kpo' => false, 'vat_enabled_at_issue' => false,
+        'kpo_confirmation' => ['confirmed' => true, 'preview_fingerprint' => $off->json('preview_fingerprint')],
+    ])->assertOk();
+
+    $on = $this->putJson('/api/invoices/'.$invoice->id, [
+        'include_in_kpo' => true, 'vat_enabled_at_issue' => false,
+    ])->assertStatus(409);
+    expect($on->json('conflict.requires_regeneration'))->toBeFalse()
+        ->and($on->json('conflict.proposed_entries.0.action'))->toBe('create');
+
+    $this->putJson('/api/invoices/'.$invoice->id, [
+        'include_in_kpo' => true, 'vat_enabled_at_issue' => false,
+        'kpo_confirmation' => ['confirmed' => true, 'preview_fingerprint' => $on->json('preview_fingerprint')],
+    ])->assertOk();
+
+    expect(KpoEntry::where('source_invoice_id', $invoice->id)->whereNull('deleted_at')->count())->toBe(1)
+        ->and(KpoEntry::withTrashed()->findOrFail($entry->id)->trashed())->toBeFalse()
+        ->and(KpoEntryRevision::where('kpo_entry_id', $entry->id)->latest()->value('action_type'))->toBe('restored');
+
+    $this->getJson('/api/kpo/generation-preview?year='.now()->year)
+        ->assertOk()
+        ->assertJsonCount(0, 'entries');
+});
+
 it('requires confirmation before making an invoice VAT-ineligible for automatic KPO generation', function () {
     [$user, $company, $client] = editableInvoiceFixture('invoice-kpo-vat-conflict@example.com');
     $this->actingAs($user);

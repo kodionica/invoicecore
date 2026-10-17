@@ -452,6 +452,16 @@ class InvoiceController extends Controller {
         $requestedVatStatus = array_key_exists('vat_enabled_at_issue', $data)
             ? (bool) $data['vat_enabled_at_issue']
             : $invoice->vat_enabled_at_issue;
+        $requestedStatus = $data['status'] ?? $invoice->status;
+        $requestedPaidAt = array_key_exists('paid_at', $data) ? $data['paid_at'] : $invoice->paid_at;
+
+        if (array_key_exists('status', $data)
+            && $requestedStatus === InvoiceStatus::PAID->value
+            && ! $requestedPaidAt) {
+            throw ValidationException::withMessages([
+                'paid_at' => ['Datum uplate je obavezan za plaćenu fakturu.'],
+            ]);
+        }
         $vatStatusChanged = array_key_exists('vat_enabled_at_issue', $data)
             && $requestedVatStatus !== $invoice->vat_enabled_at_issue;
 
@@ -632,6 +642,10 @@ class InvoiceController extends Controller {
             $invoiceValues['total_rsd'] = round($totalRsd, 2);
             $invoiceValues['total'] = round($totalOriginal, 2);
             $invoiceValues['vat_enabled_at_issue'] = $vatEnabled;
+            if (($invoiceValues['status'] ?? $lockedInvoice->status) !== InvoiceStatus::PAID->value) {
+                $invoiceValues['paid_at'] = null;
+                $invoiceValues['payment_note'] = null;
+            }
             $lockedInvoice->fill($invoiceValues);
             $lockedInvoice->save();
             $lockedInvoice->load(['items', 'client']);
@@ -975,6 +989,7 @@ class InvoiceController extends Controller {
                 'subtotal_original', 'tax_original', 'total_original', 'subtotal_rsd',
                 'tax_rsd', 'total_rsd', 'total', 'vat_enabled_at_issue', 'include_in_kpo',
                 'status', 'note', 'bank_account_id', 'bank_account_bank_name',
+                'paid_at', 'payment_note',
                 'bank_account_number', 'bank_account_iban', 'bank_account_swift_bic',
                 'bank_account_currency', 'bank_account_payment_instructions',
             ]),

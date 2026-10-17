@@ -79,6 +79,8 @@ export interface Invoice {
     currency: string;
     items: InvoiceItem[];
     status: InvoiceStatus;
+    paidAt?: string | null;
+    paymentNote?: string | null;
     paymentMethod: string;
     total: number;
     subtotalOriginal?: number;
@@ -435,7 +437,7 @@ interface AppContextType {
     downloadInvoicePdfVersion: (id: number, version: number, invoiceNumber?: string) => Promise<void>;
     deleteInvoice: (id: number, confirmKpoRemoval?: boolean) => Promise<void>;
     getNextInvoiceNumber: () => Promise<string>;
-    updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
+    updateInvoiceStatus: (id: number, status: InvoiceStatus, payment?: {paidAt?: string | null; paymentNote?: string | null}) => Promise<void>;
     updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
     sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string }) => Promise<any>;
@@ -579,6 +581,8 @@ const normalizeInvoice = (invoice: any): Invoice => {
         dueDate: normalizeDateInput(invoice.due_date),
         currency: invoice.currency ?? 'RSD',
         status: invoice.status as InvoiceStatus,
+        paidAt: normalizeDateInput(invoice.paid_at),
+        paymentNote: invoice.payment_note ?? null,
         paymentMethod: invoice.payment_method,
         total,
         subtotalOriginal: subtotalOriginal > 0 ? subtotalOriginal : undefined,
@@ -1193,8 +1197,11 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         return updated;
     };
 
-    const updateInvoiceStatus = async (id: number, status: InvoiceStatus) => {
-        const response = await api.put(`/api/invoices/${id}`, {status});
+    const updateInvoiceStatus = async (id: number, status: InvoiceStatus, payment?: {paidAt?: string | null; paymentNote?: string | null}) => {
+        const response = await api.put(`/api/invoices/${id}`, {
+            status,
+            ...(payment ? {paid_at: payment.paidAt ?? null, payment_note: payment.paymentNote ?? null} : {}),
+        });
         const updated = normalizeInvoice(response.data);
         setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
     };

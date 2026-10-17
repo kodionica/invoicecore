@@ -214,7 +214,7 @@ export default function InvoiceForm() {
             }
 
             toast.success(isEdit ? 'Faktura uspešno izmenjena' : 'Faktura uspešno kreirana');
-            navigate('/dashboard/invoices');
+            navigate(isEdit && editingInvoiceId ? '/dashboard/invoices/' + editingInvoiceId : '/dashboard/invoices');
         } catch (error: any) {
             const responseData = error?.response?.data;
             if (error?.response?.status === 409 && responseData?.conflict) {

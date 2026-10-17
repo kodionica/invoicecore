@@ -75,6 +75,11 @@ export default function Invoices() {
 
     const handleStatusChange = async ( id: number, newStatus: string ) => {
         if (updatingStatusId !== null) return;
+        if (newStatus === 'paid') {
+            navigate('/dashboard/invoices/' + id, {state: {openPaymentDialog: true}});
+            toast.info('Datum uplate unesite na stranici detalja fakture.');
+            return;
+        }
         setUpdatingStatusId(id);
         try {
             await updateInvoiceStatus( id, newStatus as any );

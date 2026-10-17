@@ -5,6 +5,7 @@ use App\Models\Company;
 use App\Models\CompanyBankAccount;
 use App\Models\Invoice;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 
 function bankAccountFixture(string $suffix): array
 {
@@ -104,6 +105,13 @@ it('selects the currency account and stores an immutable invoice snapshot', func
 });
 
 it('automatically selects the active default account for the invoice currency', function () {
+    Http::fake([
+        'https://kurs.resenje.org/*' => Http::response([
+            'currency' => 'EUR',
+            'exchange_middle' => 117.3,
+            'date' => '2026-10-17',
+        ], 200),
+    ]);
     [$user, $company, $client] = bankAccountFixture('automatic');
     $this->actingAs($user);
     $account = $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([

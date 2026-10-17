@@ -193,11 +193,18 @@ class KpoEntryService
         $expectedCategories = collect(['product', 'service'])
             ->filter(fn (string $category): bool => ($calculation['categories'][$category]['amount_rsd'] ?? '0.00') !== '0.00')
             ->values();
-        $existingCategories = $entries->pluck('income_category')->filter()->unique()->values();
+        $existingCategories = $entries
+            ->filter(fn (KpoEntry $entry): bool => ! $entry->trashed())
+            ->pluck('income_category')
+            ->filter()
+            ->unique()
+            ->values();
 
         $missingCategories = $expectedCategories->diff($existingCategories)->values();
         $deletedExpectedCategories = $entries
-            ->filter(fn (KpoEntry $entry): bool => $entry->trashed() && $expectedCategories->contains($entry->income_category))
+            ->filter(fn (KpoEntry $entry): bool => $entry->trashed()
+                && $expectedCategories->contains($entry->income_category)
+                && ! $this->canReactivateAfterKpoExclusion($entry))
             ->pluck('income_category')
             ->unique();
         if ($deletedExpectedCategories->isNotEmpty()) {
@@ -220,7 +227,12 @@ class KpoEntryService
             $deletedMatch = $entries->first(fn (KpoEntry $entry): bool => $entry->trashed()
                 && $entry->income_category === $category);
             if ($deletedMatch) {
-                throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'deleted_entry'));
+                if (! $this->canReactivateAfterKpoExclusion($deletedMatch)) {
+                    throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'deleted_entry'));
+                }
+
+                $this->restoreInvoiceEntry($deletedMatch);
+                continue;
             }
             $amounts = $calculation['categories'][$category];
             $this->createInvoiceCategoryEntry($invoice, $category, $amounts);
@@ -266,6 +278,36 @@ class KpoEntryService
         }
 
         return ['status' => ($updated === [] && $missingCategories->isEmpty() && $obsoleteEntries->isEmpty()) ? 'unchanged' : 'updated', 'updated' => $updated];
+    }
+
+    private function canReactivateAfterKpoExclusion(KpoEntry $entry): bool
+    {
+        if (! $entry->trashed()) {
+            return false;
+        }
+
+        $revision = $entry->revisions()
+            ->where('action_type', 'deleted')
+            ->latest('id')
+            ->first();
+
+        return data_get($revision?->new_values, 'removal_reason') === 'invoice_excluded_from_kpo';
+    }
+
+    private function restoreInvoiceEntry(KpoEntry $entry): void
+    {
+        $previous = $this->revisionValues($entry);
+        $entry->restore();
+        $entry->refresh();
+
+        KpoEntryRevision::create([
+            'kpo_entry_id' => $entry->id,
+            'acting_user_id' => auth()->id(),
+            'action_type' => 'restored',
+            'previous_values' => $previous,
+            'new_values' => $this->revisionValues($entry),
+            'manual_edit_overwritten' => false,
+        ]);
     }
 
     private function assertCanRemoveEntry(KpoEntry $entry, bool $allowManualOverwrite): void
@@ -421,7 +463,7 @@ class KpoEntryService
 
         foreach ($invoices as $invoice) {
             $eligibility = $this->generationEligibility($company, $invoice);
-            $invoice->setAttribute('suggested_entry_date', $invoice->issue_date?->toDateString());
+            $invoice->setAttribute('suggested_entry_date', ($invoice->paid_at ?? $invoice->issue_date)?->toDateString());
             $invoice->setAttribute('generation_status', $eligibility['status']);
             $invoice->setAttribute('generation_categories', $eligibility['new_categories']);
             $invoice->setAttribute('existing_categories', $eligibility['skipped_categories']);
@@ -872,6 +914,7 @@ class KpoEntryService
             ->keyBy('income_category');
         $deletedCategories = $existingEntries
             ->filter(fn (KpoEntry $entry): bool => $entry->trashed()
+                && ! $this->canReactivateAfterKpoExclusion($entry)
                 && in_array($entry->income_category, ['product', 'service'], true))
             ->pluck('income_category')
             ->unique()
@@ -1211,7 +1254,7 @@ class KpoEntryService
                     $existing = $invoice->kpoEntries
                         ->first(fn (KpoEntry $entry): bool => $entry->income_category === $category);
 
-                    if ($existing) {
+                    if ($existing && ! $existing->trashed()) {
                         $result['skipped'][] = [
                             'invoice_id' => $invoice->id,
                             'income_category' => $category,
@@ -1221,6 +1264,18 @@ class KpoEntryService
                     }
 
                     $amounts = $eligibility['calculation']['categories'][$category];
+                    if ($existing && $this->canReactivateAfterKpoExclusion($existing)) {
+                        $this->restoreInvoiceEntry($existing);
+                        $result['created'][] = [
+                            'invoice_id' => $invoice->id,
+                            'kpo_entry_id' => $existing->id,
+                            'entry_number' => $existing->entry_number,
+                            'income_category' => $category,
+                            'reactivated' => true,
+                        ];
+                        continue;
+                    }
+
                     $entryNumber = $this->nextNumber($company->id, (int) $entryDate->year);
                     $entry = KpoEntry::create([
                         'company_id' => $company->id,
@@ -1273,10 +1328,17 @@ class KpoEntryService
                 continue;
             }
 
-            if ($invoice->kpoEntries->contains(fn (KpoEntry $entry): bool => $entry->income_category === $category)) {
+            if ($invoice->kpoEntries->contains(fn (KpoEntry $entry): bool => ! $entry->trashed()
+                && $entry->income_category === $category)) {
                 $skippedCategories[] = $category;
-            } else {
+            } elseif ($invoice->kpoEntries->contains(fn (KpoEntry $entry): bool => $entry->trashed()
+                && $entry->income_category === $category
+                && $this->canReactivateAfterKpoExclusion($entry))) {
                 $newCategories[] = $category;
+            } elseif (! $invoice->kpoEntries->contains(fn (KpoEntry $entry): bool => $entry->income_category === $category)) {
+                $newCategories[] = $category;
+            } else {
+                $skippedCategories[] = $category;
             }
         }
 

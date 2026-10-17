@@ -75,6 +75,8 @@ class Invoice extends Model {
         'total_rsd',
         'vat_enabled_at_issue',
         'status',
+        'paid_at',
+        'payment_note',
         'include_in_kpo',
         'pdf_path',
         'note',
@@ -91,6 +93,7 @@ class Invoice extends Model {
     protected $casts    = [
         'issue_date' => 'date',
         'due_date'   => 'date',
+        'paid_at'    => 'date',
         'fx_date'    => 'date',
         'fx_rate_to_rsd' => 'decimal:6',
         'total'      => 'decimal:2',

@@ -1,15 +1,17 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {useParams, useNavigate} from 'react-router';
+import {useParams, useNavigate, useLocation} from 'react-router';
 import {useApp, type InvoiceIncomeCategory, type InvoiceStatus, type InvoicePdfVersion} from '../context/AppContext';
 import {ArrowLeft, Printer, Download, Mail, Trash2, Pencil, Save, X, History} from 'lucide-react';
 import {toast} from 'sonner';
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusSelectClass} from '../utils/invoiceStatus';
 import InvoiceDocument from '../components/InvoiceDocument';
 import {LoadingButton, LoadingSpinner} from '../components/Loading';
+import {formatLocalDate} from '../utils/format';
 
 export default function InvoiceDetails() {
-    const {id} = useParams();
-    const navigate = useNavigate();
+   const {id} = useParams();
+   const navigate = useNavigate();
+    const location = useLocation();
     const {invoices, clients, companies, updateInvoiceStatus, refreshInvoice, updateInvoiceItemClassifications, getInvoiceHistory, getInvoicePdfVersions, downloadInvoicePdfVersion, getInvoiceEmailHistory, deleteInvoice, downloadInvoicePdf, sendInvoiceEmail, meta} = useApp();
     const printRef = useRef<HTMLDivElement>(null);
     const [sendingEmail, setSendingEmail] = useState(false);
@@ -31,7 +33,16 @@ export default function InvoiceDetails() {
     const [classificationDraft, setClassificationDraft] = useState<Record<number, InvoiceIncomeCategory>>({});
     const [history, setHistory] = useState<any[] | null>(null);
     const [pdfVersions, setPdfVersions] = useState<InvoicePdfVersion[]>([]);
+    const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+    const [paymentDate, setPaymentDate] = useState('');
+    const [paymentNote, setPaymentNote] = useState('');
     const pdfMenuRef = useRef<HTMLDivElement>(null);
+
+    const openPaymentDialog = () => {
+        setPaymentDate(invoice?.paidAt ? invoice.paidAt.slice(0, 10) : formatLocalDate(new Date()));
+        setPaymentNote(invoice?.paymentNote ?? '');
+        setPaymentDialogOpen(true);
+    };
 
     const invoiceId = id ? Number(id) : null;
     const invoice = invoiceId ? invoices.find(i => i.id === invoiceId) : undefined;
@@ -73,10 +84,19 @@ export default function InvoiceDetails() {
         getInvoiceEmailHistory(invoice.id).then(setEmailHistory).catch(() => setEmailHistory([]));
     }, [invoice?.id]);
 
+   useEffect(() => {
+       if (!invoice) return;
+       loadPdfVersions(invoice.id).catch(() => undefined);
+   }, [invoice?.id]);
+
+    const openPaymentDialogFromNavigation = Boolean(
+        (location.state as {openPaymentDialog?: boolean} | null)?.openPaymentDialog
+    );
+
     useEffect(() => {
-        if (!invoice) return;
-        loadPdfVersions(invoice.id).catch(() => undefined);
-    }, [invoice?.id]);
+        if (!invoice || !openPaymentDialogFromNavigation) return;
+        openPaymentDialog();
+    }, [invoice?.id, openPaymentDialogFromNavigation]);
 
     useEffect(() => {
         if (!pdfMenuOpen) return;
@@ -189,6 +209,11 @@ export default function InvoiceDetails() {
 
     const handleStatusChange = async (status: InvoiceStatus) => {
         if (updatingStatus || status === invoice.status) return;
+        if (status === 'paid') {
+            openPaymentDialog();
+            return;
+        }
+        if (invoice.status === 'paid' && !window.confirm('Vratiti fakturu u status koji nije plaćen? Datum uplate će biti uklonjen iz aktivnih podataka.')) return;
         setUpdatingStatus(true);
         try {
             await updateInvoiceStatus(invoice.id, status);
@@ -197,6 +222,24 @@ export default function InvoiceDetails() {
             toast.success(`Status fakture promenjen u ${label}`);
         } catch (error: any) {
             toast.error(error?.response?.data?.message ?? 'Status fakture nije promenjen.');
+        } finally {
+            setUpdatingStatus(false);
+        }
+    };
+
+    const handleSavePayment = async () => {
+        if (updatingStatus || !paymentDate) return;
+        setUpdatingStatus(true);
+        try {
+            await updateInvoiceStatus(invoice.id, 'paid', {
+                paidAt: paymentDate,
+                paymentNote: paymentNote.trim() || null,
+            });
+            await synchronizePdfState();
+            setPaymentDialogOpen(false);
+            toast.success('Faktura je označena kao plaćena');
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? 'Podaci o uplati nisu sačuvani.');
         } finally {
             setUpdatingStatus(false);
         }
@@ -308,6 +351,11 @@ export default function InvoiceDetails() {
                                     <option key={status.key} value={status.key}>{status.label}</option>
                                 ))}
                             </select>
+                            {invoice.status === 'paid' && (
+                                <button type="button" onClick={openPaymentDialog} className="text-xs text-indigo-700 hover:text-indigo-900">
+                                    {invoice.paidAt ? 'Izmeni uplatu' : 'Unesi datum uplate'}
+                                </button>
+                            )}
                         </span>
                     </div>
                 </div>
@@ -390,6 +438,36 @@ export default function InvoiceDetails() {
                     </LoadingButton>
                 </div>
             </div>
+
+            {paymentDialogOpen && (
+                <section className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950 print:hidden" role="dialog" aria-label="Podaci o uplati">
+                    <h2 className="font-semibold">Označi fakturu kao plaćenu</h2>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <label className="block font-medium">
+                            Datum uplate
+                            <input type="date" value={paymentDate} onChange={event => setPaymentDate(event.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-normal text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" required />
+                        </label>
+                        <label className="block font-medium">
+                            Napomena (opciono)
+                            <input value={paymentNote} onChange={event => setPaymentNote(event.target.value)} className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-normal text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
+                        </label>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                        <LoadingButton type="button" onClick={() => void handleSavePayment()} loading={updatingStatus} loadingLabel="Čuvanje..." className="rounded-md bg-indigo-600 px-3 py-2 font-medium text-white disabled:opacity-60">
+                            Potvrdi uplatu
+                        </LoadingButton>
+                        <button type="button" onClick={() => setPaymentDialogOpen(false)} disabled={updatingStatus} className="rounded-md border border-indigo-300 px-3 py-2 font-medium disabled:opacity-60">Otkaži</button>
+                    </div>
+                </section>
+            )}
+
+            {(invoice.status === 'paid' || invoice.paidAt || invoice.paymentNote) && (
+                <section className="rounded-lg bg-white shadow-sm ring-1 ring-gray-200 p-6 print:hidden">
+                    <h2 className="text-lg font-semibold text-gray-900">Plaćanje</h2>
+                    <p className="mt-2 text-sm text-gray-600">Datum uplate: {invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString('sr-Latn-RS') : 'Nije unet'}</p>
+                    {invoice.paymentNote && <p className="mt-1 text-sm text-gray-600">Napomena: {invoice.paymentNote}</p>}
+                </section>
+            )}
 
             {emailFormOpen && (
                 <section className="rounded-lg bg-white shadow-sm ring-1 ring-gray-200 p-6 print:hidden">

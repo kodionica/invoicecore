@@ -38,6 +38,8 @@ class UpdateInvoiceRequest extends FormRequest
                 'sometimes',
                 Rule::in(array_map(static fn ($case) => $case->value, \App\Enums\InvoiceStatus::cases())),
             ],
+            'paid_at' => ['sometimes', 'nullable', 'date'],
+            'payment_note' => ['sometimes', 'nullable', 'string', 'max:10000'],
             'items' => ['sometimes', 'array', 'min:1'],
             'items.*.id' => ['sometimes', 'integer', 'distinct'],
             'items.*.name' => ['required_with:items', 'string'],
