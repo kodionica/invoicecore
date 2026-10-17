@@ -15,6 +15,7 @@ export default function InvoiceDetails() {
     const {invoices, clients, companies, updateInvoiceStatus, refreshInvoice, updateInvoiceItemClassifications, getInvoiceHistory, getInvoicePdfVersions, downloadInvoicePdfVersion, getInvoiceEmailHistory, deleteInvoice, downloadInvoicePdf, sendInvoiceEmail, meta} = useApp();
     const printRef = useRef<HTMLDivElement>(null);
     const [sendingEmail, setSendingEmail] = useState(false);
+    const emailOperationKeyRef = useRef<string | null>(null);
     const [emailFormOpen, setEmailFormOpen] = useState(false);
     const [emailRecipient, setEmailRecipient] = useState('');
     const [emailSubject, setEmailSubject] = useState('');
@@ -181,6 +182,20 @@ export default function InvoiceDetails() {
         }
     };
 
+    const createEmailOperationKey = () => {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    };
+
+    const toggleEmailForm = () => {
+        setEmailFormOpen(open => {
+            emailOperationKeyRef.current = open ? null : createEmailOperationKey();
+            return !open;
+        });
+    };
+
     const handleSendEmail = async () => {
         if (sendingEmail) return;
         setSendingEmail(true);
@@ -189,10 +204,11 @@ export default function InvoiceDetails() {
                 recipient: emailRecipient.trim(),
                 subject: emailSubject.trim() || undefined,
                 message: emailMessage.trim() || undefined,
-            });
+            }, emailOperationKeyRef.current ?? createEmailOperationKey());
             await synchronizePdfState();
             setEmailHistory(await getInvoiceEmailHistory(invoice.id));
             setEmailFormOpen(false);
+            emailOperationKeyRef.current = null;
             toast.success(`Email je poslat na ${emailRecipient.trim()}`);
         } catch (error: any) {
             await Promise.allSettled([
@@ -200,7 +216,10 @@ export default function InvoiceDetails() {
                 refreshPdfVersions(),
                 getInvoiceEmailHistory(invoice.id).then(setEmailHistory),
             ]);
-            const message = error?.response?.data?.message ?? 'Neuspešno slanje emaila.';
+            const message = error?.response?.data?.delivery_status === 'unknown'
+                ? 'Email je prihvaćen, ali ishod upisa nije potvrđen. Proverite istoriju slanja pre novog pokušaja.'
+                : error?.response?.data?.message ?? 'Neuspešno slanje emaila.';
+            emailOperationKeyRef.current = null;
             toast.error(message);
         } finally {
             setSendingEmail(false);
@@ -377,7 +396,7 @@ export default function InvoiceDetails() {
                         <History className="h-4 w-4 mr-2"/> Istorija izmena
                     </button>
                     <LoadingButton
-                        onClick={() => setEmailFormOpen(open => !open)}
+                        onClick={toggleEmailForm}
                         disabled={sendingEmail}
                         loading={sendingEmail}
                         loadingLabel="Slanje..."

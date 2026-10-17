@@ -74,7 +74,7 @@ it('protects the exact PDF version after successful email and keeps it after sta
         'recipient' => 'accounting@example.com',
         'subject' => 'Posebna tema',
         'message' => 'Molimo pogledajte priloženu fakturu.',
-    ])->assertOk();
+    ], ['Idempotency-Key' => 'pdf-version-send-1'])->assertOk();
     expect(InvoiceEmailSend::where('invoice_id', $invoice->id)->value('recipient'))->toBe('accounting@example.com');
     Mail::assertSent(\App\Mail\InvoiceMail::class, function ($mail) use ($invoice): bool {
         return $mail->pdfPath === $invoice->fresh()->pdf_path
@@ -120,12 +120,26 @@ it('creates a new immutable current version when an invoice with a PDF is edited
     Storage::disk('local')->assertExists($oldPath);
 });
 
+it('removes an old unprotected PDF when retention permits cleanup', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-retention-cleanup@example.com');
+    $company->update(['other_settings' => ['invoice_pdf' => ['max_unprotected_versions' => 0]]]);
+    fakeInvoicePdf();
+
+    $this->actingAs($user)->getJson("/api/invoices/{$invoice->id}/pdf")->assertOk();
+    $oldPath = $invoice->fresh()->pdf_path;
+
+    $this->actingAs($user)->putJson("/api/invoices/{$invoice->id}", ['note' => 'Nova verzija'])->assertOk();
+
+    Storage::disk('local')->assertMissing($oldPath);
+    expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->count())->toBe(1);
+});
+
 it('does not mark a PDF or invoice as sent when mail delivery fails', function () {
     [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-fail@example.com');
     fakeInvoicePdf();
     Mail::shouldReceive('to')->once()->andThrow(new RuntimeException('SMTP failed'));
 
-    $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/email")->assertServerError();
+    $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/email", [], ['Idempotency-Key' => 'pdf-version-fail-1'])->assertServerError();
 
     expect($invoice->fresh()->status)->toBe('draft');
     expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->whereNotNull('sent_at')->count())->toBe(0);
@@ -174,4 +188,26 @@ it('fails retention explicitly when an unprotected historical PDF file is missin
         ->assertServerError();
 
     expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->where('version', 1)->exists())->toBeTrue();
+});
+
+it('keeps the PDF file and database row when retention database deletion fails', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-retention-db-failure@example.com');
+    $company->update(['other_settings' => ['invoice_pdf' => ['max_unprotected_versions' => 0]]]);
+    fakeInvoicePdf();
+
+    $this->actingAs($user)->getJson("/api/invoices/{$invoice->id}/pdf")->assertOk();
+    $oldPath = $invoice->fresh()->pdf_path;
+    $oldVersion = InvoicePdfVersion::where('invoice_id', $invoice->id)->firstOrFail();
+    InvoicePdfVersion::deleting(function (InvoicePdfVersion $version) use ($oldVersion): void {
+        if ($version->is($oldVersion)) {
+            throw new RuntimeException('Simulated retention database failure');
+        }
+    });
+
+    $this->actingAs($user)
+        ->putJson("/api/invoices/{$invoice->id}", ['note' => 'Nova verzija'])
+        ->assertServerError();
+
+    Storage::disk('local')->assertExists($oldPath);
+    expect(InvoicePdfVersion::whereKey($oldVersion->id)->exists())->toBeTrue();
 });

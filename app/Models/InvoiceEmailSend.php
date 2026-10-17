@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InvoiceEmailSend extends Model
 {
     protected $fillable = [
-        'company_id', 'invoice_id', 'invoice_pdf_version_id', 'recipient', 'subject',
+        'company_id', 'invoice_id', 'invoice_pdf_version_id', 'idempotency_key', 'recipient', 'subject',
         'message', 'status', 'failure_message', 'accepted_at', 'failed_at',
     ];
 

@@ -443,7 +443,7 @@ interface AppContextType {
     loadInvoices: (overdue?: boolean) => Promise<void>;
     updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
-    sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string }) => Promise<any>;
+    sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string }, idempotencyKey?: string) => Promise<any>;
     getInvoiceEmailHistory: (id: number) => Promise<any[]>;
     loadKpo: (filters?: KpoFilters) => Promise<KpoListResponse>;
     downloadKpoPdf: (filters?: KpoFilters) => Promise<void>;
@@ -1274,8 +1274,10 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         window.URL.revokeObjectURL(url);
     };
 
-    const sendInvoiceEmail = async (id: number, payload?: { recipient?: string; subject?: string; message?: string }) => {
-        const response = await api.post(`/api/invoices/${id}/email`, payload ?? {});
+    const sendInvoiceEmail = async (id: number, payload?: { recipient?: string; subject?: string; message?: string }, idempotencyKey?: string) => {
+        const response = await api.post(`/api/invoices/${id}/email`, payload ?? {}, idempotencyKey ? {
+            headers: {'Idempotency-Key': idempotencyKey},
+        } : undefined);
         return response.data;
     };
 

@@ -118,7 +118,10 @@ export default function Invoices() {
         if ( sendingInvoiceId ) return;
         setSendingInvoiceId( id );
         try {
-            await sendInvoiceEmail( id );
+            const operationKey = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            await sendInvoiceEmail( id, undefined, operationKey );
             if ( currentStatus !== 'sent' ) {
                 await updateInvoiceStatus( id, 'sent' as any );
             }

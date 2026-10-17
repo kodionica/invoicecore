@@ -122,7 +122,8 @@ class InvoiceController extends Controller {
             ? (bool) $attrs['vat_enabled_at_issue']
             : (bool) $active_company->vat_enabled;
 
-        $invoice = DB::transaction( function () use ( $attrs, $active_company, $exchangeRateService, $effectiveVatEnabled ) {
+        try {
+            $invoice = DB::transaction( function () use ( $attrs, $active_company, $exchangeRateService, $effectiveVatEnabled ) {
             $now = now();
             $year = (int) $now->year;
             $month = (int) $now->month;
@@ -256,7 +257,16 @@ class InvoiceController extends Controller {
             ]);
 
             return $invoice;
-        } );
+            } );
+        } catch (QueryException $exception) {
+            if ($this->isInvoiceNumberUniqueViolation($exception)) {
+                throw ValidationException::withMessages([
+                    'invoice_number' => ['Broj fakture već postoji u aktivnoj firmi.'],
+                ]);
+            }
+
+            throw $exception;
+        }
 
         return response()->json( $invoice->load( [ 'items', 'client' ] ), 201 );
     }
@@ -279,6 +289,20 @@ class InvoiceController extends Controller {
     {
         $invoice->setAttribute('is_overdue', $invoice->isOverdue($today));
         $invoice->setAttribute('overdue_days', $invoice->overdueDays($today));
+    }
+
+    private function isInvoiceNumberUniqueViolation(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+        $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+        $message = strtolower((string) $exception->getMessage());
+
+        if ($sqlState !== '23000' && $driverCode !== 1062) {
+            return false;
+        }
+
+        return str_contains($message, 'invoices_company_invoice_unique')
+            || str_contains($message, 'invoices.company_id, invoices.invoice_number');
     }
 
     public function history(Invoice $invoice)
@@ -346,6 +370,23 @@ class InvoiceController extends Controller {
     public function sendEmail( Request $request, Invoice $invoice ) {
         $this->authorize( 'view', $invoice );
 
+        $idempotencyKey = $request->header('Idempotency-Key');
+        if (! is_string($idempotencyKey) || trim($idempotencyKey) === '' || strlen($idempotencyKey) > 100) {
+            throw ValidationException::withMessages([
+                'idempotency_key' => ['Idempotency-Key zaglavlje je obavezno i mora biti validno.'],
+            ]);
+        }
+        $idempotencyKey = trim($idempotencyKey);
+
+        $existingAttempt = InvoiceEmailSend::query()->where('idempotency_key', $idempotencyKey)->first();
+        if ($existingAttempt) {
+            if ((int) $existingAttempt->company_id !== (int) $invoice->company_id || (int) $existingAttempt->invoice_id !== (int) $invoice->id) {
+                return response()->json(['message' => 'Idempotency ključ je već iskorišćen za drugu operaciju.'], 409);
+            }
+
+            return $this->emailIdempotencyResponse($existingAttempt, $invoice);
+        }
+
         $client = $invoice->client;
         $data = $request->validate([
             'recipient' => ['sometimes', 'nullable', 'email', 'max:255'],
@@ -361,14 +402,32 @@ class InvoiceController extends Controller {
         }
         $subject = $data['subject'] ?? "Faktura #{$invoice->invoice_number}";
         $message = $data['message'] ?? null;
-        $attempt = InvoiceEmailSend::create([
-            'company_id' => $invoice->company_id,
-            'invoice_id' => $invoice->id,
-            'recipient' => $recipient,
-            'subject' => $subject,
-            'message' => $message,
-            'status' => 'pending',
-        ]);
+        try {
+            $attempt = InvoiceEmailSend::create([
+                'company_id' => $invoice->company_id,
+                'invoice_id' => $invoice->id,
+                'idempotency_key' => $idempotencyKey,
+                'recipient' => $recipient,
+                'subject' => $subject,
+                'message' => $message,
+                'status' => 'pending',
+            ]);
+        } catch (QueryException $exception) {
+            if (! $this->isInvoiceEmailIdempotencyViolation($exception)) {
+                throw $exception;
+            }
+
+            $existingAttempt = InvoiceEmailSend::query()->where('idempotency_key', $idempotencyKey)->first();
+            if (! $existingAttempt) {
+                throw $exception;
+            }
+
+            if ((int) $existingAttempt->company_id !== (int) $invoice->company_id || (int) $existingAttempt->invoice_id !== (int) $invoice->id) {
+                return response()->json(['message' => 'Idempotency ključ je već iskorišćen za drugu operaciju.'], 409);
+            }
+
+            return $this->emailIdempotencyResponse($existingAttempt, $invoice);
+        }
 
         try {
             $relative_path = $this->ensureInvoicePdf( $invoice );
@@ -394,25 +453,51 @@ class InvoiceController extends Controller {
             Mail::to( $recipient )->send( new InvoiceMail( $invoice, $relative_path, $subject, $message ) );
         } catch (\Throwable $exception) {
             report($exception);
-            $attempt->update([
-                'status' => 'failed',
-                'failure_message' => 'Transport nije prihvatio poruku.',
-                'failed_at' => now(),
-            ]);
+            try {
+                $attempt->update([
+                    'status' => 'failed',
+                    'failure_message' => 'Transport nije prihvatio poruku.',
+                    'failed_at' => now(),
+                ]);
+            } catch (\Throwable $recordingException) {
+                report($recordingException);
 
-            return response()->json(['message' => 'Email nije poslat. PDF verzija je ostala zaštićena.'], 502);
+                return response()->json([
+                    'message' => 'Ishod slanja nije moguće potvrditi. Proverite istoriju slanja pre novog pokušaja.',
+                    'delivery_status' => 'unknown',
+                    'invoice_email_send_id' => $attempt->id,
+                ], 500);
+            }
+
+            return response()->json(['message' => 'Email nije poslat. PDF verzija je ostala zaštićena.', 'delivery_status' => 'failed'], 502);
         }
 
         try {
-            $attempt->update(['status' => 'accepted', 'accepted_at' => now()]);
-            $version->update(['sent_at' => $version->sent_at ?? now()]);
-            if ( $invoice->status !== InvoiceStatus::SENT ) {
-                $invoice->update( [ 'status' => InvoiceStatus::SENT ] );
-            }
+            DB::transaction(function () use ($attempt, $version, $invoice): void {
+                $attempt->update(['status' => 'accepted', 'accepted_at' => now()]);
+                $version->update(['sent_at' => $version->sent_at ?? now()]);
+                if ( $invoice->status !== InvoiceStatus::SENT ) {
+                    $invoice->update( [ 'status' => InvoiceStatus::SENT ] );
+                }
+            }, 3);
         } catch (\Throwable $exception) {
             report($exception);
 
-            return response()->json(['message' => 'Email je prihvaćen, ali status nije automatski ažuriran. Proverite istoriju slanja.'], 500);
+            try {
+                $attempt->update([
+                    'status' => 'unknown',
+                    'failure_message' => 'SMTP je prihvatio poruku, ali upis rezultata nije potvrđen.',
+                    'failed_at' => now(),
+                ]);
+            } catch (\Throwable $recordingException) {
+                report($recordingException);
+            }
+
+            return response()->json([
+                'message' => 'Email je prihvaćen, ali rezultat upisa nije potvrđen. Proverite istoriju slanja pre novog pokušaja.',
+                'delivery_status' => 'unknown',
+                'invoice_email_send_id' => $attempt->id,
+            ], 500);
         }
 
         return response()->json( [
@@ -422,6 +507,44 @@ class InvoiceController extends Controller {
             'invoice_pdf_version_id' => $version->id,
             'invoice' => $invoice->fresh(),
         ] );
+    }
+
+    private function emailIdempotencyResponse(InvoiceEmailSend $attempt, Invoice $invoice): \Illuminate\Http\JsonResponse
+    {
+        if ($attempt->status === 'accepted') {
+            return response()->json([
+                'message' => 'Email je već poslat za ovu operaciju.',
+                'status' => 'accepted',
+                'delivery_status' => 'accepted',
+                'idempotent_replay' => true,
+                'invoice_email_send_id' => $attempt->id,
+                'invoice_pdf_version_id' => $attempt->invoice_pdf_version_id,
+                'invoice' => $invoice->fresh(),
+            ]);
+        }
+
+        $message = match ($attempt->status) {
+            'unknown' => 'Ishod slanja je neizvestan. Proverite istoriju slanja pre novog pokušaja.',
+            'failed' => 'Ova operacija slanja je već neuspešna. Za novi pokušaj pokrenite novo slanje.',
+            default => 'Slanje za ovu operaciju je već u toku. Sačekajte rezultat.',
+        };
+
+        return response()->json([
+            'message' => $message,
+            'delivery_status' => $attempt->status === 'unknown' ? 'unknown' : ($attempt->status === 'failed' ? 'failed' : 'processing'),
+            'invoice_email_send_id' => $attempt->id,
+        ], 409);
+    }
+
+    private function isInvoiceEmailIdempotencyViolation(QueryException $exception): bool
+    {
+        $message = strtolower($exception->getMessage());
+        $sqlState = $exception->errorInfo[0] ?? $exception->getCode();
+        $driverCode = $exception->errorInfo[1] ?? null;
+
+        return (string) $sqlState === '23000'
+            && ((int) $driverCode === 1062 || str_contains($message, 'invoice_email_sends_idempotency_key_unique') || str_contains($message, 'idempotency_key'))
+            && (str_contains($message, 'idempotency_key') || str_contains($message, 'invoice_email_sends_idempotency_key_unique'));
     }
 
     /**
@@ -688,6 +811,14 @@ class InvoiceController extends Controller {
 
             return $lockedInvoice;
             });
+        } catch (QueryException $exception) {
+            if ($this->isInvoiceNumberUniqueViolation($exception)) {
+                throw ValidationException::withMessages([
+                    'invoice_number' => ['Broj fakture već postoji u aktivnoj firmi.'],
+                ]);
+            }
+
+            throw $exception;
         } catch (KpoInvoiceConflictException $exception) {
             return response()->json([
                 'message' => 'Izmena fakture zahteva potvrdu KPO promena.',
@@ -939,13 +1070,52 @@ class InvoiceController extends Controller {
         $versions = $query->get();
 
         foreach ($versions->take(max(0, $versions->count() - $limit)) as $version) {
+            $this->deletePdfVersionSafely($version, $currentPath);
+        }
+    }
+
+    private function deletePdfVersionSafely(InvoicePdfVersion $version, ?string $currentPath): void
+    {
+        $attributes = $version->getAttributes();
+        $deleted = DB::transaction(function () use ($version, $currentPath): bool {
+            $lockedVersion = InvoicePdfVersion::query()->lockForUpdate()->find($version->id);
+
+            if (! $lockedVersion
+                || $lockedVersion->protected_at
+                || $lockedVersion->path === $currentPath
+                || $lockedVersion->emailSends()->exists()) {
+                return false;
+            }
+
+            return (bool) $lockedVersion->delete();
+        }, 3);
+
+        if (! $deleted) {
+            return;
+        }
+
+        try {
             if (! Storage::disk('local')->exists($version->path)) {
                 throw new \RuntimeException("PDF verzija {$version->id} nije pronađena; zadržavanje podataka je prekinuto.");
             }
             if (! Storage::disk('local')->delete($version->path)) {
                 throw new \RuntimeException("PDF verzija {$version->id} nije mogla biti obrisana sa diska.");
             }
-            $version->delete();
+        } catch (\Throwable $exception) {
+            try {
+                DB::transaction(function () use ($attributes): void {
+                    InvoicePdfVersion::query()->insert($attributes);
+                }, 3);
+            } catch (\Throwable $restoreException) {
+                report($restoreException);
+                throw new \RuntimeException(
+                    'PDF retention nije uspela i DB zapis nije mogao biti vraćen.',
+                    0,
+                    $exception
+                );
+            }
+
+            throw $exception;
         }
     }
 
