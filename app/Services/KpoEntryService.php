@@ -150,15 +150,17 @@ class KpoEntryService
                 throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'kpo_exclusion'));
             }
 
+            $removed = [];
             foreach ($entries as $entry) {
                 if ($entry->trashed()) {
                     continue;
                 }
                 $this->assertCanRemoveEntry($entry, $allowManualOverwrite);
                 $this->softDeleteInvoiceEntry($entry, 'invoice_excluded_from_kpo');
+                $removed[] = $entry->id;
             }
 
-            return ['status' => 'removed', 'updated' => [], 'removed' => $entries->whereNull('deleted_at')->pluck('id')->all()];
+            return ['status' => 'removed', 'updated' => [], 'removed' => $removed];
         }
 
         if ($entries->contains(fn (KpoEntry $entry): bool => $entry->income_category === null)) {
@@ -166,10 +168,21 @@ class KpoEntryService
         }
 
         if ($invoice->vat_enabled_at_issue === null || (bool) $invoice->vat_enabled_at_issue) {
-            if ($allowEligibilityConflict) {
-                return ['status' => 'retained_ineligible', 'updated' => []];
+            if (! $allowEligibilityConflict) {
+                throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'vat_ineligibility'));
             }
-            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'vat_ineligibility'));
+
+            $removed = [];
+            foreach ($entries as $entry) {
+                if ($entry->trashed()) {
+                    continue;
+                }
+                $this->assertCanRemoveEntry($entry, $allowManualOverwrite);
+                $this->softDeleteInvoiceEntry($entry, 'invoice_vat_ineligible');
+                $removed[] = $entry->id;
+            }
+
+            return ['status' => 'removed', 'updated' => [], 'removed' => $removed];
         }
 
         $calculation = $this->amountCalculator->calculate($invoice);
@@ -360,6 +373,32 @@ class KpoEntryService
         });
     }
 
+    /**
+     * Soft-delete all active invoice-linked entries while the caller owns the
+     * surrounding transaction. This keeps the source deletion atomic and
+     * preserves each entry's number, amounts and audit history.
+     *
+     * @return array<int, int>
+     */
+    public function softDeleteEntriesForInvoice(Invoice $invoice, string $reason): array
+    {
+        $entries = KpoEntry::query()
+            ->where('company_id', $invoice->company_id)
+            ->where('source_invoice_id', $invoice->id)
+            ->whereNull('deleted_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        $deleted = [];
+        foreach ($entries as $entry) {
+            $this->softDeleteInvoiceEntry($entry, $reason);
+            $deleted[] = $entry->id;
+        }
+
+        return $deleted;
+    }
+
     public function previewFromInvoices(Company $company, int $year, bool $includeHistorical = false): array
     {
         $query = Invoice::query()
@@ -471,6 +510,12 @@ class KpoEntryService
         $actionableReports = $reports->filter(
             static fn (array $report): bool => (bool) ($report['actionable'] ?? true)
         )->values();
+        $attentionReports = $reports->filter(
+            static fn (array $report): bool => ! ($report['actionable'] ?? false) && (bool) ($report['requires_attention'] ?? false)
+        )->values();
+        $unchangedReports = $reports->filter(
+            static fn (array $report): bool => ! ($report['actionable'] ?? false) && ! ($report['requires_attention'] ?? false)
+        )->values();
 
         return [
             'year' => $year,
@@ -479,7 +524,8 @@ class KpoEntryService
             'invoices' => $reports->all(),
             'actionable_invoices' => $actionableReports->all(),
             'actionable_count' => $actionableReports->count(),
-            'unchanged_count' => $reports->count() - $actionableReports->count(),
+            'attention_count' => $attentionReports->count(),
+            'unchanged_count' => $unchangedReports->count(),
             'preview_fingerprint' => $this->regenerationFingerprint($company, $year, $includeHistorical, $invoices),
         ];
     }
@@ -953,10 +999,11 @@ class KpoEntryService
             : (($calculation['generation_readiness']['status'] ?? null) === 'partial' ? 'partial' : 'ready');
         $hasActionableChanges = collect($proposedEntries)->contains(
             static fn (array $proposal): bool => $proposal['action'] !== 'retain'
-        ) || $status !== 'ready'
+        )
             || $missingCategories !== []
             || $obsoleteCategories !== []
-            || $deletedExpectedCategories !== []
+            || $deletedExpectedCategories !== [];
+        $requiresAttention = $status !== 'ready'
             || $legacyConflicts !== []
             || $unknownExistingCategories !== []
             || $calculation['unresolved_amount_rsd'] !== '0.00'
@@ -968,6 +1015,7 @@ class KpoEntryService
             'issue_date' => $invoice->issue_date?->toDateString(),
             'status' => $status,
             'actionable' => $hasActionableChanges,
+            'requires_attention' => $requiresAttention,
             'blocking_reasons' => $blockingReasons,
             'existing_entries' => $existingEntries->map(fn (KpoEntry $entry): array => $this->regenerationEntry($entry))->all(),
             'proposed_entries' => $proposedEntries,

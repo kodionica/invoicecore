@@ -3,6 +3,8 @@ import {useParams, useNavigate, Link} from 'react-router';
 import {useApp} from '../context/AppContext';
 import {ArrowLeft, Building2, Save, Trash2, CheckCircle, Users, FileText, Calculator, X} from 'lucide-react';
 import {toast} from 'sonner';
+import {LoadingButton} from '../components/Loading';
+import CompanyBankAccounts from '../components/CompanyBankAccounts';
 
 export default function CompanyDetails() {
     const {id} = useParams();
@@ -12,6 +14,9 @@ export default function CompanyDetails() {
     const companyId = id ? Number(id) : null;
     const company = companyId ? companies.find(c => c.id === companyId) : undefined;
     const [isEditing, setIsEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const [settingActive, setSettingActive] = useState(false);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -55,31 +60,55 @@ export default function CompanyDetails() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (saving) return;
+        setSaving(true);
         const {logoFile, remove_logo, max_unprotected_versions, ...payload} = formData;
-        await updateCompany(company.id, {
-            ...payload,
-            other_settings: {
-                ...(company.otherSettings ?? {}),
-                invoice_pdf: {max_unprotected_versions},
-            },
-            logoFile,
-            remove_logo,
-        });
-        setIsEditing(false);
-        toast.success('Podaci firme su ažurirani');
+        try {
+            await updateCompany(company.id, {
+                ...payload,
+                other_settings: {
+                    ...(company.otherSettings ?? {}),
+                    invoice_pdf: {max_unprotected_versions},
+                },
+                logoFile,
+                remove_logo,
+            });
+            setIsEditing(false);
+            toast.success('Podaci firme su ažurirani');
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? error?.message ?? 'Čuvanje firme nije uspelo.');
+        } finally {
+            setSaving(false);
+        }
     };
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
+        if (deleting) return;
         if (confirm('Da li ste sigurni da želite da obrišete ovu firmu? Svi povezani podaci će biti obrisani.')) {
-            deleteCompany(company.id);
-            toast.success('Firma je obrisana');
-            navigate('/dashboard/companies');
+            setDeleting(true);
+            try {
+                await deleteCompany(company.id);
+                toast.success('Firma je obrisana');
+                navigate('/dashboard/companies');
+            } catch (error: any) {
+                toast.error(error?.response?.data?.message ?? error?.message ?? 'Brisanje firme nije uspelo.');
+            } finally {
+                setDeleting(false);
+            }
         }
     };
 
     const handleSetActive = async () => {
-        await setActiveCompany(company.id);
-        toast.success(`${company.name} je postavljena kao aktivna firma`);
+        if (settingActive) return;
+        setSettingActive(true);
+        try {
+            await setActiveCompany(company.id);
+            toast.success(`${company.name} je postavljena kao aktivna firma`);
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? error?.message ?? 'Promena aktivne firme nije uspela.');
+        } finally {
+            setSettingActive(false);
+        }
     };
 
     const isActive = activeCompanyId === company.id;
@@ -107,21 +136,25 @@ export default function CompanyDetails() {
 
                 <div className="flex gap-2">
                     {!isActive && (
-                        <button
+                        <LoadingButton
                             onClick={handleSetActive}
-                            className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+                            loading={settingActive}
+                            loadingLabel="Postavljanje..."
+                            className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <CheckCircle className="h-4 w-4 mr-2"/>
                             Postavi kao aktivnu
-                        </button>
+                        </LoadingButton>
                     )}
-                    <button
+                    <LoadingButton
                         onClick={handleDelete}
-                        className="inline-flex items-center px-4 py-2 border border-red-200 shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100"
+                        loading={deleting}
+                        loadingLabel="Brisanje..."
+                        className="inline-flex items-center px-4 py-2 border border-red-200 shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Trash2 className="h-4 w-4 mr-2"/>
                         Obriši
-                    </button>
+                    </LoadingButton>
                 </div>
             </div>
 
@@ -175,6 +208,8 @@ export default function CompanyDetails() {
                     </div>
                 </div>
             </div>
+
+            <CompanyBankAccounts companyId={company.id} accounts={company.bankAccounts ?? []}/>
 
             {/* Company Details Form */}
             <div className="bg-white shadow-sm rounded-lg border border-gray-200">
@@ -453,7 +488,7 @@ export default function CompanyDetails() {
                         {/* Bank */}
                         <div>
                             <label htmlFor="bank_account" className="block text-sm font-medium text-gray-700">
-                                Broj računa
+                      Broj računa (Legacy)
                             </label>
                             <div className="mt-1">
                                 {isEditing ? (
@@ -473,7 +508,7 @@ export default function CompanyDetails() {
 
                         <div>
                             <label htmlFor="iban" className="block text-sm font-medium text-gray-700">
-                                IBAN
+                      IBAN (Legacy)
                             </label>
                             <div className="mt-1">
                                 {isEditing ? (
@@ -492,7 +527,7 @@ export default function CompanyDetails() {
 
                         <div>
                             <label htmlFor="swift" className="block text-sm font-medium text-gray-700">
-                                SWIFT
+                      SWIFT/BIC (Legacy)
                             </label>
                             <div className="mt-1">
                                 {isEditing ? (
@@ -602,13 +637,15 @@ export default function CompanyDetails() {
 
                     {isEditing && (
                         <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
-                            <button
+                            <LoadingButton
                                 type="submit"
-                                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                loading={saving}
+                                loadingLabel="Čuvanje..."
+                                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                                 <Save className="h-4 w-4 mr-2"/>
                                 Sačuvaj Izmene
-                            </button>
+                            </LoadingButton>
                         </div>
                     )}
                 </form>

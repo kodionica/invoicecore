@@ -141,6 +141,10 @@ class Company extends Model {
         return $this->hasMany( Invoice::class );
     }
 
+    public function bankAccounts(): HasMany {
+        return $this->hasMany(CompanyBankAccount::class);
+    }
+
     public function kpoEntries(): HasMany {
         return $this->hasMany( KpoEntry::class );
     }

@@ -93,6 +93,38 @@ it('persists the VAT setting at invoice issuance instead of reading it later', f
     expect((bool) $response->json('vat_enabled_at_issue'))->toBeTrue();
 });
 
+it('calculates a new VAT invoice from the effective snapshot and persists matching line totals', function () {
+    [$user, $company, $client] = createUserWithCompanyAndClient('vat-debug-10k@example.com', 'RSD');
+    $company->update(['vat_enabled' => true, 'default_tax_percent' => 20]);
+    $this->actingAs($user);
+
+    $response = $this->postJson('/api/invoices', [
+        'client_id' => $client->id,
+        'invoice_number' => 'VAT-DEBUG-10000',
+        'issue_date' => now()->toDateString(),
+        'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'RSD',
+        'vat_enabled_at_issue' => true,
+        'items' => [[
+            'name' => 'VAT debug item',
+            'description' => 'VAT debug item',
+            'quantity' => 1,
+            'price' => 10000,
+            'income_category' => 'service',
+        ]],
+    ])->assertCreated();
+
+    $invoice = App\Models\Invoice::with('items')->findOrFail($response->json('id'));
+    expect($response->json('subtotal_original'))->toBe('10000.00')
+        ->and($response->json('tax_original'))->toBe('2000.00')
+        ->and($response->json('total_original'))->toBe('12000.00')
+        ->and($response->json('tax_rsd'))->toBe('2000.00')
+        ->and($response->json('total_rsd'))->toBe('12000.00')
+        ->and($invoice->items->first()->sub_total)->toBe('10000.00')
+        ->and($invoice->items->first()->tax_amount)->toBe('2000.00')
+        ->and($invoice->items->first()->total)->toBe('12000.00');
+});
+
 it( 'stores foreign currency snapshot fields for non-rsd invoice', function () {
     Http::fake( [
         'https://kurs.resenje.org/*' => Http::response( [

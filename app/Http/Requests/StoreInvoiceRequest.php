@@ -22,6 +22,7 @@ class StoreInvoiceRequest extends FormRequest {
             'note'           => [ 'nullable', 'string' ],
             'include_in_kpo' => [ 'sometimes', 'boolean' ],
             'vat_enabled_at_issue' => [ 'sometimes', 'boolean' ],
+            'bank_account_id' => [ 'sometimes', 'nullable', 'integer' ],
 
             'items'               => [ 'required', 'array', 'min:1' ],
             'items.*.name'        => [ 'required', 'string' ],

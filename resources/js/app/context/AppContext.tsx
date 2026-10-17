@@ -19,10 +19,27 @@ export interface Company {
     iban: string;
     swift: string;
     currency: string;
+    defaultTaxPercent?: number;
     vat_enabled: boolean;
     payment_due_days?: number;
     logoUrl?: string;
     otherSettings?: { invoice_pdf?: { max_unprotected_versions?: number } };
+    bankAccounts?: CompanyBankAccount[];
+}
+
+export interface CompanyBankAccount {
+    id: number;
+    companyId: number;
+    label?: string | null;
+    bankName: string;
+    accountNumber: string;
+    iban?: string | null;
+    swiftBic?: string | null;
+    currency: string;
+    accountType: 'domestic' | 'foreign';
+    paymentInstructions?: string | null;
+    isDefault: boolean;
+    isActive: boolean;
 }
 
 export interface Client {
@@ -64,6 +81,8 @@ export interface Invoice {
     status: InvoiceStatus;
     paymentMethod: string;
     total: number;
+    subtotalOriginal?: number;
+    taxOriginal?: number;
     totalOriginal: number;
     totalRsd: number;
     fxRateToRsd?: number;
@@ -71,6 +90,13 @@ export interface Invoice {
     vatEnabledAtIssue?: boolean | null;
     note?: string | null;
     pdfPath?: string | null;
+    bankAccountId?: number | null;
+    bankAccountBankName?: string | null;
+    bankAccountNumber?: string | null;
+    bankAccountIban?: string | null;
+    bankAccountSwiftBic?: string | null;
+    bankAccountCurrency?: string | null;
+    bankAccountPaymentInstructions?: string | null;
 }
 
 export interface InvoicePdfVersion {
@@ -192,6 +218,7 @@ export interface KpoRegenerationInvoice {
     issueDate: string;
     status: 'ready' | 'partial' | 'blocked' | string;
     actionable: boolean;
+    requiresAttention: boolean;
     blockingReasons: string[];
     existingEntries: KpoRegenerationEntry[];
     proposedEntries: KpoRegenerationProposal[];
@@ -331,12 +358,27 @@ interface InvoiceCreatePayload {
     items: { id?: number; description: string; quantity: number; price: number; incomeCategory: InvoiceIncomeCategory }[];
     includeInKpo?: boolean;
     vatEnabledAtIssue?: boolean;
+    bankAccountId?: number | null;
+}
+
+export interface CompanyBankAccountPayload {
+    label?: string;
+    bank_name: string;
+    account_number: string;
+    iban?: string;
+    swift_bic?: string;
+    currency: string;
+    account_type: 'domestic' | 'foreign';
+    payment_instructions?: string;
+    is_default?: boolean;
+    is_active?: boolean;
 }
 
 export interface InvoiceKpoConfirmation {
     confirmed: boolean;
     previewFingerprint: string;
     confirmManualOverwrite?: boolean;
+    confirmVatStatusChange?: boolean;
 }
 
 export interface MetaData {
@@ -377,6 +419,10 @@ interface AppContextType {
     setActiveCompany: (id: number) => Promise<void>;
     addCompany: (company: CompanyCreatePayload) => Promise<void>;
     updateCompany: (id: number, data: CompanyUpdatePayload) => Promise<void>;
+    createBankAccount: (companyId: number, payload: CompanyBankAccountPayload) => Promise<CompanyBankAccount>;
+    updateBankAccount: (companyId: number, accountId: number, payload: CompanyBankAccountPayload) => Promise<CompanyBankAccount>;
+    setDefaultBankAccount: (companyId: number, accountId: number) => Promise<CompanyBankAccount>;
+    deactivateBankAccount: (companyId: number, accountId: number) => Promise<void>;
     deleteCompany: (id: number) => Promise<void>;
     addClient: (client: ClientCreatePayload) => Promise<void>;
     updateClient: (id: number, data: ClientCreatePayload) => Promise<void>;
@@ -387,7 +433,7 @@ interface AppContextType {
     getInvoiceHistory: (id: number) => Promise<{invoice: any; revisions: any[]} >;
     getInvoicePdfVersions: (id: number) => Promise<InvoicePdfVersion[]>;
     downloadInvoicePdfVersion: (id: number, version: number, invoiceNumber?: string) => Promise<void>;
-    deleteInvoice: (id: number) => Promise<void>;
+    deleteInvoice: (id: number, confirmKpoRemoval?: boolean) => Promise<void>;
     getNextInvoiceNumber: () => Promise<string>;
     updateInvoiceStatus: (id: number, status: InvoiceStatus) => Promise<void>;
     updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
@@ -466,12 +512,31 @@ const normalizeCompany = (company: any): Company => {
         iban: company.iban ?? '',
         swift: company.swift ?? '',
         currency: company.currency ?? 'RSD',
+        defaultTaxPercent: company.default_tax_percent !== undefined ? Number(company.default_tax_percent) : 20,
         vat_enabled: Boolean(company.vat_enabled),
         payment_due_days: company.payment_due_days !== undefined ? Number(company.payment_due_days) : undefined,
         otherSettings: company.other_settings ?? undefined,
+        bankAccounts: Array.isArray(company.bank_accounts)
+            ? company.bank_accounts.map(normalizeBankAccount)
+            : undefined,
         logoUrl,
     };
 };
+
+const normalizeBankAccount = (account: any): CompanyBankAccount => ({
+    id: Number(account.id),
+    companyId: Number(account.company_id),
+    label: account.label ?? null,
+    bankName: account.bank_name ?? '',
+    accountNumber: account.account_number ?? '',
+    iban: account.iban ?? null,
+    swiftBic: account.swift_bic ?? null,
+    currency: String(account.currency ?? '').toUpperCase(),
+    accountType: account.account_type === 'foreign' ? 'foreign' : 'domestic',
+    paymentInstructions: account.payment_instructions ?? null,
+    isDefault: Boolean(account.is_default),
+    isActive: Boolean(account.is_active),
+});
 
 const normalizeClient = (client: any): Client => {
     return {
@@ -500,6 +565,8 @@ const normalizeDateInput = (value: unknown): string => {
 const normalizeInvoice = (invoice: any): Invoice => {
     const items = Array.isArray(invoice.items) ? invoice.items : [];
     const total = Number(invoice.total ?? 0);
+    const subtotalOriginal = Number(invoice.subtotal_original ?? 0);
+    const taxOriginal = Number(invoice.tax_original ?? 0);
     const totalOriginal = Number(invoice.total_original ?? 0);
     const totalRsd = Number(invoice.total_rsd ?? 0);
 
@@ -514,6 +581,8 @@ const normalizeInvoice = (invoice: any): Invoice => {
         status: invoice.status as InvoiceStatus,
         paymentMethod: invoice.payment_method,
         total,
+        subtotalOriginal: subtotalOriginal > 0 ? subtotalOriginal : undefined,
+        taxOriginal: taxOriginal >= 0 ? taxOriginal : undefined,
         totalOriginal: totalOriginal > 0 ? totalOriginal : total,
         totalRsd: totalRsd > 0 ? totalRsd : total,
         fxRateToRsd: invoice.fx_rate_to_rsd !== undefined && invoice.fx_rate_to_rsd !== null
@@ -523,6 +592,13 @@ const normalizeInvoice = (invoice: any): Invoice => {
         vatEnabledAtIssue: invoice.vat_enabled_at_issue ?? null,
         note: invoice.note ?? null,
         pdfPath: invoice.pdf_path ?? null,
+        bankAccountId: invoice.bank_account_id ? Number(invoice.bank_account_id) : null,
+        bankAccountBankName: invoice.bank_account_bank_name ?? null,
+        bankAccountNumber: invoice.bank_account_number ?? null,
+        bankAccountIban: invoice.bank_account_iban ?? null,
+        bankAccountSwiftBic: invoice.bank_account_swift_bic ?? null,
+        bankAccountCurrency: invoice.bank_account_currency ?? null,
+        bankAccountPaymentInstructions: invoice.bank_account_payment_instructions ?? null,
         items: items.map((item: any) => ({
             id: Number(item.id ?? 0),
             description: item.name ?? item.description ?? '',
@@ -764,6 +840,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
                 issueDate: String(invoice.issue_date ?? ''),
                 status: String(invoice.status ?? 'blocked'),
                 actionable: Boolean(invoice.actionable),
+                requiresAttention: Boolean(invoice.requires_attention),
                 blockingReasons: Array.isArray(invoice.blocking_reasons) ? invoice.blocking_reasons : [],
                 existingEntries: Array.isArray(invoice.existing_entries) ? invoice.existing_entries.map((entry: any) => ({
                     id: Number(entry.id),
@@ -968,6 +1045,47 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         setCompanies(current => current.map(c => (c.id === id ? updated : c)));
     };
 
+    const updateBankAccounts = (companyId: number, account: CompanyBankAccount) => {
+        setCompanies(current => current.map(company => company.id === companyId
+            ? {...company, bankAccounts: (company.bankAccounts ?? []).some(item => item.id === account.id)
+                ? (company.bankAccounts ?? []).map(item => item.id === account.id ? account : item)
+                : [...(company.bankAccounts ?? []), account]}
+            : company));
+    };
+
+    const createBankAccount = async (companyId: number, payload: CompanyBankAccountPayload) => {
+        const response = await api.post(`/api/companies/${companyId}/bank-accounts`, payload);
+        const account = normalizeBankAccount(response.data);
+        updateBankAccounts(companyId, account);
+        return account;
+    };
+
+    const updateBankAccount = async (companyId: number, accountId: number, payload: CompanyBankAccountPayload) => {
+        const response = await api.put(`/api/companies/${companyId}/bank-accounts/${accountId}`, payload);
+        const account = normalizeBankAccount(response.data);
+        updateBankAccounts(companyId, account);
+        return account;
+    };
+
+    const setDefaultBankAccount = async (companyId: number, accountId: number) => {
+        const response = await api.post(`/api/companies/${companyId}/bank-accounts/${accountId}/default`);
+        const account = normalizeBankAccount(response.data);
+        const currency = account.currency;
+        setCompanies(current => current.map(company => company.id === companyId
+            ? {...company, bankAccounts: (company.bankAccounts ?? []).map(item => item.currency === currency
+                ? {...item, isDefault: item.id === account.id}
+                : item)}
+            : company));
+        return account;
+    };
+
+    const deactivateBankAccount = async (companyId: number, accountId: number) => {
+        await api.delete(`/api/companies/${companyId}/bank-accounts/${accountId}`);
+        setCompanies(current => current.map(company => company.id === companyId
+            ? {...company, bankAccounts: (company.bankAccounts ?? []).map(item => item.id === accountId ? {...item, isActive: false, isDefault: false} : item)}
+            : company));
+    };
+
     const deleteCompany = async (id: number) => {
         await api.delete(`/api/companies/${id}`);
         setCompanies(current => current.filter(c => c.id !== id));
@@ -1004,6 +1122,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             note: invoice.note,
             include_in_kpo: invoice.includeInKpo !== false,
             vat_enabled_at_issue: invoice.vatEnabledAtIssue,
+            bank_account_id: invoice.bankAccountId ?? undefined,
             items: invoice.items.map(item => ({
                 name: item.description,
                 description: item.description,
@@ -1029,6 +1148,8 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             note: invoice.note,
             include_in_kpo: invoice.includeInKpo !== false,
             vat_enabled_at_issue: invoice.vatEnabledAtIssue,
+            bank_account_id: invoice.bankAccountId ?? undefined,
+            confirm_vat_status_change: confirmation?.confirmVatStatusChange ?? false,
             items: invoice.items.map((item: any) => ({
                 id: item.id,
                 name: item.description,
@@ -1037,7 +1158,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
                 price: item.price,
                 income_category: item.incomeCategory,
             })),
-            ...(confirmation ? {
+            ...(confirmation?.confirmed ? {
                 kpo_confirmation: {
                     confirmed: confirmation.confirmed,
                     preview_fingerprint: confirmation.previewFingerprint,
@@ -1049,8 +1170,10 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
     };
 
-    const deleteInvoice = async (id: number) => {
-        await api.delete(`/api/invoices/${id}`);
+    const deleteInvoice = async (id: number, confirmKpoRemoval = false) => {
+        await api.delete(`/api/invoices/${id}`, {
+            data: {confirm_kpo_removal: confirmKpoRemoval},
+        });
         setInvoices(current => current.filter(c => c.id !== id));
     };
 
@@ -1211,6 +1334,10 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             setActiveCompany,
             addCompany,
             updateCompany,
+            createBankAccount,
+            updateBankAccount,
+            setDefaultBankAccount,
+            deactivateBankAccount,
             deleteCompany,
             addClient,
             updateClient,

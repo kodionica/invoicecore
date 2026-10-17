@@ -80,6 +80,13 @@ class Invoice extends Model {
         'note',
         'company_id',
         'client_id',
+        'bank_account_id',
+        'bank_account_bank_name',
+        'bank_account_number',
+        'bank_account_iban',
+        'bank_account_swift_bic',
+        'bank_account_currency',
+        'bank_account_payment_instructions',
     ];
     protected $casts    = [
         'issue_date' => 'date',
@@ -103,6 +110,10 @@ class Invoice extends Model {
 
     public function client(): BelongsTo {
         return $this->belongsTo( Client::class );
+    }
+
+    public function bankAccount(): BelongsTo {
+        return $this->belongsTo(CompanyBankAccount::class, 'bank_account_id');
     }
 
     public function company(): BelongsTo {

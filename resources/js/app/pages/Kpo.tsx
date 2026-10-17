@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react';
 import {ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Download, Eye, RefreshCw, Save, X} from 'lucide-react';
 import {Link} from 'react-router';
 import {toast} from 'sonner';
+import {LoadingButton} from '../components/Loading';
 import {formatCurrency} from '../utils/format';
 import {useApp} from '../context/AppContext';
 import type {KpoEntry, KpoFilters, KpoGenerationPreview, KpoGenerationResult, KpoGenerationSelection, KpoRegenerationPreview, KpoRegenerationResult, KpoTotals} from '../context/AppContext';
@@ -472,9 +473,8 @@ export default function Kpo() {
         ? selectedEntry.amountRsd + (Number(form.adjustmentRsd.replace(',', '.')) || 0)
         : 0;
     const actionableRegenerationInvoices = regenerationPreview?.invoices.filter(invoice => invoice.actionable) ?? [];
-    const unchangedRegenerationCount = regenerationPreview
-        ? regenerationPreview.invoices.length - actionableRegenerationInvoices.length
-        : 0;
+    const attentionRegenerationInvoices = regenerationPreview?.invoices.filter(invoice => !invoice.actionable && invoice.requiresAttention) ?? [];
+    const unchangedRegenerationCount = regenerationPreview?.invoices.filter(invoice => !invoice.actionable && !invoice.requiresAttention).length ?? 0;
 
     return (
         <div className="space-y-6">
@@ -491,41 +491,49 @@ export default function Kpo() {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <button
+                    <LoadingButton
                         type="button"
                         onClick={() => void openGenerationPreview()}
                         disabled={generationLoading || !activeCompanyId || !filters.year}
+                        loading={generationLoading}
+                        loadingLabel="Provera..."
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 shadow-sm hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        {generationLoading ? 'Učitavanje...' : 'Generiši KPO iz faktura'}
-                    </button>
-                    <button
+                        Generiši KPO iz faktura
+                    </LoadingButton>
+                    <LoadingButton
                         type="button"
                         onClick={() => void openRegenerationPreview()}
                         disabled={regenerationLoading || !activeCompanyId || !filters.year}
+                        loading={regenerationLoading}
+                        loadingLabel="Provera..."
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-700 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        <RefreshCw className={`h-4 w-4 ${regenerationLoading ? 'animate-spin' : ''}`}/>
-                        {regenerationLoading ? 'Provera...' : 'Proveri promene'}
-                    </button>
-                    <button
+                        <RefreshCw className="h-4 w-4"/>
+                        Proveri promene
+                    </LoadingButton>
+                    <LoadingButton
                         type="button"
                         onClick={() => void handlePdfDownload()}
                         disabled={pdfLoading || !activeCompanyId}
+                        loading={pdfLoading}
+                        loadingLabel="Generisanje..."
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Download className="h-4 w-4"/>
-                        {pdfLoading ? 'Generisanje...' : 'Preuzmi PDF'}
-                    </button>
-                    <button
+                        Preuzmi PDF
+                    </LoadingButton>
+                    <LoadingButton
                         type="button"
                         onClick={() => void loadEntries()}
                         disabled={loading}
+                        loading={loading}
+                        loadingLabel="Učitavanje..."
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>
+                        <RefreshCw className="h-4 w-4"/>
                         Osveži
-                    </button>
+                    </LoadingButton>
                 </div>
             </div>
 
@@ -624,8 +632,8 @@ export default function Kpo() {
                         </div>
                         <div className="flex items-center gap-3">
                             {selectedEntry && <button type="button" onClick={() => void openHistory()} className="text-sm font-medium text-indigo-600 hover:text-indigo-900">Istorija</button>}
-                            {selectedEntry?.sourceType === 'manual' && <button type="button" onClick={() => void deleteSelectedEntry()} disabled={saving} className="text-sm font-medium text-red-600 hover:text-red-900 disabled:opacity-60">Obriši</button>}
-                            {selectedEntry?.sourceType === 'invoice' && <button type="button" onClick={() => void removeSelectedGeneratedEntry()} disabled={saving || removalReason.trim().length < 3} className="text-sm font-medium text-red-600 hover:text-red-900 disabled:opacity-60">Kontrolisano ukloni</button>}
+                            {selectedEntry?.sourceType === 'manual' && <LoadingButton type="button" onClick={() => void deleteSelectedEntry()} loading={saving} loadingLabel="Brisanje..." className="text-sm font-medium text-red-600 hover:text-red-900 disabled:opacity-60">Obriši</LoadingButton>}
+                            {selectedEntry?.sourceType === 'invoice' && <LoadingButton type="button" onClick={() => void removeSelectedGeneratedEntry()} loading={saving} loadingLabel="Uklanjanje..." disabled={removalReason.trim().length < 3} className="text-sm font-medium text-red-600 hover:text-red-900 disabled:opacity-60">Kontrolisano ukloni</LoadingButton>}
                             <button type="button" onClick={closeDetails} className="text-gray-400 hover:text-gray-600" title="Zatvori"><X className="h-5 w-5"/></button>
                         </div>
                     </div>
@@ -665,9 +673,9 @@ export default function Kpo() {
                                 <label className="block text-sm font-medium text-gray-700">Opis
                                     <textarea rows={3} value={form.description} onChange={event => setForm(current => ({...current, description: event.target.value}))} className="mt-1 block w-full rounded-md border-gray-300 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"/>
                                 </label>
-                                <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
-                                    <Save className="h-4 w-4"/> {saving ? 'Čuvanje...' : 'Sačuvaj izmene'}
-                                </button>
+                                <LoadingButton type="submit" loading={saving} loadingLabel="Čuvanje..." className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+                                    <Save className="h-4 w-4"/> Sačuvaj izmene
+                                </LoadingButton>
                             </form>
                         </div>
                     )}
@@ -748,7 +756,7 @@ export default function Kpo() {
                             </div>
                             <div className="mt-4 flex justify-end gap-2">
                                 <button type="button" onClick={() => setGenerationOpen(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700">Otkaži</button>
-                                <button type="submit" disabled={generationLoading} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60">{generationLoading ? 'Generisanje...' : 'Kreiraj KPO zapise'}</button>
+                                <LoadingButton type="submit" loading={generationLoading} loadingLabel="Generisanje..." className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60">Kreiraj KPO zapise</LoadingButton>
                             </div>
                         </form>
                     )}
@@ -781,11 +789,21 @@ export default function Kpo() {
                         <CountCard label="Sa upozorenjem" value={regenerationPreview.invoices.filter(invoice => invoice.rounding.hasUnallocatedRoundingResidual || Number(invoice.unresolved.amountRsd) !== 0).length}/>
                     </div>
 
-                    {actionableRegenerationInvoices.length === 0 ? (
+                    {actionableRegenerationInvoices.length === 0 && attentionRegenerationInvoices.length === 0 ? (
                         <p className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
                             KPO evidencija je usklađena sa fakturama. Nema promena za primenu.
                         </p>
                     ) : <div className="space-y-4">
+                        {attentionRegenerationInvoices.map(invoice => (
+                            <div key={`attention-${invoice.invoiceId}`} className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                <h3 className="font-semibold">Faktura #{invoice.invoiceNumber} zahteva pažnju</h3>
+                                <p className="mt-1">Nema automatske promene KPO zapisa, ali regeneracija nije dozvoljena bez rešavanja uslova.</p>
+                                {invoice.blockingReasons.length > 0 && <p className="mt-2">Razlozi: {invoice.blockingReasons.join(', ')}</p>}
+                                {invoice.deletedCategories.length > 0 && <p className="mt-2">Soft-obrisane kategorije: {invoice.deletedCategories.join(', ')}. Neće biti automatski vraćene.</p>}
+                                {(Number(invoice.unresolved.amountRsd) !== 0 || invoice.rounding.hasUnallocatedRoundingResidual) && <p className="mt-2">Postoji nerazređen iznos ili rezidual zaokruživanja.</p>}
+                            </div>
+                        ))}
+                        {actionableRegenerationInvoices.length > 0 && <div className="space-y-4">
                         {actionableRegenerationInvoices.map(invoice => (
                             <div key={invoice.invoiceId} className="rounded-lg border border-gray-200 p-4">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -828,6 +846,7 @@ export default function Kpo() {
                                 {invoice.obsoleteCategories.length > 0 && <p className="mt-2 text-sm text-gray-700">Zastarele kategorije: {invoice.obsoleteCategories.map(item => item.incomeCategory).join(', ')} — ostaju nepromenjene.</p>}
                             </div>
                         ))}
+                        </div>}
                     </div>}
 
                     {actionableRegenerationInvoices.length > 0 && <div className="mt-5 space-y-3 rounded-lg bg-gray-50 p-4">
@@ -841,9 +860,9 @@ export default function Kpo() {
                         </label>
                         <div className="flex justify-end gap-2">
                             <button type="button" onClick={() => setRegenerationOpen(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700">Otkaži</button>
-                            <button type="button" onClick={() => void submitRegeneration()} disabled={regenerationLoading || !confirmRegeneration || regenerationStale} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
-                                {regenerationLoading ? 'Regeneracija...' : 'Potvrdi regeneraciju'}
-                            </button>
+                            <LoadingButton type="button" onClick={() => void submitRegeneration()} loading={regenerationLoading} loadingLabel="Regeneracija..." disabled={!confirmRegeneration || regenerationStale} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60">
+                                Potvrdi regeneraciju
+                            </LoadingButton>
                         </div>
                     </div>}
                 </div>

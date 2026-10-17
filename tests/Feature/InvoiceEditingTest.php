@@ -282,11 +282,17 @@ it('accepts both explicit VAT values and makes a newly eligible invoice availabl
 
     $this->putJson("/api/invoices/{$invoice->id}", [
         'vat_enabled_at_issue' => true,
-    ])->assertOk()->assertJsonPath('vat_enabled_at_issue', true);
+        'confirm_vat_status_change' => true,
+    ])->assertOk()->assertJsonPath('vat_enabled_at_issue', true)
+        ->assertJsonPath('tax_original', '20.00')
+        ->assertJsonPath('total_original', '120.00');
     $this->putJson("/api/invoices/{$invoice->id}", [
         'vat_enabled_at_issue' => false,
+        'confirm_vat_status_change' => true,
         'items' => [['id' => $item->id, 'name' => 'Stavka', 'description' => 'Stavka', 'quantity' => 1, 'price' => 100, 'income_category' => 'service']],
-    ])->assertOk()->assertJsonPath('vat_enabled_at_issue', false);
+    ])->assertOk()->assertJsonPath('vat_enabled_at_issue', false)
+        ->assertJsonPath('tax_original', '0.00')
+        ->assertJsonPath('total_original', '100.00');
 
     $preview = $this->getJson('/api/kpo/generation-preview?year='.now()->year)->assertOk();
     expect($preview->json('entries'))->toHaveCount(1);
@@ -581,14 +587,146 @@ it('requires confirmation before making an invoice VAT-ineligible for automatic 
 
     $conflict = $this->putJson("/api/invoices/{$invoice->id}", [
         'vat_enabled_at_issue' => true,
+        'confirm_vat_status_change' => true,
     ])->assertStatus(409);
 
     $this->putJson("/api/invoices/{$invoice->id}", [
         'vat_enabled_at_issue' => true,
+        'confirm_vat_status_change' => true,
         'kpo_confirmation' => ['confirmed' => true, 'preview_fingerprint' => $conflict->json('preview_fingerprint')],
     ])->assertOk();
 
     expect($invoice->fresh()->vat_enabled_at_issue)->toBeTrue();
+});
+
+it('uses the requested VAT snapshot for invoice calculations', function () {
+    [$user, $company, $client] = editableInvoiceFixture('invoice-vat-calculation-snapshot@example.com');
+    $company->update(['vat_enabled' => true]);
+    $this->actingAs($user);
+
+    $disabled = $this->postJson('/api/invoices', [
+        'client_id' => $client->id,
+        'invoice_number' => 'VAT-CALC-OFF',
+        'issue_date' => now()->toDateString(),
+        'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'RSD',
+        'vat_enabled_at_issue' => false,
+        'items' => [['name' => 'Usluga bez PDV-a', 'description' => 'Usluga bez PDV-a', 'quantity' => 1, 'price' => 100]],
+    ])->assertCreated();
+
+    expect($disabled->json('tax_original'))->toBe('0.00')
+        ->and($disabled->json('total_original'))->toBe('100.00');
+
+    $company->update(['vat_enabled' => false]);
+    $enabled = $this->postJson('/api/invoices', [
+        'client_id' => $client->id,
+        'invoice_number' => 'VAT-CALC-ON',
+        'issue_date' => now()->toDateString(),
+        'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'RSD',
+        'vat_enabled_at_issue' => true,
+        'items' => [['name' => 'Usluga sa PDV-om', 'description' => 'Usluga sa PDV-om', 'quantity' => 1, 'price' => 100]],
+    ])->assertCreated();
+
+    expect($enabled->json('tax_original'))->toBe('20.00')
+        ->and($enabled->json('total_original'))->toBe('120.00');
+
+    $bothDisabled = $this->postJson('/api/invoices', [
+        'client_id' => $client->id,
+        'invoice_number' => 'VAT-CALC-BOTH-OFF',
+        'issue_date' => now()->toDateString(),
+        'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'RSD',
+        'vat_enabled_at_issue' => false,
+        'items' => [['name' => 'Bez PDV-a', 'description' => 'Bez PDV-a', 'quantity' => 1, 'price' => 50]],
+    ])->assertCreated();
+    expect($bothDisabled->json('tax_original'))->toBe('0.00')->and($bothDisabled->json('total_original'))->toBe('50.00');
+
+    $company->update(['vat_enabled' => true]);
+    $bothEnabled = $this->postJson('/api/invoices', [
+        'client_id' => $client->id,
+        'invoice_number' => 'VAT-CALC-BOTH-ON',
+        'issue_date' => now()->toDateString(),
+        'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'RSD',
+        'vat_enabled_at_issue' => true,
+        'items' => [['name' => 'Sa PDV-om', 'description' => 'Sa PDV-om', 'quantity' => 1, 'price' => 50]],
+    ])->assertCreated();
+    expect($bothEnabled->json('tax_original'))->toBe('10.00')->and($bothEnabled->json('total_original'))->toBe('60.00');
+});
+
+it('soft-deletes all linked KPO categories when a confirmed VAT change makes the invoice ineligible', function () {
+    [$user, $company, $client] = editableInvoiceFixture('invoice-vat-kpo-structural@example.com');
+    $this->actingAs($user);
+    $created = $this->postJson('/api/invoices', [
+        'client_id' => $client->id, 'invoice_number' => 'VAT-KPO-STRUCT',
+        'issue_date' => now()->toDateString(), 'due_date' => now()->addDays(15)->toDateString(),
+        'currency' => 'RSD', 'vat_enabled_at_issue' => false,
+        'items' => [
+            ['name' => 'Proizvod', 'description' => 'Proizvod', 'quantity' => 1, 'price' => 100, 'income_category' => 'product'],
+            ['name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 200, 'income_category' => 'service'],
+        ],
+    ])->assertCreated();
+    $invoice = Invoice::with('items')->findOrFail($created->json('id'));
+    $entries = collect(['product' => 100, 'service' => 200])->map(fn (int $amount, string $category) => KpoEntry::create([
+        'company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => now()->year,
+        'entry_number' => $category === 'product' ? 11 : 12, 'entry_date' => now()->toDateString(),
+        'source_type' => 'invoice', 'origin' => 'generated', 'income_category' => $category, 'currency' => 'RSD',
+        'amount_original' => $amount, 'amount_rsd' => $amount, 'adjustment_rsd' => 0, 'total_rsd' => $amount,
+    ]));
+    $items = $invoice->items->where('income_category', 'service')->map(fn ($item) => [
+        'id' => $item->id, 'name' => $item->name, 'description' => $item->description,
+        'quantity' => 1, 'price' => 200, 'income_category' => 'service',
+    ])->values()->all();
+
+    $conflict = $this->putJson("/api/invoices/{$invoice->id}", [
+        'vat_enabled_at_issue' => true, 'confirm_vat_status_change' => true, 'items' => $items,
+    ])->assertStatus(409);
+    $this->putJson("/api/invoices/{$invoice->id}", [
+        'vat_enabled_at_issue' => true, 'confirm_vat_status_change' => true, 'items' => $items,
+        'kpo_confirmation' => ['confirmed' => true, 'preview_fingerprint' => $conflict->json('preview_fingerprint')],
+    ])->assertOk();
+
+    foreach ($entries as $entry) {
+        expect(KpoEntry::withTrashed()->findOrFail($entry->id)->trashed())->toBeTrue();
+    }
+});
+
+it('requires confirmation and atomically soft-deletes linked KPO entries when deleting an invoice', function () {
+    [$user, $company, $client] = editableInvoiceFixture('invoice-delete-kpo@example.com');
+    $this->actingAs($user);
+    $invoice = Invoice::create([
+        'company_id' => $company->id, 'client_id' => $client->id, 'invoice_number' => 'DELETE-KPO-001',
+        'issue_date' => now(), 'due_date' => now()->addDays(15), 'currency' => 'RSD',
+        'fx_rate_to_rsd' => 1, 'subtotal_original' => 100, 'tax_original' => 0,
+        'total_original' => 100, 'subtotal_rsd' => 100, 'tax_rsd' => 0, 'total_rsd' => 100,
+        'total' => 100, 'status' => 'draft', 'include_in_kpo' => true, 'vat_enabled_at_issue' => false,
+    ]);
+    $entry = KpoEntry::create([
+        'company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => now()->year,
+        'entry_number' => 1, 'entry_date' => now()->toDateString(), 'source_type' => 'invoice',
+        'origin' => 'generated', 'income_category' => 'service', 'currency' => 'RSD',
+        'amount_original' => 100, 'amount_rsd' => 100, 'adjustment_rsd' => 5, 'total_rsd' => 105,
+    ]);
+    KpoEntryRevision::create([
+        'kpo_entry_id' => $entry->id, 'acting_user_id' => $user->id, 'action_type' => 'created',
+        'new_values' => ['total_rsd' => '105.00'],
+    ]);
+
+    $this->deleteJson("/api/invoices/{$invoice->id}")
+        ->assertStatus(409)
+        ->assertJsonPath('requires_confirmation', true);
+    expect(Invoice::find($invoice->id))->not->toBeNull()
+        ->and($entry->fresh()->trashed())->toBeFalse();
+
+    $this->deleteJson("/api/invoices/{$invoice->id}", ['confirm_kpo_removal' => true])
+        ->assertNoContent();
+
+    expect(Invoice::find($invoice->id))->toBeNull()
+        ->and(KpoEntry::withTrashed()->findOrFail($entry->id)->trashed())->toBeTrue()
+        ->and(KpoEntry::where('source_invoice_id', $invoice->id)->whereNull('deleted_at')->count())->toBe(0);
+    $deletionRevision = KpoEntryRevision::where('kpo_entry_id', $entry->id)->latest()->firstOrFail();
+    expect($deletionRevision->new_values['removal_reason'])->toBe('source_invoice_deleted');
 });
 
 it('supports explicit manual KPO overwrite and rejects a stale confirmation', function () {

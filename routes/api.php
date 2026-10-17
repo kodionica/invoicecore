@@ -8,6 +8,7 @@ use App\Http\Controllers\Account\ProfileController;
 use App\Http\Controllers\Account\SettingsController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\CompanyBankAccountController;
 use App\Http\Controllers\CompanySwitchController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\KpoController;
@@ -29,6 +30,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::apiResource('companies', CompanyController::class);
+    Route::get('companies/{company}/bank-accounts', [CompanyBankAccountController::class, 'index']);
+    Route::post('companies/{company}/bank-accounts', [CompanyBankAccountController::class, 'store']);
+    Route::put('companies/{company}/bank-accounts/{bankAccount}', [CompanyBankAccountController::class, 'update']);
+    Route::post('companies/{company}/bank-accounts/{bankAccount}/default', [CompanyBankAccountController::class, 'setDefault']);
+    Route::delete('companies/{company}/bank-accounts/{bankAccount}', [CompanyBankAccountController::class, 'destroy']);
     Route::post('companies/switch', [CompanySwitchController::class, 'switch']);
 
     Route::apiResource('clients', ClientController::class);

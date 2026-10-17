@@ -153,3 +153,25 @@ it('keeps protected versions outside retention and scopes version history to the
     $other->update(['active_company_id' => $otherCompany->id]);
     $this->actingAs($other)->getJson("/api/invoices/{$invoice->id}/pdf-versions")->assertForbidden();
 });
+
+it('fails retention explicitly when an unprotected historical PDF file is missing', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-retention-failure@example.com');
+    $company->update(['other_settings' => ['invoice_pdf' => ['max_unprotected_versions' => 0]]]);
+    fakeInvoicePdf();
+
+    $oldPath = 'invoices/2026/10/'.$invoice->id.'/v1/legacy.pdf';
+    InvoicePdfVersion::create([
+        'company_id' => $company->id,
+        'invoice_id' => $invoice->id,
+        'version' => 1,
+        'path' => $oldPath,
+        'created_at' => now()->subDay(),
+    ]);
+    $invoice->update(['pdf_path' => $oldPath]);
+
+    $this->actingAs($user)
+        ->getJson("/api/invoices/{$invoice->id}/pdf?refresh=1")
+        ->assertServerError();
+
+    expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->where('version', 1)->exists())->toBeTrue();
+});

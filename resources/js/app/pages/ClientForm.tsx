@@ -4,6 +4,7 @@ import {useNavigate, useParams} from 'react-router';
 import {Client, useApp} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft} from 'lucide-react';
+import {LoadingButton} from '../components/Loading';
 
 interface ClientFormData {
     name: string;
@@ -25,6 +26,7 @@ export default function ClientForm() {
     const isEdit = !!id;
     const [fallbackClient, setFallbackClient] = useState<Client | null>(null);
     const [isLoadingClient, setIsLoadingClient] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     const clientId = id ? Number(id) : null;
     const clientFromList = isEdit && clientId ? clients.find(c => c.id === clientId) : null;
@@ -132,26 +134,32 @@ export default function ClientForm() {
     }, [isEdit, clientId, clientFromList, fallbackClient, navigate]);
 
     const onSubmit = async (data: ClientFormData) => {
+        if (saving) return;
+        setSaving(true);
         const payload: ClientFormData = {
             ...data,
             client_type: data.client_type || defaultClientType,
         };
 
-        if (isEdit) {
-            if (!clientId) {
-                return;
+        try {
+            if (isEdit) {
+                if (!clientId) return;
+                await updateClient(clientId, payload);
+                toast.success('Klijent uspešno izmenjen');
+            } else {
+                if (!activeCompanyId) {
+                    toast.error('Molimo izaberite aktivnu firmu');
+                    return;
+                }
+                await addClient(payload);
+                toast.success('Novi klijent uspešno dodat');
             }
-            await updateClient(clientId, payload);
-            toast.success('Klijent uspešno izmenjen');
-        } else {
-            if (!activeCompanyId) {
-                toast.error('Molimo izaberite aktivnu firmu');
-                return;
-            }
-            await addClient(payload);
-            toast.success('Novi klijent uspešno dodat');
+            navigate('/dashboard/clients');
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? error?.message ?? 'Čuvanje klijenta nije uspelo.');
+        } finally {
+            setSaving(false);
         }
-        navigate('/dashboard/clients');
     };
 
     if (isEdit && isLoadingClient && !client) {
@@ -325,12 +333,14 @@ export default function ClientForm() {
                         >
                             Otkaži
                         </button>
-                        <button
+                        <LoadingButton
                             type="submit"
-                            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                            loading={saving}
+                            loadingLabel="Čuvanje..."
+                            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             Sačuvaj
-                        </button>
+                        </LoadingButton>
                     </div>
                 </form>
             </div>

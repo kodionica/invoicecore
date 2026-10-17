@@ -15,7 +15,7 @@ class CompanyController extends Controller {
     public function index() {
         $companies = auth()->user()->companies()->latest()->get();
 
-        return response()->json( $companies );
+        return response()->json( $companies->load('bankAccounts') );
     }
 
     /**
@@ -48,7 +48,7 @@ class CompanyController extends Controller {
     public function show( Company $company ) {
         $this->authorize( 'view', $company );
 
-        return response()->json( $company );
+        return response()->json( $company->load('bankAccounts') );
     }
 
     /**
@@ -84,7 +84,7 @@ class CompanyController extends Controller {
             $company->save();
         }
 
-        return response()->json( $company );
+        return response()->json( $company->load('bankAccounts') );
     }
 
     /**

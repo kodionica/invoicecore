@@ -5,6 +5,7 @@ import {ArrowLeft, Printer, Download, Mail, Trash2, Pencil, Save, X, History} fr
 import {toast} from 'sonner';
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusSelectClass} from '../utils/invoiceStatus';
 import InvoiceDocument from '../components/InvoiceDocument';
+import {LoadingButton, LoadingSpinner} from '../components/Loading';
 
 export default function InvoiceDetails() {
     const {id} = useParams();
@@ -25,6 +26,8 @@ export default function InvoiceDetails() {
     const [pdfMenuOpen, setPdfMenuOpen] = useState(false);
     const [editingClassifications, setEditingClassifications] = useState(false);
     const [savingClassifications, setSavingClassifications] = useState(false);
+    const [deletingInvoice, setDeletingInvoice] = useState(false);
+    const [kpoDeletionConfirmation, setKpoDeletionConfirmation] = useState<any | null>(null);
     const [classificationDraft, setClassificationDraft] = useState<Record<number, InvoiceIncomeCategory>>({});
     const [history, setHistory] = useState<any[] | null>(null);
     const [pdfVersions, setPdfVersions] = useState<InvoicePdfVersion[]>([]);
@@ -225,12 +228,23 @@ export default function InvoiceDetails() {
         }
     };
 
-    const handleDelete = async () => {
-        if (confirm('Da li ste sigurni da želite da obrišete ovu fakturu?')) {
-            await deleteInvoice(invoice.id)
-
-            toast.success('Faktura obrisana');
-            navigate('/dashboard/invoices');
+    const handleDelete = async (confirmedKpoRemoval = false) => {
+        if (deletingInvoice) return;
+        if (confirmedKpoRemoval || confirm('Da li ste sigurni da želite da obrišete ovu fakturu?')) {
+            setDeletingInvoice(true);
+            try {
+                await deleteInvoice(invoice.id, confirmedKpoRemoval);
+                toast.success('Faktura obrisana');
+                navigate('/dashboard/invoices');
+            } catch (error: any) {
+                if (error?.response?.status === 409 && error?.response?.data?.kpo_deletion_confirmation) {
+                    setKpoDeletionConfirmation(error.response.data.kpo_deletion_confirmation);
+                    return;
+                }
+                toast.error(error?.response?.data?.message ?? 'Brisanje fakture nije uspelo.');
+            } finally {
+                setDeletingInvoice(false);
+            }
         }
     };
 
@@ -255,6 +269,21 @@ export default function InvoiceDetails() {
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 pb-12">
+            {kpoDeletionConfirmation && (
+                <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="alert">
+                    <h2 className="font-semibold">Faktura ima aktivne KPO zapise</h2>
+                    <p className="mt-1">Brisanjem će povezani KPO zapisi biti soft-obrisani i sačuvani u istoriji. Iznosi i redni brojevi ostaju sačuvani.</p>
+                    <ul className="mt-3 list-disc space-y-1 pl-5">
+                        {kpoDeletionConfirmation.entries?.map((entry: any) => (
+                            <li key={entry.id}>KPO #{entry.entry_number} · {entry.income_category || 'legacy'} · {entry.total_rsd} RSD</li>
+                        ))}
+                    </ul>
+                    <div className="mt-4 flex gap-2">
+                        <button type="button" onClick={() => { setKpoDeletionConfirmation(null); void handleDelete(true); }} disabled={deletingInvoice} className="rounded-md bg-amber-700 px-3 py-2 font-medium text-white disabled:opacity-60">Potvrdi brisanje fakture i KPO zapisa</button>
+                        <button type="button" onClick={() => setKpoDeletionConfirmation(null)} className="rounded-md border border-amber-400 px-3 py-2 font-medium text-amber-900">Otkaži</button>
+                    </div>
+                </section>
+            )}
             {/* Header Actions */}
             <div className="flex flex-col gap-4 print:hidden">
                 {/* Back button and title */}
@@ -267,16 +296,19 @@ export default function InvoiceDetails() {
                     </button>
                     <div className="flex-1 flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-gray-900">Faktura #{invoice.number}</h1>
-                        <select
-                            value={invoice.status}
-                            onChange={(e) => handleStatusChange(e.target.value as InvoiceStatus)}
-                            disabled={updatingStatus}
-                            className={`block rounded-md border-0 py-1.5 pl-3 pr-10 text-xs font-semibold ring-1 ring-inset focus:ring-2 focus:ring-indigo-600 sm:text-xs sm:leading-6 ${invoiceStatusSelectClass[invoice.status]}`}
-                        >
-                            {statusOptions.map((status) => (
-                                <option key={status.key} value={status.key}>{status.label}</option>
-                            ))}
-                        </select>
+                        <span className="inline-flex items-center gap-2" aria-busy={updatingStatus}>
+                            {updatingStatus && <LoadingSpinner label="Čuvanje statusa..." size="sm"/>}
+                            <select
+                                value={invoice.status}
+                                onChange={(e) => handleStatusChange(e.target.value as InvoiceStatus)}
+                                disabled={updatingStatus}
+                                className={`block rounded-md border-0 py-1.5 pl-3 pr-10 text-xs font-semibold ring-1 ring-inset focus:ring-2 focus:ring-indigo-600 sm:text-xs sm:leading-6 ${invoiceStatusSelectClass[invoice.status]}`}
+                            >
+                                {statusOptions.map((status) => (
+                                    <option key={status.key} value={status.key}>{status.label}</option>
+                                ))}
+                            </select>
+                        </span>
                     </div>
                 </div>
 
@@ -294,14 +326,16 @@ export default function InvoiceDetails() {
                     >
                         <History className="h-4 w-4 mr-2"/> Istorija izmena
                     </button>
-                    <button
+                    <LoadingButton
                         onClick={() => setEmailFormOpen(open => !open)}
                         disabled={sendingEmail}
+                        loading={sendingEmail}
+                        loadingLabel="Slanje..."
                         className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 ${sendingEmail ? 'opacity-60 cursor-not-allowed' : ''}`}
                     >
                         <Mail className="h-4 w-4 mr-2"/>
-                        {sendingEmail ? 'Slanje...' : 'Pošalji Emailom'}
-                    </button>
+                        Pošalji Emailom
+                    </LoadingButton>
                     <button
                         onClick={handlePrint}
                         className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
@@ -320,36 +354,40 @@ export default function InvoiceDetails() {
                         </button>
                         {pdfMenuOpen && (
                             <div className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black/5 z-10">
-                                <button
-                                    type="button"
+                        <LoadingButton
+                            type="button"
                                     onClick={() => {
                                         setPdfMenuOpen(false);
                                         handleDownloadPdf();
                                     }}
-                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                >
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                        >
                                     Preuzmi postojeći PDF
-                                </button>
-                                <button
-                                    type="button"
+                        </LoadingButton>
+                        <LoadingButton
+                            type="button"
                                     onClick={() => {
                                         setPdfMenuOpen(false);
                                         handleRegeneratePdf();
                                     }}
-                                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                >
-                                    Generiši novi PDF
-                                </button>
+                            loading={downloadingPdf}
+                            loadingLabel="Generisanje PDF-a..."
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                        >
+                            Generiši novi PDF
+                        </LoadingButton>
                             </div>
                         )}
                     </div>
-                    <button
-                        onClick={handleDelete}
-                        className="inline-flex items-center px-4 py-2 border border-red-200 shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100"
+                    <LoadingButton
+                        onClick={() => { void handleDelete(); }}
+                        loading={deletingInvoice}
+                        loadingLabel="Brisanje..."
+                        className="inline-flex items-center px-4 py-2 border border-red-200 shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Trash2 className="h-4 w-4 mr-2"/>
                         Obriši
-                    </button>
+                    </LoadingButton>
                 </div>
             </div>
 
@@ -369,10 +407,9 @@ export default function InvoiceDetails() {
                             Poruka
                             <textarea value={emailMessage} onChange={event => setEmailMessage(event.target.value)} rows={4} className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2 text-sm shadow-sm" />
                         </label>
-                        <button type="button" onClick={handleSendEmail} disabled={sendingEmail} className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
-                            <Mail className="mr-2 h-4 w-4" />
-                            {sendingEmail ? 'Slanje...' : 'Pošalji'}
-                        </button>
+                        <LoadingButton type="button" onClick={handleSendEmail} loading={sendingEmail} loadingLabel="Slanje..." className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">
+                            <Mail className="mr-2 h-4 w-4" /> Pošalji
+                        </LoadingButton>
                     </div>
                 </section>
             )}
@@ -397,9 +434,9 @@ export default function InvoiceDetails() {
                             <button type="button" onClick={() => setEditingClassifications(false)} className="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                 <X className="mr-2 h-4 w-4"/> Otkaži
                             </button>
-                            <button type="button" onClick={handleSaveClassifications} disabled={savingClassifications} className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-60">
+                            <LoadingButton type="button" onClick={handleSaveClassifications} loading={savingClassifications} loadingLabel="Čuvanje..." className="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-60">
                                 <Save className="mr-2 h-4 w-4"/> Sačuvaj
-                            </button>
+                            </LoadingButton>
                         </div>
                     )}
                 </div>

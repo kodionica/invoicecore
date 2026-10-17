@@ -21,9 +21,10 @@ export function resolveInvoiceDocumentState({
     const clientTypeCode = safeMeta.client_types?.find((type) => type.value === client.client_type)?.code;
 
     const exchangeRate = hasStoredFxRate ? invoice.fxRateToRsd : undefined;
+    const invoiceTotal = invoice.totalOriginal ?? invoice.total;
     const amountInRSD = shouldConvertToRSD && exchangeRate
-        ? invoice.total * exchangeRate
-        : invoice.total;
+        ? invoiceTotal * exchangeRate
+        : invoiceTotal;
     const canGenerateQrCode = isDomesticPayment && (!shouldConvertToRSD || Boolean(exchangeRate));
 
     return {

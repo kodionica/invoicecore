@@ -9,6 +9,7 @@ import { toast }                                              from 'sonner';
 import { getInvoiceStatusOptions, invoiceStatusSelectClass }  from "../utils/invoiceStatus";
 import SectionHeader                                          from "../components/invoices/SectionHeader";
 import Filters                                                from "../components/invoices/Filters";
+import {LoadingButton, LoadingSpinner}                         from '../components/Loading';
 
 type SortColumn = 'status' | 'number' | 'client' | 'date' | 'dueDate' | 'total';
 type SortDirection = 'asc' | 'desc';
@@ -19,6 +20,9 @@ export default function Invoices() {
     const [ searchTerm, setSearchTerm ] = useState( '' );
     const [ sort, setSort ] = useState<{ column: SortColumn; direction: SortDirection } | null>( null );
     const [ sendingInvoiceId, setSendingInvoiceId ] = useState<number | null>( null );
+    const [ updatingStatusId, setUpdatingStatusId ] = useState<number | null>( null );
+    const [ deletingInvoiceId, setDeletingInvoiceId ] = useState<number | null>( null );
+    const [ kpoDeletionConfirmation, setKpoDeletionConfirmation ] = useState<{invoiceId: number; entries: any[]} | null>(null);
     const statusOptions = getInvoiceStatusOptions( meta?.invoice_statuses );
 
     const filteredInvoices = invoices
@@ -70,8 +74,34 @@ export default function Invoices() {
     };
 
     const handleStatusChange = async ( id: number, newStatus: string ) => {
-        await updateInvoiceStatus( id, newStatus as any );
-        toast.success( 'Status promenjen' );
+        if (updatingStatusId !== null) return;
+        setUpdatingStatusId(id);
+        try {
+            await updateInvoiceStatus( id, newStatus as any );
+            toast.success( 'Status promenjen' );
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? 'Promena statusa nije uspela.');
+        } finally {
+            setUpdatingStatusId(null);
+        }
+    };
+
+    const handleDelete = async (id: number, confirmedKpoRemoval = false) => {
+        if (deletingInvoiceId !== null) return;
+        if (!confirmedKpoRemoval && !window.confirm('Da li ste sigurni da želite da obrišete ovu fakturu?')) return;
+        setDeletingInvoiceId(id);
+        try {
+            await deleteInvoice(id, confirmedKpoRemoval);
+            setKpoDeletionConfirmation(null);
+        } catch (error: any) {
+            if (error?.response?.status === 409 && error?.response?.data?.kpo_deletion_confirmation) {
+                setKpoDeletionConfirmation({invoiceId: id, entries: error.response.data.kpo_deletion_confirmation.entries ?? []});
+                return;
+            }
+            toast.error(error?.response?.data?.message ?? 'Brisanje fakture nije uspelo.');
+        } finally {
+            setDeletingInvoiceId(null);
+        }
     };
 
     const handleSendEmail = async ( id: number, clientName?: string, currentStatus?: string ) => {
@@ -94,6 +124,20 @@ export default function Invoices() {
     return (
         <div className="space-y-6">
             <SectionHeader/>
+
+            {kpoDeletionConfirmation && (
+                <section className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="alert">
+                    <h2 className="font-semibold">Faktura ima aktivne KPO zapise</h2>
+                    <p className="mt-1">Potvrdite soft-brisanjem povezanih zapisa; iznosi, brojevi i istorija ostaju sačuvani.</p>
+                    <ul className="mt-3 list-disc space-y-1 pl-5">
+                        {kpoDeletionConfirmation.entries.map(entry => <li key={entry.id}>KPO #{entry.entry_number} · {entry.income_category || 'legacy'} · {entry.total_rsd} RSD</li>)}
+                    </ul>
+                    <div className="mt-4 flex gap-2">
+                        <LoadingButton type="button" onClick={() => void handleDelete(kpoDeletionConfirmation.invoiceId, true)} loading={deletingInvoiceId === kpoDeletionConfirmation.invoiceId} loadingLabel="Brisanje..." className="rounded-md bg-amber-700 px-3 py-2 font-medium text-white disabled:opacity-60">Potvrdi brisanje</LoadingButton>
+                        <button type="button" onClick={() => setKpoDeletionConfirmation(null)} className="rounded-md border border-amber-400 px-3 py-2 font-medium text-amber-900">Otkaži</button>
+                    </div>
+                </section>
+            )}
 
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
                 <Filters searchTerm={ searchTerm } onSearchTermChange={ setSearchTerm }/>
@@ -140,6 +184,8 @@ export default function Invoices() {
                                         <select
                                             value={ invoice.status }
                                             onChange={ ( e ) => handleStatusChange( invoice.id, e.target.value as InvoiceStatus ) }
+                                            disabled={updatingStatusId === invoice.id}
+                                            aria-busy={updatingStatusId === invoice.id}
                                             className={ `block rounded-full border px-3 py-1 w-full text-xs text-center font-semibold ring-1 ring-inset focus:ring-2 focus:ring-indigo-600 sm:text-xs sm:leading-6 ${ invoiceStatusSelectClass[invoice.status] }` }
                                         >
                                             { statusOptions.map( ( status ) => (
@@ -175,8 +221,8 @@ export default function Invoices() {
                                             >
                                                 <Send className="h-4 w-4"/>
                                             </button>
-                                            <button onClick={ () => deleteInvoice( invoice.id ) } className="text-red-400 hover:text-red-600" title="Obriši">
-                                                <Trash2 className="h-4 w-4"/>
+                                            <button onClick={ () => void handleDelete( invoice.id ) } disabled={deletingInvoiceId === invoice.id} aria-busy={deletingInvoiceId === invoice.id} className="text-red-400 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60" title="Obriši">
+                                                {deletingInvoiceId === invoice.id ? <LoadingSpinner label="Brisanje fakture..." size="sm"/> : <Trash2 className="h-4 w-4"/>}
                                             </button>
                                         </div>
                                     </td>

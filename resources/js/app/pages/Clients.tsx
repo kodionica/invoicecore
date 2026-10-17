@@ -3,19 +3,29 @@ import { useApp, Client } from '../context/AppContext';
 import { Plus, Search, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import {Link, useNavigate} from 'react-router';
 import { toast } from 'sonner';
+import {LoadingSpinner} from '../components/Loading';
 
 export default function Clients() {
   const { clients, activeCompanyId, deleteClient } = useApp();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [deletingClientId, setDeletingClientId] = useState<number | null>(null);
 
   const filteredClients = clients
     .filter(c => (activeCompanyId ? c.companyId === activeCompanyId : false))
     .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.email.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const handleDelete = async (id: number) => {
-    await deleteClient(id);
-    toast.success('Klijent obrisan');
+    if (deletingClientId !== null) return;
+    setDeletingClientId(id);
+    try {
+      await deleteClient(id);
+      toast.success('Klijent obrisan');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? 'Brisanje klijenta nije uspelo.');
+    } finally {
+      setDeletingClientId(null);
+    }
   };
 
   return (
@@ -80,10 +90,12 @@ export default function Clients() {
                       <Edit className="h-4 w-4" />
                     </button>
                      <button
-                      onClick={() => handleDelete(client.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50 transition-colors"
+                      onClick={() => void handleDelete(client.id)}
+                      disabled={deletingClientId === client.id}
+                      aria-busy={deletingClientId === client.id}
+                      className="p-2 text-gray-400 hover:text-red-600 rounded-full hover:bg-red-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {deletingClientId === client.id ? <LoadingSpinner label="Brisanje klijenta..." size="sm"/> : <Trash2 className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>

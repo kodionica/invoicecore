@@ -5,6 +5,7 @@ import {useApp, type InvoiceKpoConfirmation} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft, Plus, Trash2, Calendar, User}         from 'lucide-react';
 import { addDaysToDate, formatCurrency, formatLocalDate } from "../utils/format";
+import {LoadingButton, LoadingOverlay} from '../components/Loading';
 
 interface InvoiceFormData {
     clientId: string;
@@ -14,6 +15,7 @@ interface InvoiceFormData {
     currency: string;
     paymentMethod: string;
     includeInKpo: boolean;
+    bankAccountId: string;
     vatEnabledAtIssue: boolean | null;
     note: string;
     items: { id?: number; description: string; quantity: number; price: number; incomeCategory: 'product' | 'service' | 'unclassified' }[];
@@ -26,11 +28,13 @@ export default function InvoiceForm() {
     const editingInvoiceId = id ? Number(id) : null;
     const editingInvoice = editingInvoiceId ? invoices.find(invoice => invoice.id === editingInvoiceId) : undefined;
     const isEdit = Boolean(editingInvoiceId);
+    const cancelPath = isEdit && editingInvoiceId ? `/dashboard/invoices/${editingInvoiceId}` : '/dashboard/invoices';
     const [formError, setFormError] = useState<string | null>(null);
     const [serverErrors, setServerErrors] = useState<Record<string, string[]>>({});
     const [kpoConflict, setKpoConflict] = useState<any | null>(null);
     const [confirmKpoConflict, setConfirmKpoConflict] = useState(false);
     const [confirmManualKpoOverwrite, setConfirmManualKpoOverwrite] = useState(false);
+    const [saving, setSaving] = useState(false);
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
     const today = new Date();
     const todayString = formatLocalDate(today);
@@ -46,6 +50,7 @@ export default function InvoiceForm() {
             currency: '',
             paymentMethod: '',
             includeInKpo: true,
+            bankAccountId: '',
             vatEnabledAtIssue: activeCompany?.vat_enabled ?? false,
             note: '',
             items: [{
@@ -67,6 +72,7 @@ export default function InvoiceForm() {
             currency: editingInvoice.currency,
             paymentMethod: editingInvoice.paymentMethod ?? '',
             includeInKpo: editingInvoice.includeInKpo,
+            bankAccountId: editingInvoice.bankAccountId ? String(editingInvoice.bankAccountId) : '',
             vatEnabledAtIssue: editingInvoice.vatEnabledAtIssue ?? null,
             note: editingInvoice.note ?? '',
             items: editingInvoice.items.map(item => ({
@@ -85,8 +91,15 @@ export default function InvoiceForm() {
     });
 
     const watchItems = watch("items");
+    const watchVatEnabled = watch("vatEnabledAtIssue");
     const watchDate = watch("date");
     const selectedCurrency = watch("currency");
+    const selectedBankAccountId = watch("bankAccountId");
+    const matchingBankAccounts = useMemo(
+        () => (activeCompany?.bankAccounts ?? []).filter(account => account.currency === String(selectedCurrency ?? '').toUpperCase() && account.isActive),
+        [activeCompany?.bankAccounts, selectedCurrency]
+    );
+    const selectedBankAccount = (activeCompany?.bankAccounts ?? []).find(account => account.id === Number(selectedBankAccountId));
     const currencyOptions = useMemo(() => {
         if (!meta?.currencies) return [];
         if (Array.isArray(meta.currencies)) {
@@ -116,7 +129,11 @@ export default function InvoiceForm() {
         }));
     }, [meta]);
     const currencySymbol = currencyOptions.find(option => option.value === selectedCurrency)?.symbol ?? selectedCurrency ?? '';
-    const totalAmount = watchItems.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.price)), 0);
+    const subtotalAmount = watchItems.reduce((sum, item) => sum + (Number(item.quantity) * Number(item.price)), 0);
+    const taxAmount = watchVatEnabled === true
+        ? subtotalAmount * (activeCompany?.defaultTaxPercent ?? 20) / 100
+        : 0;
+    const totalAmount = subtotalAmount + taxAmount;
 
     useEffect(() => {
         if (!activeCompanyId) return;
@@ -150,18 +167,27 @@ export default function InvoiceForm() {
     }, [activeCompany?.payment_due_days, dirtyFields.dueDate, setValue, watchDate]);
 
     useEffect(() => {
+        if (isEdit || dirtyFields.bankAccountId || !selectedCurrency) return;
+        const defaultAccount = matchingBankAccounts.find(account => account.isDefault) ?? (matchingBankAccounts.length === 1 ? matchingBankAccounts[0] : undefined);
+        setValue('bankAccountId', defaultAccount ? String(defaultAccount.id) : '', {shouldDirty: false});
+    }, [dirtyFields.bankAccountId, isEdit, matchingBankAccounts, selectedCurrency, setValue]);
+
+    useEffect(() => {
         if (!isEdit && activeCompany && !dirtyFields.vatEnabledAtIssue) {
             setValue('vatEnabledAtIssue', activeCompany.vat_enabled);
         }
     }, [activeCompany?.id, activeCompany?.vat_enabled, dirtyFields.vatEnabledAtIssue, isEdit, setValue]);
 
     const submitInvoice = async (data: InvoiceFormData, kpoConfirmation?: InvoiceKpoConfirmation) => {
+        if (saving) return;
         setFormError(null);
         setServerErrors({});
         if (!activeCompanyId) {
             toast.error('Molimo izaberite aktivnu firmu');
             return;
         }
+
+        setSaving(true);
 
         const payload = {
             clientId: Number(data.clientId),
@@ -171,6 +197,7 @@ export default function InvoiceForm() {
             currency: data.currency,
             paymentMethod: data.paymentMethod,
             includeInKpo: data.includeInKpo,
+            bankAccountId: data.bankAccountId ? Number(data.bankAccountId) : null,
             vatEnabledAtIssue: data.vatEnabledAtIssue ?? undefined,
             note: data.note,
             items: data.items.map((item) => ({...item}))
@@ -197,10 +224,23 @@ export default function InvoiceForm() {
                 toast.warning('Izmena zahteva potvrdu promena u KPO evidenciji.');
                 return;
             }
+            if (error?.response?.status === 409 && responseData?.vat_status_confirmation) {
+                const from = responseData.vat_status_confirmation.from === true ? 'uključen' : responseData.vat_status_confirmation.from === false ? 'isključen' : 'nepoznat';
+                const to = responseData.vat_status_confirmation.to === true ? 'uključen' : 'isključen';
+                if (window.confirm(`Istorijski PDV status će biti promenjen sa „${from}“ na „${to}“. Da li želite da nastavite?`)) {
+                    void submitInvoice(data, {
+                        ...(kpoConfirmation ?? {confirmed: false, previewFingerprint: ''}),
+                        confirmVatStatusChange: true,
+                    });
+                }
+                return;
+            }
             const errors = responseData?.errors && typeof responseData.errors === 'object' ? responseData.errors : {};
             setServerErrors(errors);
             setFormError(responseData?.message ?? 'Čuvanje fakture nije uspelo.');
             toast.error(responseData?.message ?? 'Čuvanje fakture nije uspelo.');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -212,7 +252,7 @@ export default function InvoiceForm() {
         <div className="max-w-4xl mx-auto space-y-6 pb-12">
             <div className="flex items-center space-x-4">
                 <button
-                    onClick={() => navigate('/dashboard/invoices')}
+                    onClick={() => navigate(cancelPath)}
                     className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-900 transition-colors"
                 >
                     <ArrowLeft className="h-5 w-5"/>
@@ -220,7 +260,9 @@ export default function InvoiceForm() {
                 <h1 className="text-2xl font-bold text-gray-900">{isEdit ? 'Izmeni fakturu' : 'Nova Faktura'}</h1>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="relative">
+            <LoadingOverlay visible={saving} label="Čuvanje fakture..."/>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" aria-busy={saving}>
                 {formError && (
                     <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800">
                         <p className="font-semibold">{formError}</p>
@@ -427,6 +469,17 @@ export default function InvoiceForm() {
                     </label>
 
                     <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">Račun za plaćanje</label>
+                        <select {...register('bankAccountId')} className="mt-1 block w-full rounded-md border-gray-300 py-2 px-3 text-sm shadow-sm">
+                            <option value="">Bez izabranog računa</option>
+                            {selectedBankAccount && !selectedBankAccount.isActive && <option value={selectedBankAccount.id}>{selectedBankAccount.currency} · {selectedBankAccount.bankName} · neaktivan (sačuvani izbor)</option>}
+                            {matchingBankAccounts.map(account => <option key={account.id} value={account.id}>{account.currency} · {account.label || account.bankName} · {account.accountNumber}{account.isDefault ? ' · podrazumevani' : ''}</option>)}
+                        </select>
+                        {matchingBankAccounts.length === 0 && <p className="mt-1 text-sm text-amber-700">Nema aktivnog računa u valuti fakture. Faktura može biti sačuvana bez računa.</p>}
+                        {matchingBankAccounts.length > 1 && !matchingBankAccounts.some(account => account.isDefault) && <p className="mt-1 text-sm text-amber-700">Izaberite račun jer postoji više aktivnih računa bez podrazumevanog izbora.</p>}
+                    </div>
+
+                    <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">PDV status u trenutku izdavanja</label>
                         <select
                             {...register('vatEnabledAtIssue', {
@@ -521,7 +574,11 @@ export default function InvoiceForm() {
                         <div className="mt-8 border-t border-gray-200 pt-8">
                             <div className="flex justify-end text-right">
                                 <div>
-                                    <p className="text-sm text-gray-500">Ukupno za plaćanje</p>
+                                    <p className="text-sm text-gray-500">Međuzbir</p>
+                                    <p className="text-lg text-gray-700">{formatCurrency(subtotalAmount, currencySymbol)}</p>
+                                    {watchVatEnabled === true && <p className="text-sm text-gray-500">PDV: {formatCurrency(taxAmount, currencySymbol)}</p>}
+                                    {watchVatEnabled === null && <p className="text-xs text-amber-700">Istorijski PDV status nije potvrđen</p>}
+                                    <p className="mt-1 text-sm text-gray-500">Ukupno za plaćanje</p>
                                     <p className="text-3xl font-bold text-gray-900">{formatCurrency(totalAmount, currencySymbol)}</p>
                                 </div>
                             </div>
@@ -533,19 +590,22 @@ export default function InvoiceForm() {
                 <div className="flex justify-end gap-3">
                     <button
                         type="button"
-                        onClick={() => navigate('/dashboard/invoices')}
+                        onClick={() => navigate(cancelPath)}
                         className="rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
                     >
                         Otkaži
                     </button>
-                    <button
+                    <LoadingButton
                         type="submit"
-                        className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-6 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        loading={saving}
+                        loadingLabel="Čuvanje..."
+                        className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-6 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         Sačuvaj Fakturu
-                    </button>
+                    </LoadingButton>
                 </div>
             </form>
+            </div>
         </div>
     );
 }

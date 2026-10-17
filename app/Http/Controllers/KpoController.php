@@ -16,6 +16,7 @@ use App\Models\KpoEntry;
 use App\Services\KpoEntryService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Browsershot\Browsershot;
@@ -37,9 +38,9 @@ class KpoController extends Controller
         return response()->json([
             'entries' => $entries,
             'totals' => [
-                'amount_rsd' => round((float) $entries->sum('amount_rsd'), 2),
-                'adjustment_rsd' => round((float) $entries->sum('adjustment_rsd'), 2),
-                'total_rsd' => round((float) $entries->sum('total_rsd'), 2),
+                'amount_rsd' => $this->sumMoney($entries, 'amount_rsd'),
+                'adjustment_rsd' => $this->sumMoney($entries, 'adjustment_rsd'),
+                'total_rsd' => $this->sumMoney($entries, 'total_rsd'),
             ],
         ]);
     }
@@ -189,9 +190,9 @@ class KpoController extends Controller
         $filters = $request->validated();
         $entries = $this->kpoQuery($company, $filters)->get();
         $totals = [
-            'amount_rsd' => round((float) $entries->sum('amount_rsd'), 2),
-            'adjustment_rsd' => round((float) $entries->sum('adjustment_rsd'), 2),
-            'total_rsd' => round((float) $entries->sum('total_rsd'), 2),
+            'amount_rsd' => $this->sumMoney($entries, 'amount_rsd'),
+            'adjustment_rsd' => $this->sumMoney($entries, 'adjustment_rsd'),
+            'total_rsd' => $this->sumMoney($entries, 'total_rsd'),
         ];
 
         $period = $this->pdfPeriod($filters);
@@ -205,6 +206,22 @@ class KpoController extends Controller
             ->save($relativePath);
 
         return Storage::disk('local')->download($relativePath, "kpo-evidencija-{$period['key']}.pdf");
+    }
+
+    private function sumMoney(Collection $entries, string $field): float
+    {
+        $cents = $entries->reduce(function (int $sum, KpoEntry $entry) use ($field): int {
+            $value = (string) ($entry->{$field} ?? '0');
+            $negative = str_starts_with($value, '-');
+            $value = ltrim($value, '+-');
+            [$whole, $fraction] = array_pad(explode('.', $value, 2), 2, '0');
+            $fraction = str_pad(substr($fraction, 0, 2), 2, '0');
+            $entryCents = ((int) $whole * 100) + (int) $fraction;
+
+            return $sum + ($negative ? -$entryCents : $entryCents);
+        }, 0);
+
+        return $cents / 100;
     }
 
     private function kpoQuery(Company $company, array $filters): Builder

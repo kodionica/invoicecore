@@ -4,6 +4,7 @@ import {useNavigate} from 'react-router';
 import {useApp} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft} from 'lucide-react';
+import {LoadingButton} from '../components/Loading';
 
 interface CompanyFormData {
     name: string;
@@ -25,6 +26,7 @@ interface CompanyFormData {
 export default function CompanyForm() {
     const navigate = useNavigate();
     const {addCompany, meta, metaLoading} = useApp();
+    const [saving, setSaving] = React.useState(false);
 
     const {register, handleSubmit, formState: {errors}} = useForm<CompanyFormData>({
         defaultValues: {
@@ -34,7 +36,10 @@ export default function CompanyForm() {
     });
 
     const onSubmit = async (data: CompanyFormData) => {
-        await addCompany({
+        if (saving) return;
+        setSaving(true);
+        try {
+            await addCompany({
             name: data.name,
             tax_id: data.tax_id,
             registration_number: data.registration_number,
@@ -49,10 +54,15 @@ export default function CompanyForm() {
             currency: data.currency,
             vat_enabled: data.vat_enabled,
             logoFile: data.logoFile?.item(0) || undefined,
-        });
+            });
 
-        toast.success('Nova firma uspešno dodata');
-        navigate('/dashboard/companies');
+            toast.success('Nova firma uspešno dodata');
+            navigate('/dashboard/companies');
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? error?.message ?? 'Čuvanje firme nije uspelo.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -192,7 +202,7 @@ export default function CompanyForm() {
 
                         <div className="sm:col-span-5">
                             <label htmlFor="bank_account" className="block text-sm font-medium text-gray-700">
-                                Broj računa
+                    Broj računa (Legacy)
                             </label>
                             <div className="mt-1">
                                 <input
@@ -207,7 +217,7 @@ export default function CompanyForm() {
 
                         <div className="sm:col-span-5">
                             <label htmlFor="iban" className="block text-sm font-medium text-gray-700">
-                                IBAN
+                    IBAN (Legacy)
                             </label>
                             <div className="mt-1">
                                 <input
@@ -221,7 +231,7 @@ export default function CompanyForm() {
 
                         <div className="sm:col-span-2">
                             <label htmlFor="swift" className="block text-sm font-medium text-gray-700">
-                                SWIFT
+                    SWIFT/BIC (Legacy)
                             </label>
                             <div className="mt-1">
                                 <input
@@ -290,12 +300,14 @@ export default function CompanyForm() {
                         >
                             Otkaži
                         </button>
-                        <button
+                        <LoadingButton
                             type="submit"
-                            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                            loading={saving}
+                            loadingLabel="Čuvanje..."
+                            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             Sačuvaj
-                        </button>
+                        </LoadingButton>
                     </div>
                 </form>
             </div>

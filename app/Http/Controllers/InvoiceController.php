@@ -13,6 +13,9 @@ use App\Models\InvoiceItem;
 use App\Models\InvoiceRevision;
 use App\Models\InvoicePdfVersion;
 use App\Models\InvoiceEmailSend;
+use App\Models\KpoEntry;
+use App\Models\CompanyBankAccount;
+use App\Models\Company;
 use App\Services\ExchangeRateService;
 use App\Services\KpoEntryService;
 use Illuminate\Database\QueryException;
@@ -107,7 +110,11 @@ class InvoiceController extends Controller {
             ], 422 );
         }
 
-        $invoice = DB::transaction( function () use ( $attrs, $active_company, $exchangeRateService ) {
+        $effectiveVatEnabled = array_key_exists('vat_enabled_at_issue', $attrs)
+            ? (bool) $attrs['vat_enabled_at_issue']
+            : (bool) $active_company->vat_enabled;
+
+        $invoice = DB::transaction( function () use ( $attrs, $active_company, $exchangeRateService, $effectiveVatEnabled ) {
             $now = now();
             $year = (int) $now->year;
             $month = (int) $now->month;
@@ -170,6 +177,12 @@ class InvoiceController extends Controller {
             $attrs[ 'status' ]         = InvoiceStatus::DRAFT;
 
             $currency = strtoupper( (string) ( $attrs['currency'] ?? 'RSD' ) );
+            $bankAccount = $this->resolveInvoiceBankAccount(
+                $active_company,
+                $currency,
+                $attrs['bank_account_id'] ?? null
+            );
+            $this->applyBankAccountSnapshot($attrs, $bankAccount);
             $ratePayload = $exchangeRateService->getTodayRate( $currency );
             $fxRateToRsd = (float) $ratePayload['exchange_middle'];
 
@@ -178,7 +191,7 @@ class InvoiceController extends Controller {
 
             foreach ( $attrs[ 'items' ] as $item ) {
                 $subTotal  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
-                $taxAmount = $active_company->vat_enabled
+                $taxAmount = $effectiveVatEnabled
                     ? ( ( $subTotal * (float) $active_company->default_tax_percent ) / 100 )
                     : 0.0;
 
@@ -200,15 +213,13 @@ class InvoiceController extends Controller {
             $attrs['subtotal_rsd'] = round( $subtotalRsd, 2 );
             $attrs['tax_rsd'] = round( $taxRsd, 2 );
             $attrs['total_rsd'] = round( $totalRsd, 2 );
-            $attrs['vat_enabled_at_issue'] = array_key_exists('vat_enabled_at_issue', $attrs)
-                ? (bool) $attrs['vat_enabled_at_issue']
-                : (bool) $active_company->vat_enabled;
+            $attrs['vat_enabled_at_issue'] = $effectiveVatEnabled;
 
             $invoice = Invoice::create( $attrs );
 
             foreach ( $attrs[ 'items' ] as $item ) {
                 $sub_total  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
-                $tax_amount = $active_company->vat_enabled ? ( ( $sub_total * (float) $active_company->default_tax_percent ) / 100 ) : 0;
+                $tax_amount = $effectiveVatEnabled ? ( ( $sub_total * (float) $active_company->default_tax_percent ) / 100 ) : 0;
                 $total      = $sub_total + $tax_amount;
 
                 $invoice->items()->create(
@@ -219,7 +230,7 @@ class InvoiceController extends Controller {
                         'sub_total'   => $sub_total,
                         'total'       => $total,
                         'tax_amount'  => $tax_amount,
-                        'description' => $item[ 'description' ] ?? null,
+                        'description' => $item[ 'description' ] ?? $item[ 'name' ],
                         'income_category' => $item[ 'income_category' ] ?? null,
                     ]
                 );
@@ -438,6 +449,23 @@ class InvoiceController extends Controller {
         $isFullEdit = collect($editableFields)->contains(static fn (string $field): bool => array_key_exists($field, $data));
         $hasPdfRelevantEdit = $isFullEdit || array_key_exists('note', $data);
 
+        $requestedVatStatus = array_key_exists('vat_enabled_at_issue', $data)
+            ? (bool) $data['vat_enabled_at_issue']
+            : $invoice->vat_enabled_at_issue;
+        $vatStatusChanged = array_key_exists('vat_enabled_at_issue', $data)
+            && $requestedVatStatus !== $invoice->vat_enabled_at_issue;
+
+        if ($vatStatusChanged && ! (bool) ($data['confirm_vat_status_change'] ?? false)) {
+            return response()->json([
+                'message' => 'Promena istorijskog PDV statusa zahteva eksplicitnu potvrdu.',
+                'vat_status_confirmation' => [
+                    'from' => $invoice->vat_enabled_at_issue,
+                    'to' => $requestedVatStatus,
+                ],
+                'requires_confirmation' => true,
+            ], 409);
+        }
+
         if ($isFullEdit && $invoice->vat_enabled_at_issue === null && ! array_key_exists('vat_enabled_at_issue', $data)) {
             return response()->json([
                 'message' => 'Istorijski PDV status nije potvrđen. Izaberite vrednost pre izmene fakture.',
@@ -452,6 +480,7 @@ class InvoiceController extends Controller {
                 $activeCompany,
                 $kpoEntryService,
                 $isFullEdit,
+                $vatStatusChanged,
                 $hasKpoConfirmation,
                 $kpoConfirmation,
                 $kpoConfirmationFingerprint
@@ -499,6 +528,26 @@ class InvoiceController extends Controller {
                 : (bool) $lockedInvoice->vat_enabled_at_issue;
             $currency = strtoupper((string) ($data['currency'] ?? $lockedInvoice->currency));
             $fxRate = $lockedInvoice->fx_rate_to_rsd;
+
+            $bankAccountSelectionProvided = array_key_exists('bank_account_id', $data)
+                && $data['bank_account_id'] !== null;
+            $bankAccount = null;
+            if ($bankAccountSelectionProvided) {
+                $bankAccount = $this->resolveInvoiceBankAccount($activeCompany, $currency, $data['bank_account_id']);
+            } elseif ($currency !== strtoupper((string) $lockedInvoice->currency)) {
+                $bankAccount = $this->resolveInvoiceBankAccount($activeCompany, $currency, null);
+                if (! $bankAccount) {
+                    throw ValidationException::withMessages([
+                        'bank_account_id' => ['Pri promeni valute izaberite aktivan račun u novoj valuti.'],
+                    ]);
+                }
+            } elseif ($lockedInvoice->bank_account_id) {
+                $bankAccount = $lockedInvoice->bankAccount;
+            }
+
+            if ($bankAccountSelectionProvided || $currency !== strtoupper((string) $lockedInvoice->currency)) {
+                $this->applyBankAccountSnapshot($data, $bankAccount);
+            }
 
             if ($currency !== strtoupper((string) $lockedInvoice->currency)) {
                 $ratePayload = app(ExchangeRateService::class)->getTodayRate($currency);
@@ -550,6 +599,20 @@ class InvoiceController extends Controller {
                 }
             }
 
+            if ($vatStatusChanged && ! $itemsProvided) {
+                foreach ($lockedInvoice->items as $existingItem) {
+                    $subTotal = (float) $existingItem->quantity * (float) $existingItem->price;
+                    $taxAmount = $vatEnabled
+                        ? ($subTotal * (float) $activeCompany->default_tax_percent) / 100
+                        : 0.0;
+                    $existingItem->update([
+                        'sub_total' => $subTotal,
+                        'tax_amount' => $taxAmount,
+                        'total' => $subTotal + $taxAmount,
+                    ]);
+                }
+            }
+
             $lockedInvoice->load('items');
             $subtotalOriginal = $lockedInvoice->items->sum(static fn (InvoiceItem $item): float => (float) $item->sub_total);
             $taxOriginal = $lockedInvoice->items->sum(static fn (InvoiceItem $item): float => (float) $item->tax_amount);
@@ -558,7 +621,7 @@ class InvoiceController extends Controller {
             $taxRsd = $currency === 'RSD' ? $taxOriginal : $taxOriginal * (float) $fxRate;
             $totalRsd = $currency === 'RSD' ? $totalOriginal : $totalOriginal * (float) $fxRate;
 
-            $invoiceValues = collect($data)->except(['items', 'vat_enabled_at_issue'])->all();
+            $invoiceValues = collect($data)->except(['items', 'vat_enabled_at_issue', 'confirm_vat_status_change'])->all();
             $invoiceValues['currency'] = $currency;
             $invoiceValues['fx_rate_to_rsd'] = $currency === 'RSD' ? 1 : $fxRate;
             $invoiceValues['subtotal_original'] = round($subtotalOriginal, 2);
@@ -655,10 +718,37 @@ class InvoiceController extends Controller {
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy( Invoice $invoice ) {
+    public function destroy(Request $request, Invoice $invoice, KpoEntryService $kpoEntryService) {
         $this->authorize( 'delete', $invoice );
 
-        $invoice->delete();
+        $activeCompany = $request->user()->activeCompany;
+        if (! $activeCompany || (int) $invoice->company_id !== (int) $activeCompany->id) {
+            return response()->json(['message' => 'Faktura ne pripada aktivnoj firmi.'], 403);
+        }
+
+        $linkedEntries = KpoEntry::query()
+            ->where('company_id', $invoice->company_id)
+            ->where('source_invoice_id', $invoice->id)
+            ->whereNull('deleted_at')
+            ->orderBy('entry_number')
+            ->get(['id', 'entry_number', 'income_category', 'amount_rsd', 'adjustment_rsd', 'total_rsd']);
+
+        if ($linkedEntries->isNotEmpty() && ! $request->boolean('confirm_kpo_removal')) {
+            return response()->json([
+                'message' => 'Faktura ima aktivne KPO zapise koji će biti kontrolisano uklonjeni.',
+                'requires_confirmation' => true,
+                'kpo_deletion_confirmation' => [
+                    'reason' => 'source_invoice_deleted',
+                    'entries' => $linkedEntries->values(),
+                ],
+            ], 409);
+        }
+
+        DB::transaction(function () use ($invoice, $kpoEntryService): void {
+            $lockedInvoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            $kpoEntryService->softDeleteEntriesForInvoice($lockedInvoice, 'source_invoice_deleted');
+            $lockedInvoice->delete();
+        });
 
         return response()->noContent();
     }
@@ -677,14 +767,12 @@ class InvoiceController extends Controller {
         $company       = $invoice->company;
         $client        = $invoice->client;
         $date          = $invoice->issue_date instanceof Carbon ? $invoice->issue_date : Carbon::parse( $invoice->issue_date );
-        $nextVersion = ((int) InvoicePdfVersion::query()->where('invoice_id', $invoice->id)->max('version')) + 1;
-        $relative_path = "invoices/{$date->format('Y')}/{$date->format('m')}/{$invoice->id}/v{$nextVersion}/faktura-{$invoice->invoice_number}.pdf";
+        [$reservedVersion, $relative_path] = $this->reserveInvoicePdfVersion($invoice, $date);
 
         Storage::disk( 'local' )->makeDirectory( dirname( $relative_path ) );
 
         $html = $this->renderInvoicePdfHtml( $invoice, $company, $client, $invoice_items );
 
-        $createdVersion = null;
         try {
             Pdf::html( $html )
                 ->format( Format::A4 )
@@ -694,19 +782,14 @@ class InvoiceController extends Controller {
                 ->disk( 'local' )
                 ->save( $relative_path );
 
-            $createdVersion = InvoicePdfVersion::create([
-                'company_id' => $invoice->company_id,
-                'invoice_id' => $invoice->id,
-                'version' => $nextVersion,
-                'path' => $relative_path,
-                'created_at' => now(),
-            ]);
-            $invoice->update( [ 'pdf_path' => $relative_path ] );
-            $invoice->refresh();
+            $publishedPath = $this->publishLatestAvailablePdfVersion($invoice);
         } catch (\Throwable $exception) {
-            if ($createdVersion) {
-                $createdVersion->delete();
-            }
+            DB::transaction(function () use ($reservedVersion): void {
+                InvoicePdfVersion::query()
+                    ->whereKey($reservedVersion->id)
+                    ->whereNull('protected_at')
+                    ->delete();
+            });
             if (Storage::disk('local')->exists($relative_path)) {
                 Storage::disk('local')->delete($relative_path);
             }
@@ -716,7 +799,51 @@ class InvoiceController extends Controller {
 
         $this->applyPdfRetention($invoice);
 
-        return $relative_path;
+        return $publishedPath;
+    }
+
+    private function publishLatestAvailablePdfVersion(Invoice $invoice): string
+    {
+        return DB::transaction(function () use ($invoice): string {
+            $lockedInvoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            $versions = InvoicePdfVersion::query()
+                ->where('invoice_id', $lockedInvoice->id)
+                ->orderByDesc('version')
+                ->get();
+            $current = $versions->first(
+                static fn (InvoicePdfVersion $version): bool => Storage::disk('local')->exists($version->path)
+            );
+
+            if (! $current) {
+                throw new \RuntimeException('Generisani PDF nije dostupan za objavu.');
+            }
+
+            $lockedInvoice->update(['pdf_path' => $current->path]);
+            $invoice->setRawAttributes($lockedInvoice->getAttributes());
+            $invoice->syncOriginal();
+
+            return $current->path;
+        }, 3);
+    }
+
+    private function reserveInvoicePdfVersion(Invoice $invoice, Carbon $date): array
+    {
+        return DB::transaction(function () use ($invoice, $date): array {
+            $lockedInvoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            $nextVersion = ((int) InvoicePdfVersion::query()
+                ->where('invoice_id', $lockedInvoice->id)
+                ->max('version')) + 1;
+            $relativePath = "invoices/{$date->format('Y')}/{$date->format('m')}/{$lockedInvoice->id}/v{$nextVersion}/faktura-{$lockedInvoice->invoice_number}.pdf";
+            $version = InvoicePdfVersion::create([
+                'company_id' => $lockedInvoice->company_id,
+                'invoice_id' => $lockedInvoice->id,
+                'version' => $nextVersion,
+                'path' => $relativePath,
+                'created_at' => now(),
+            ]);
+
+            return [$version, $relativePath];
+        }, 3);
     }
 
     private function ensureCurrentPdfVersion(Invoice $invoice, string $path): InvoicePdfVersion
@@ -729,15 +856,26 @@ class InvoiceController extends Controller {
             return $existing;
         }
 
-        $version = ((int) InvoicePdfVersion::query()->where('invoice_id', $invoice->id)->max('version')) + 1;
+        return DB::transaction(function () use ($invoice, $path): InvoicePdfVersion {
+            $lockedInvoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            $existing = InvoicePdfVersion::query()
+                ->where('invoice_id', $lockedInvoice->id)
+                ->where('path', $path)
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
 
-        return InvoicePdfVersion::create([
-            'company_id' => $invoice->company_id,
-            'invoice_id' => $invoice->id,
-            'version' => $version,
-            'path' => $path,
-            'created_at' => $invoice->updated_at ?? now(),
-        ]);
+            $version = ((int) InvoicePdfVersion::query()->where('invoice_id', $lockedInvoice->id)->max('version')) + 1;
+
+            return InvoicePdfVersion::create([
+                'company_id' => $lockedInvoice->company_id,
+                'invoice_id' => $lockedInvoice->id,
+                'version' => $version,
+                'path' => $path,
+                'created_at' => $lockedInvoice->updated_at ?? now(),
+            ]);
+        }, 3);
     }
 
     private function protectCurrentPdfVersion(Invoice $invoice, bool $sent): InvoicePdfVersion
@@ -772,11 +910,59 @@ class InvoiceController extends Controller {
         $versions = $query->get();
 
         foreach ($versions->take(max(0, $versions->count() - $limit)) as $version) {
-            if (Storage::disk('local')->exists($version->path)) {
-                Storage::disk('local')->delete($version->path);
+            if (! Storage::disk('local')->exists($version->path)) {
+                throw new \RuntimeException("PDF verzija {$version->id} nije pronađena; zadržavanje podataka je prekinuto.");
+            }
+            if (! Storage::disk('local')->delete($version->path)) {
+                throw new \RuntimeException("PDF verzija {$version->id} nije mogla biti obrisana sa diska.");
             }
             $version->delete();
         }
+    }
+
+    private function resolveInvoiceBankAccount(Company $company, string $currency, mixed $bankAccountId): ?CompanyBankAccount
+    {
+        $currency = strtoupper($currency);
+        $accounts = $company->bankAccounts()->where('currency', $currency)->where('is_active', true)->get();
+
+        if ($bankAccountId !== null) {
+            $account = $accounts->firstWhere('id', (int) $bankAccountId);
+            if (! $account) {
+                throw ValidationException::withMessages([
+                    'bank_account_id' => ['Izabrani račun ne pripada aktivnoj firmi, nije aktivan ili nije u valuti fakture.'],
+                ]);
+            }
+
+            return $account;
+        }
+
+        if ($accounts->isEmpty()) {
+            return null;
+        }
+
+        $defaults = $accounts->where('is_default', true);
+        if ($defaults->isNotEmpty()) {
+            return $defaults->first();
+        }
+
+        if ($accounts->count() === 1) {
+            return $accounts->first();
+        }
+
+        throw ValidationException::withMessages([
+            'bank_account_id' => ['Izaberite račun za valutu fakture; postoji više aktivnih računa bez podrazumevanog računa.'],
+        ]);
+    }
+
+    private function applyBankAccountSnapshot(array &$values, ?CompanyBankAccount $account): void
+    {
+        $values['bank_account_id'] = $account?->id;
+        $values['bank_account_bank_name'] = $account?->bank_name;
+        $values['bank_account_number'] = $account?->account_number;
+        $values['bank_account_iban'] = $account?->iban;
+        $values['bank_account_swift_bic'] = $account?->swift_bic;
+        $values['bank_account_currency'] = $account?->currency;
+        $values['bank_account_payment_instructions'] = $account?->payment_instructions;
     }
 
     /** @return array<string, mixed> */
@@ -788,7 +974,9 @@ class InvoiceController extends Controller {
                 'currency', 'fx_rate_to_rsd', 'fx_provider', 'fx_date', 'payment_method',
                 'subtotal_original', 'tax_original', 'total_original', 'subtotal_rsd',
                 'tax_rsd', 'total_rsd', 'total', 'vat_enabled_at_issue', 'include_in_kpo',
-                'status', 'note',
+                'status', 'note', 'bank_account_id', 'bank_account_bank_name',
+                'bank_account_number', 'bank_account_iban', 'bank_account_swift_bic',
+                'bank_account_currency', 'bank_account_payment_instructions',
             ]),
             'items' => $invoice->items->map(static fn (InvoiceItem $item): array => $item->only([
                 'id', 'name', 'description', 'quantity', 'price', 'sub_total', 'tax_amount',
@@ -847,6 +1035,17 @@ class InvoiceController extends Controller {
         $invoice_items
     ): array {
         $logo_url = null;
+        $hasBankSnapshot = (bool) $invoice->bank_account_id
+            || $invoice->bank_account_bank_name !== null
+            || $invoice->bank_account_number !== null
+            || $invoice->bank_account_iban !== null
+            || $invoice->bank_account_swift_bic !== null
+            || $invoice->bank_account_payment_instructions !== null;
+        $legacyBankFallbackAllowed = ! $hasBankSnapshot
+            && strtoupper((string) $invoice->currency) === strtoupper((string) $company->currency);
+        $legacyBankAccount = $legacyBankFallbackAllowed ? $company->bank_account : null;
+        $legacyIban = $legacyBankFallbackAllowed ? $company->iban : null;
+        $legacySwift = $legacyBankFallbackAllowed ? $company->swift : null;
         if ( $company?->logo_path ) {
             $logo_path = (string) $company->logo_path;
             if ( str_starts_with( $logo_path, 'http://' ) || str_starts_with( $logo_path, 'https://' ) ) {
@@ -876,8 +1075,17 @@ class InvoiceController extends Controller {
                 'fxRateToRsd' => (float) ( $invoice->fx_rate_to_rsd ?? 1 ),
                 'paymentMethod' => (string) $invoice->payment_method,
                 'total'    => (float) $invoice->total,
+                'subtotalOriginal' => (float) ($invoice->subtotal_original ?? $invoice->total),
+                'taxOriginal' => (float) ($invoice->tax_original ?? 0),
                 'totalOriginal' => (float) ( $invoice->total_original ?? $invoice->total ),
                 'totalRsd' => (float) ( $invoice->total_rsd ?? $invoice->total ),
+                'vatEnabledAtIssue' => $invoice->vat_enabled_at_issue,
+                'bankAccountBankName' => $invoice->bank_account_bank_name ?? null,
+                'bankAccountNumber' => $invoice->bank_account_number ?? $legacyBankAccount,
+                'bankAccountIban' => $invoice->bank_account_iban ?? $legacyIban,
+                'bankAccountSwiftBic' => $invoice->bank_account_swift_bic ?? $legacySwift,
+                'bankAccountCurrency' => $invoice->bank_account_currency ?? $invoice->currency,
+                'bankAccountPaymentInstructions' => $invoice->bank_account_payment_instructions,
                 'items'    => $invoice_items->map( static function ( $item ) {
                     return [
                         'id'          => $item->id,
@@ -897,9 +1105,9 @@ class InvoiceController extends Controller {
                 'country'              => $company->country,
                 'email'                => $company->email,
                 'phone'                => $company->phone,
-                'bank_account'         => $company->bank_account,
-                'iban'                 => $company->iban,
-                'swift'                => $company->swift,
+                'bank_account'         => $invoice->bank_account_number ?? $legacyBankAccount,
+                'iban'                 => $invoice->bank_account_iban ?? $legacyIban,
+                'swift'                => $invoice->bank_account_swift_bic ?? $legacySwift,
                 'currency'             => $company->currency,
                 'vat_enabled'          => (bool) $company->vat_enabled,
                 'logoUrl'              => $logo_url,

@@ -22,6 +22,7 @@ export interface InvoiceDocumentCompany {
     bank_account: string;
     iban?: string | null;
     swift?: string | null;
+    payment_instructions?: string | null;
     currency?: string | null;
     vat_enabled: boolean;
     logoUrl?: string | null;
@@ -56,9 +57,17 @@ export interface InvoiceDocumentInvoice {
     paymentMethod: string;
     items: InvoiceDocumentItem[];
     total: number;
+    subtotalOriginal?: number;
+    taxOriginal?: number;
     totalOriginal?: number;
     totalRsd?: number;
     fxRateToRsd?: number;
+    vatEnabledAtIssue?: boolean | null;
+    bankAccountNumber?: string | null;
+    bankAccountBankName?: string | null;
+    bankAccountIban?: string | null;
+    bankAccountSwiftBic?: string | null;
+    bankAccountPaymentInstructions?: string | null;
 }
 
 export interface InvoiceDocumentMeta {
@@ -91,6 +100,13 @@ export default function InvoiceDocument({
         client_types: [],
     };
     const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number} = client;
+    const effectiveCompany: InvoiceDocumentCompany = {
+        ...company,
+        bank_account: invoice.bankAccountNumber ?? company.bank_account,
+        iban: invoice.bankAccountIban ?? company.iban,
+        swift: invoice.bankAccountSwiftBic ?? company.swift,
+        payment_instructions: invoice.bankAccountPaymentInstructions ?? null,
+    };
     const {
         resolvedCurrency,
         isDomesticPayment,
@@ -99,11 +115,14 @@ export default function InvoiceDocument({
         clientTypeCode,
         amountInRSD,
         canGenerateQrCode,
-    } = resolveInvoiceDocumentState({invoice, client, company, currency, meta});
-    const vatRate = 0.2;
-    const vatAmount = company.vat_enabled ? invoice.total * vatRate : 0;
-    const totalWithVat = company.vat_enabled ? invoice.total + vatAmount : invoice.total;
-    const isExternalPayment = company.country !== ccountry;
+    } = resolveInvoiceDocumentState({invoice, client, company: effectiveCompany, currency, meta});
+    const subtotal = invoice.subtotalOriginal ?? invoice.totalOriginal ?? invoice.total;
+    const taxAmount = invoice.taxOriginal ?? 0;
+    const totalWithVat = invoice.totalOriginal ?? invoice.total;
+    const vatStatus = invoice.vatEnabledAtIssue;
+    const hasKnownVat = vatStatus === true || vatStatus === false;
+    const showVatRow = vatStatus === true || (vatStatus === null && taxAmount !== 0);
+    const isExternalPayment = effectiveCompany.country !== ccountry;
     const paymentMethodLabel = Array.isArray(safeMeta.payment_methods)
         ? safeMeta.payment_methods.find(method => method.key === invoice.paymentMethod)?.label
         : safeMeta.payment_methods?.[invoice.paymentMethod];
@@ -122,7 +141,7 @@ export default function InvoiceDocument({
 
     const exchangeRate = hasStoredFxRate ? invoice.fxRateToRsd : exchangeRateData?.exchange_middle;
     const resolvedAmountInRSD = shouldConvertToRSD && exchangeRate
-        ? invoice.total * exchangeRate
+        ? totalWithVat * exchangeRate
         : amountInRSD;
     const displayCurrency = shouldConvertToRSD ? 'RSD' : resolvedCurrency;
     const convertToDisplayAmount = (amount: number) => (
@@ -175,26 +194,28 @@ export default function InvoiceDocument({
             <div className="p-8 sm:p-12">
                 <div className="flex flex-col sm:flex-row justify-between items-start border-b border-gray-100 pb-8 mb-8">
                     <div className="invoice__heading__left">
-                        {company.logoUrl ? (
-                            <img src={company.logoUrl} alt="logo" className="h-12 w-12 mb-4"/>
+                        {effectiveCompany.logoUrl ? (
+                            <img src={effectiveCompany.logoUrl} alt="logo" className="h-12 w-12 mb-4"/>
                         ) : (
                             <div className="h-12 w-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4">
-                                <span className="font-bold text-2xl text-white">{company.name.substring(0, 1)}</span>
+                                <span className="font-bold text-2xl text-white">{effectiveCompany.name.substring(0, 1)}</span>
                             </div>
                         )}
-                        <h2 className="text-lg font-bold text-gray-900">{company.name}</h2>
+                        <h2 className="text-lg font-bold text-gray-900">{effectiveCompany.name}</h2>
                         <div className="text-gray-500 text-sm mt-2 space-y-1">
                             <p>
-                                {company.address}
-                                {company.address && company.city ? ',' : ''} {company.city}
+                                {effectiveCompany.address}
+                                {effectiveCompany.address && effectiveCompany.city ? ',' : ''} {effectiveCompany.city}
                             </p>
-                            {company.tax_id && <p>PIB: {company.tax_id}</p>}
-                            {company.registration_number && <p>MB: {company.registration_number}</p>}
-                            {company.bank_account && <p>BROJ RAČUNA: {company.bank_account}</p>}
-                            {isExternalPayment && company.iban && <p>IBAN: {company.iban}</p>}
-                            {isExternalPayment && company.swift && <p>SWIFT: {company.swift}</p>}
-                            {company.email && <p>Email: {company.email}</p>}
-                            {company.phone && <p>Telefon: {company.phone}</p>}
+                            {effectiveCompany.tax_id && <p>PIB: {effectiveCompany.tax_id}</p>}
+                            {effectiveCompany.registration_number && <p>MB: {effectiveCompany.registration_number}</p>}
+                            {invoice.bankAccountBankName && <p>Banka: {invoice.bankAccountBankName}</p>}
+                            {effectiveCompany.bank_account && <p>BROJ RAČUNA: {effectiveCompany.bank_account}</p>}
+                            {isExternalPayment && effectiveCompany.iban && <p>IBAN: {effectiveCompany.iban}</p>}
+                            {isExternalPayment && effectiveCompany.swift && <p>SWIFT: {effectiveCompany.swift}</p>}
+                            {effectiveCompany.email && <p>Email: {effectiveCompany.email}</p>}
+                            {effectiveCompany.phone && <p>Telefon: {effectiveCompany.phone}</p>}
+                            {effectiveCompany.payment_instructions && <p>Instrukcije: {effectiveCompany.payment_instructions}</p>}
                         </div>
                     </div>
                     <div className="invoice__heading__right">
@@ -275,7 +296,7 @@ export default function InvoiceDocument({
                             <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Međuzbir</th>
                             <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Međuzbir</th>
                             <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
-                                {renderAmount(invoice.total)}
+                                {renderAmount(subtotal)}
                             </td>
                         </tr>
                         <tr>
@@ -285,12 +306,12 @@ export default function InvoiceDocument({
                                 {paymentMethodLabel ?? invoice.paymentMethod}
                             </td>
                         </tr>
-                        {company.vat_enabled && (
+                        {showVatRow && (
                             <tr>
-                                <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">PDV (20%)</th>
-                                <th scope="row" className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden">PDV (20%)</th>
+                                <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">{hasKnownVat ? 'PDV' : 'PDV (status nije potvrđen)'}</th>
+                                <th scope="row" className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden">{hasKnownVat ? 'PDV' : 'PDV (status nije potvrđen)'}</th>
                                 <td className="pl-3 pr-4 pt-4 text-right text-sm text-gray-500 sm:pr-0">
-                                    {renderAmount(vatAmount)}
+                                    {renderAmount(taxAmount)}
                                 </td>
                             </tr>
                         )}
@@ -306,7 +327,8 @@ export default function InvoiceDocument({
                 </div>
 
                 <div className="mt-12 pt-6 border-t border-gray-100">
-                    {!company.vat_enabled && <p className="text-gray-500 text-sm">Poreski obveznik nije u sistemu PDV-a. PDV nije obračunat na fakturi u skladu sa članom 33. Zakona o porezu na dodatu vrednost.</p>}
+                    {vatStatus === false && <p className="text-gray-500 text-sm">PDV nije obračunat na fakturi prema sačuvanom statusu u trenutku izdavanja.</p>}
+                    {vatStatus === null && <p className="text-amber-700 text-sm">Istorijski PDV status ove fakture nije potvrđen; prikazani iznosi su sačuvani snapshot fakture.</p>}
                 </div>
             </div>
         </div>

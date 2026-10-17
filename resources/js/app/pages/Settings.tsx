@@ -1,8 +1,9 @@
-import React, {useEffect} from 'react';
+import React, {useEffect, useState} from 'react';
 import {useForm} from 'react-hook-form';
 import {useApp} from '../context/AppContext';
 import {toast} from 'sonner';
 import {User, Lock, Globe, Save} from 'lucide-react';
+import {LoadingButton} from '../components/Loading';
 
 type PreferencesFormValues = {
     language: string;
@@ -22,6 +23,9 @@ const defaultPreferences: PreferencesFormValues = {
 
 export default function Settings() {
     const {user, updateUser, resetPassword, appSettings, appSettingsLoading, saveAppSettings} = useApp();
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [securitySaving, setSecuritySaving] = useState(false);
+    const [preferencesSaving, setPreferencesSaving] = useState(false);
 
     const {register: registerProfile, handleSubmit: handleProfileSubmit} = useForm({
         defaultValues: {
@@ -49,33 +53,47 @@ export default function Settings() {
         }
     }, [appSettings, resetPreferences]);
 
-    const onProfileSubmit = (data: any) => {
-        updateUser(data)
-            .then(() => {
-                toast.success('Profil uspešno ažuriran');
-            });
+    const onProfileSubmit = async (data: any) => {
+        if (profileSaving) return;
+        setProfileSaving(true);
+        try {
+            await updateUser(data);
+            toast.success('Profil uspešno ažuriran');
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message ?? error?.message ?? 'Ažuriranje profila nije uspelo.');
+        } finally {
+            setProfileSaving(false);
+        }
     };
 
     const onSecuritySubmit = async (data: any) => {
+        if (securitySaving) return;
         if (data.password !== data.password_confirmation) {
             toast.error('Lozinke se ne podudaraju');
 
             return;
         }
 
+        setSecuritySaving(true);
         try {
             await resetPassword(data);
             resetSecurity();
         } catch {
             // resetPassword already shows a toast with the error message.
+        } finally {
+            setSecuritySaving(false);
         }
     };
 
     const onPreferencesSubmit = async (data: PreferencesFormValues) => {
+        if (preferencesSaving) return;
+        setPreferencesSaving(true);
         try {
             await saveAppSettings(data);
         } catch {
             // saveAppSettings already shows a toast with the error message.
+        } finally {
+            setPreferencesSaving(false);
         }
     };
 
@@ -146,13 +164,15 @@ export default function Settings() {
                     </div>
 
                     <div className="flex justify-end pt-4">
-                        <button
+                        <LoadingButton
                             type="submit"
-                            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                            loading={profileSaving}
+                            loadingLabel="Čuvanje..."
+                            className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            <Save className="h-4 w-4 mr-2"/>
+                            {!profileSaving && <Save className="h-4 w-4 mr-2"/>}
                             Sačuvaj Promene
-                        </button>
+                        </LoadingButton>
                     </div>
                 </form>
             </div>
@@ -200,12 +220,14 @@ export default function Settings() {
                     </div>
 
                     <div className="flex justify-end pt-4">
-                        <button
+                        <LoadingButton
                             type="submit"
-                            className="inline-flex justify-center rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                            loading={securitySaving}
+                            loadingLabel="Čuvanje..."
+                            className="inline-flex justify-center rounded-md border border-gray-300 bg-white py-2 px-4 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             Promeni Lozinku
-                        </button>
+                        </LoadingButton>
                     </div>
                 </form>
             </div>
@@ -275,14 +297,16 @@ export default function Settings() {
                     </div>
                 </form>
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
-                    <button
+                    <LoadingButton
                         type="submit"
                         form="preferences-form"
+                        loading={preferencesSaving}
+                        loadingLabel="Čuvanje..."
                         disabled={appSettingsLoading}
                         className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-70"
                     >
                         Sačuvaj Podešavanja
-                    </button>
+                    </LoadingButton>
                 </div>
             </div>
 

@@ -28,6 +28,8 @@ class UpdateInvoiceRequest extends FormRequest
             'note' => ['sometimes', 'nullable', 'string'],
             'include_in_kpo' => ['sometimes', 'boolean'],
             'vat_enabled_at_issue' => ['sometimes', 'boolean'],
+            'bank_account_id' => ['sometimes', 'nullable', 'integer'],
+            'confirm_vat_status_change' => ['sometimes', 'boolean'],
             'kpo_confirmation' => ['sometimes', 'array'],
             'kpo_confirmation.confirmed' => ['required_with:kpo_confirmation', 'boolean'],
             'kpo_confirmation.preview_fingerprint' => ['required_with:kpo_confirmation', 'string', 'size:64'],
