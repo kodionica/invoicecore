@@ -435,9 +435,73 @@ it('returns a structured category conflict and rolls back the invoice edit', fun
     ])->assertStatus(409)
         ->assertJsonPath('conflict.reason', 'category_change')
         ->assertJsonPath('conflict.proposed_entries.0.income_category', 'service')
-        ->assertJsonPath('conflict.requires_regeneration', true);
+        ->assertJsonPath('conflict.requires_regeneration', false);
 
     expect($item->fresh()->income_category)->toBe('product');
+});
+
+it('confirms structural removal of the last product and retains the service KPO entry', function () {
+    [$user, $company, $client] = editableInvoiceFixture('invoice-kpo-structural-remove-product@example.com');
+    $this->actingAs($user);
+    $created = $this->postJson('/api/invoices', [
+        'client_id' => $client->id, 'invoice_number' => 'KPO-STRUCT-1',
+        'issue_date' => now()->toDateString(), 'due_date' => now()->addDays(15)->toDateString(), 'currency' => 'RSD',
+        'vat_enabled_at_issue' => false,
+        'items' => [
+            ['name' => 'Proizvod', 'description' => 'Proizvod', 'quantity' => 1, 'price' => 100, 'income_category' => 'product'],
+            ['name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 200, 'income_category' => 'service'],
+        ],
+    ])->assertCreated();
+    $invoice = Invoice::with('items')->findOrFail($created->json('id'));
+    $product = KpoEntry::create(['company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => now()->year, 'entry_number' => 1, 'entry_date' => now()->toDateString(), 'source_type' => 'invoice', 'origin' => 'generated', 'income_category' => 'product', 'currency' => 'RSD', 'amount_original' => 100, 'amount_rsd' => 100, 'adjustment_rsd' => 0, 'total_rsd' => 100]);
+    $service = KpoEntry::create(['company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => now()->year, 'entry_number' => 2, 'entry_date' => now()->toDateString(), 'source_type' => 'invoice', 'origin' => 'generated', 'income_category' => 'service', 'currency' => 'RSD', 'amount_original' => 200, 'amount_rsd' => 200, 'adjustment_rsd' => 0, 'total_rsd' => 200]);
+    $items = [['id' => $invoice->items->where('income_category', 'service')->first()->id, 'name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 200, 'income_category' => 'service']];
+
+    $conflict = $this->putJson("/api/invoices/{$invoice->id}", ['items' => $items, 'vat_enabled_at_issue' => false])->assertStatus(409);
+    $this->putJson("/api/invoices/{$invoice->id}", ['items' => $items, 'vat_enabled_at_issue' => false, 'kpo_confirmation' => ['confirmed' => true, 'preview_fingerprint' => $conflict->json('preview_fingerprint')]])->assertOk();
+
+    expect(KpoEntry::withTrashed()->findOrFail($product->id)->trashed())->toBeTrue()
+        ->and($service->fresh()->entry_number)->toBe(2)
+        ->and($invoice->fresh()->items)->toHaveCount(1)
+        ->and(KpoEntryRevision::where('kpo_entry_id', $product->id)->latest()->value('new_values'))->toHaveKey('removal_reason');
+});
+
+it('confirms a product to service category change without renumbering the retained history', function () {
+    [$user, $company, $client] = editableInvoiceFixture('invoice-kpo-category-switch@example.com');
+    $this->actingAs($user);
+    $created = $this->postJson('/api/invoices', [
+        'client_id' => $client->id, 'invoice_number' => 'KPO-STRUCT-2', 'issue_date' => now()->toDateString(), 'due_date' => now()->addDays(15)->toDateString(), 'currency' => 'RSD', 'vat_enabled_at_issue' => false,
+        'items' => [['name' => 'Stavka', 'description' => 'Stavka', 'quantity' => 1, 'price' => 100, 'income_category' => 'product']],
+    ])->assertCreated();
+    $invoice = Invoice::with('items')->findOrFail($created->json('id'));
+    $entry = KpoEntry::create(['company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => now()->year, 'entry_number' => 7, 'entry_date' => now()->toDateString(), 'source_type' => 'invoice', 'origin' => 'generated', 'income_category' => 'product', 'currency' => 'RSD', 'amount_original' => 100, 'amount_rsd' => 100, 'adjustment_rsd' => 0, 'total_rsd' => 100]);
+    $payload = ['items' => [['id' => $invoice->items->first()->id, 'name' => 'Stavka', 'description' => 'Stavka', 'quantity' => 1, 'price' => 100, 'income_category' => 'service']], 'vat_enabled_at_issue' => false];
+    $conflict = $this->putJson("/api/invoices/{$invoice->id}", $payload)->assertStatus(409);
+    $this->putJson("/api/invoices/{$invoice->id}", $payload + ['kpo_confirmation' => ['confirmed' => true, 'preview_fingerprint' => $conflict->json('preview_fingerprint')]])->assertOk();
+
+    expect(KpoEntry::withTrashed()->findOrFail($entry->id)->trashed())->toBeTrue()
+        ->and(KpoEntry::where('source_invoice_id', $invoice->id)->where('income_category', 'service')->count())->toBe(1)
+        ->and(KpoEntry::where('source_invoice_id', $invoice->id)->where('income_category', 'service')->value('entry_number'))->not->toBe(7);
+});
+
+it('creates only the missing KPO category after explicit confirmation', function () {
+    [$user, $company, $client] = editableInvoiceFixture('invoice-kpo-add-category@example.com');
+    $this->actingAs($user);
+    $created = $this->postJson('/api/invoices', [
+        'client_id' => $client->id, 'invoice_number' => 'KPO-STRUCT-3', 'issue_date' => now()->toDateString(), 'due_date' => now()->addDays(15)->toDateString(), 'currency' => 'RSD', 'vat_enabled_at_issue' => false,
+        'items' => [['name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 100, 'income_category' => 'service']],
+    ])->assertCreated();
+    $invoice = Invoice::with('items')->findOrFail($created->json('id'));
+    KpoEntry::create(['company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => now()->year, 'entry_number' => 9, 'entry_date' => now()->toDateString(), 'source_type' => 'invoice', 'origin' => 'generated', 'income_category' => 'service', 'currency' => 'RSD', 'amount_original' => 100, 'amount_rsd' => 100, 'adjustment_rsd' => 0, 'total_rsd' => 100]);
+    $payload = ['items' => [
+        ['id' => $invoice->items->first()->id, 'name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 100, 'income_category' => 'service'],
+        ['name' => 'Proizvod', 'description' => 'Proizvod', 'quantity' => 1, 'price' => 50, 'income_category' => 'product'],
+    ], 'vat_enabled_at_issue' => false];
+    $conflict = $this->putJson("/api/invoices/{$invoice->id}", $payload)->assertStatus(409);
+    $this->putJson("/api/invoices/{$invoice->id}", $payload + ['kpo_confirmation' => ['confirmed' => true, 'preview_fingerprint' => $conflict->json('preview_fingerprint')]])->assertOk();
+
+    expect(KpoEntry::where('source_invoice_id', $invoice->id)->where('income_category', 'service')->count())->toBe(1)
+        ->and(KpoEntry::where('source_invoice_id', $invoice->id)->where('income_category', 'product')->count())->toBe(1);
 });
 
 it('saves a no-op edit without creating a KPO synchronization revision', function () {
@@ -494,7 +558,8 @@ it('requires confirmation before excluding an invoice with KPO entries and then 
     ])->assertOk();
 
     expect($invoice->fresh()->include_in_kpo)->toBeFalse()
-        ->and($entry->fresh()->exists)->toBeTrue();
+        ->and(KpoEntry::withTrashed()->findOrFail($entry->id)->trashed())->toBeTrue()
+        ->and(KpoEntryRevision::where('kpo_entry_id', $entry->id)->latest()->value('action_type'))->toBe('deleted');
 });
 
 it('requires confirmation before making an invoice VAT-ineligible for automatic KPO generation', function () {

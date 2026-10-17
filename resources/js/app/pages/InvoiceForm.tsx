@@ -260,6 +260,16 @@ export default function InvoiceForm() {
                                         </tr>
                                     );
                                 })}
+                                {(kpoConflict.conflict?.obsolete_categories ?? []).map((obsolete: any) => (
+                                    <tr key={`obsolete-${obsolete.entry_id}`} className="border-b border-red-100 bg-red-50">
+                                        <td className="px-2 py-2">{obsolete.income_category}</td>
+                                        <td className="px-2 py-2">Uklanja se iz aktivnog KPO</td>
+                                        <td className="px-2 py-2">{formatCurrency(Number(obsolete.total_rsd), 'RSD')}</td>
+                                        <td className="px-2 py-2">—</td>
+                                        <td className="px-2 py-2">{obsolete.manually_edited ? 'Zaštićena korekcija' : '—'}</td>
+                                        <td className="px-2 py-2">Soft delete uz istoriju</td>
+                                    </tr>
+                                ))}
                                 </tbody>
                             </table>
                         </div>
@@ -277,7 +287,7 @@ export default function InvoiceForm() {
                             <div className="mt-4 space-y-3">
                                 <label className="flex items-start gap-2">
                                     <input type="checkbox" checked={confirmKpoConflict} onChange={event => setConfirmKpoConflict(event.target.checked)}/>
-                                    <span>Potvrđujem prikazane KPO promene i upozorenja.</span>
+                                    <span>Potvrđujem prikazane KPO promene, uključujući soft-delete obsolete zapisa.</span>
                                 </label>
                                 {kpoConflict.conflict?.requires_manual_overwrite && (
                                     <label className="flex items-start gap-2">

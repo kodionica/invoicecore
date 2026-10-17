@@ -7,6 +7,7 @@ use App\Http\Requests\KpoGenerationPreviewRequest;
 use App\Http\Requests\KpoRegenerationPreviewRequest;
 use App\Http\Requests\RegenerateKpoEntriesRequest;
 use App\Http\Requests\KpoPdfRequest;
+use App\Http\Requests\RemoveGeneratedKpoEntryRequest;
 use App\Http\Requests\StoreKpoEntryRequest;
 use App\Http\Requests\UpdateKpoEntryRequest;
 use App\Models\Company;
@@ -155,6 +156,14 @@ class KpoController extends Controller
         $service->delete($kpo);
 
         return response()->json(['message' => 'Ručni KPO zapis je obrisan.']);
+    }
+
+    public function removeGenerated(RemoveGeneratedKpoEntryRequest $request, KpoEntry $kpo, KpoEntryService $service)
+    {
+        $this->authorize('view', $kpo);
+        $service->removeGeneratedEntry($kpo, $request->validated()['reason']);
+
+        return response()->json(['message' => 'Invoice KPO zapis je kontrolisano uklonjen i sačuvan u istoriji.']);
     }
 
     public function history(int $kpo)

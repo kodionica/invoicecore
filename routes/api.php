@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('kpo/{kpo}', [KpoController::class, 'show']);
     Route::put('kpo/{kpo}', [KpoController::class, 'update']);
     Route::delete('kpo/{kpo}', [KpoController::class, 'destroy']);
+    Route::post('kpo/{kpo}/remove-generated', [KpoController::class, 'removeGenerated']);
 
     Route::put('profile', [ProfileController::class, 'update']);
     Route::put('password', [PasswordController::class, 'update']);

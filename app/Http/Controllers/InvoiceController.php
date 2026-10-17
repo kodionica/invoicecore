@@ -577,6 +577,7 @@ class InvoiceController extends Controller {
                 $kpoEntryService->synchronizeAfterInvoiceUpdate(
                     $lockedInvoice,
                     $hasKpoConfirmation && (bool) ($kpoConfirmation['confirm_manual_overwrite'] ?? false),
+                    $hasKpoConfirmation,
                     $hasKpoConfirmation
                 );
             }

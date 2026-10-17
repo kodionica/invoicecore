@@ -64,7 +64,7 @@ type SortColumn = 'entryNumber' | 'date' | 'description' | 'product' | 'service'
 type SortDirection = 'asc' | 'desc';
 
 export default function Kpo() {
-    const {activeCompanyId, loadKpo, downloadKpoPdf, getKpoEntry, updateKpoEntry, deleteKpoEntry, getKpoHistory, previewKpoGeneration, generateKpoEntries, previewKpoRegeneration, regenerateKpoEntries} = useApp();
+    const {activeCompanyId, loadKpo, downloadKpoPdf, getKpoEntry, updateKpoEntry, deleteKpoEntry, removeGeneratedKpoEntry, getKpoHistory, previewKpoGeneration, generateKpoEntries, previewKpoRegeneration, regenerateKpoEntries} = useApp();
     const [entries, setEntries] = useState<KpoEntry[]>([]);
     const [totals, setTotals] = useState<KpoTotals>(emptyTotals);
     const [selectedYear, setSelectedYear] = useState(String(currentYear));
@@ -80,6 +80,7 @@ export default function Kpo() {
     const [historyLoading, setHistoryLoading] = useState(false);
     const [history, setHistory] = useState<any[] | null>(null);
     const [saving, setSaving] = useState(false);
+    const [removalReason, setRemovalReason] = useState('');
     const [generationLoading, setGenerationLoading] = useState(false);
     const [generationOpen, setGenerationOpen] = useState(false);
     const [includeHistorical, setIncludeHistorical] = useState(false);
@@ -290,9 +291,10 @@ export default function Kpo() {
     const submitRegeneration = async () => {
         if (!regenerationPreview || !confirmRegeneration || regenerationStale) return;
 
-        const invoiceIds = regenerationPreview.invoices
-            .filter(invoice => invoice.actionable)
-            .map(invoice => invoice.invoiceId);
+        // The fingerprint covers the complete preview snapshot, not only the
+        // actionable subset. Sending all preview IDs keeps the server-side
+        // snapshot identical and lets it safely retain unchanged invoices.
+        const invoiceIds = regenerationPreview.invoices.map(invoice => invoice.invoiceId);
         setRegenerationLoading(true);
         try {
             const result = await regenerateKpoEntries(
@@ -424,6 +426,29 @@ export default function Kpo() {
             await loadEntries();
         } catch (requestError: any) {
             toast.error(getErrorMessage(requestError, 'Nije moguće obrisati KPO zapis.'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const removeSelectedGeneratedEntry = async () => {
+        if (!selectedEntry || selectedEntry.sourceType !== 'invoice') return;
+        const reason = removalReason.trim();
+        if (reason.length < 3) {
+            toast.error('Unesite razlog kontrolisanog uklanjanja.');
+            return;
+        }
+        if (!window.confirm('Ukloniti invoice KPO zapis? Zapis će biti sačuvan u istoriji.')) return;
+
+        setSaving(true);
+        try {
+            await removeGeneratedKpoEntry(selectedEntry.id, reason);
+            toast.success('Invoice KPO zapis je kontrolisano uklonjen.');
+            setRemovalReason('');
+            closeDetails();
+            await loadEntries();
+        } catch (requestError: any) {
+            toast.error(getErrorMessage(requestError, 'Nije moguće ukloniti invoice KPO zapis.'));
         } finally {
             setSaving(false);
         }
@@ -600,6 +625,7 @@ export default function Kpo() {
                         <div className="flex items-center gap-3">
                             {selectedEntry && <button type="button" onClick={() => void openHistory()} className="text-sm font-medium text-indigo-600 hover:text-indigo-900">Istorija</button>}
                             {selectedEntry?.sourceType === 'manual' && <button type="button" onClick={() => void deleteSelectedEntry()} disabled={saving} className="text-sm font-medium text-red-600 hover:text-red-900 disabled:opacity-60">Obriši</button>}
+                            {selectedEntry?.sourceType === 'invoice' && <button type="button" onClick={() => void removeSelectedGeneratedEntry()} disabled={saving || removalReason.trim().length < 3} className="text-sm font-medium text-red-600 hover:text-red-900 disabled:opacity-60">Kontrolisano ukloni</button>}
                             <button type="button" onClick={closeDetails} className="text-gray-400 hover:text-gray-600" title="Zatvori"><X className="h-5 w-5"/></button>
                         </div>
                     </div>
@@ -613,8 +639,12 @@ export default function Kpo() {
                                 <DetailRow label="Ručna korekcija" value={formatCurrency(selectedEntry.adjustmentRsd, 'RSD')}/>
                                 <DetailRow label="Ukupan prihod" value={formatCurrency(selectedEntry.totalRsd, 'RSD')} emphasized/>
                                 {selectedEntry.sourceInvoice && <DetailRow label="Izvorna faktura" value={<Link className="text-indigo-600 hover:text-indigo-900" to={`/dashboard/invoices/${selectedEntry.sourceInvoice.id}`}>#{selectedEntry.sourceInvoice.invoiceNumber || selectedEntry.sourceInvoice.id}</Link>}/>} 
+                                {selectedEntry.sourceType === 'invoice' && <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Uklanjanje je dozvoljeno samo kada faktura više ne zahteva ovu kategoriju. Unesite razlog, pa potvrdite akciju. Ako faktura i dalje ima kvalifikovani prihod, prvo izmenite fakturu.</div>}
                                 <p className="text-xs text-gray-500">Ukupan prihod i zbirni iznosi dolaze sa servera. Klasifikacija proizvoda/usluga prikazuje iznos samo za prepoznatu vrednost tipa prihoda.</p>
                             </div>
+                            {selectedEntry.sourceType === 'invoice' && <label className="block text-sm font-medium text-gray-700">Razlog kontrolisanog uklanjanja
+                                <textarea rows={3} value={removalReason} onChange={event => setRemovalReason(event.target.value)} className="mt-1 block w-full rounded-md border-gray-300 py-2 text-sm shadow-sm" placeholder="Npr. faktura je isključena iz KPO evidencije" />
+                            </label>}
                             <form onSubmit={saveEntry} className="space-y-4 rounded-lg bg-gray-50 p-4">
                                 <h3 className="text-sm font-semibold text-gray-900">Dozvoljene izmene</h3>
                                 <label className="block text-sm font-medium text-gray-700">Datum evidencije

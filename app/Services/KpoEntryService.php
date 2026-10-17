@@ -129,7 +129,8 @@ class KpoEntryService
     public function synchronizeAfterInvoiceUpdate(
         Invoice $invoice,
         bool $allowManualOverwrite = false,
-        bool $allowEligibilityConflict = false
+        bool $allowEligibilityConflict = false,
+        bool $allowStructuralChanges = false
     ): array
     {
         $invoice->load('items');
@@ -145,10 +146,19 @@ class KpoEntryService
         }
 
         if (! $invoice->include_in_kpo) {
-            if ($allowEligibilityConflict) {
-                return ['status' => 'retained_ineligible', 'updated' => []];
+            if (! $allowEligibilityConflict) {
+                throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'kpo_exclusion'));
             }
-            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'kpo_exclusion'));
+
+            foreach ($entries as $entry) {
+                if ($entry->trashed()) {
+                    continue;
+                }
+                $this->assertCanRemoveEntry($entry, $allowManualOverwrite);
+                $this->softDeleteInvoiceEntry($entry, 'invoice_excluded_from_kpo');
+            }
+
+            return ['status' => 'removed', 'updated' => [], 'removed' => $entries->whereNull('deleted_at')->pluck('id')->all()];
         }
 
         if ($entries->contains(fn (KpoEntry $entry): bool => $entry->income_category === null)) {
@@ -172,14 +182,41 @@ class KpoEntryService
             ->values();
         $existingCategories = $entries->pluck('income_category')->filter()->unique()->values();
 
-        if ($expectedCategories->diff($existingCategories)->isNotEmpty() || $existingCategories->diff($expectedCategories)->isNotEmpty()) {
+        $missingCategories = $expectedCategories->diff($existingCategories)->values();
+        $deletedExpectedCategories = $entries
+            ->filter(fn (KpoEntry $entry): bool => $entry->trashed() && $expectedCategories->contains($entry->income_category))
+            ->pluck('income_category')
+            ->unique();
+        if ($deletedExpectedCategories->isNotEmpty()) {
+            throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'deleted_entry'));
+        }
+        $obsoleteEntries = $entries->filter(fn (KpoEntry $entry): bool => ! $entry->trashed()
+            && in_array($entry->income_category, ['product', 'service'], true)
+            && ! $expectedCategories->contains($entry->income_category));
+
+        if (($missingCategories->isNotEmpty() || $obsoleteEntries->isNotEmpty()) && ! $allowStructuralChanges) {
             throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'category_change'));
+        }
+
+        foreach ($obsoleteEntries as $entry) {
+            $this->assertCanRemoveEntry($entry, $allowManualOverwrite);
+            $this->softDeleteInvoiceEntry($entry, 'category_removed_from_invoice');
+        }
+
+        foreach ($missingCategories as $category) {
+            $deletedMatch = $entries->first(fn (KpoEntry $entry): bool => $entry->trashed()
+                && $entry->income_category === $category);
+            if ($deletedMatch) {
+                throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'deleted_entry'));
+            }
+            $amounts = $calculation['categories'][$category];
+            $this->createInvoiceCategoryEntry($invoice, $category, $amounts);
         }
 
         $updated = [];
         foreach ($entries as $entry) {
             if ($entry->trashed()) {
-                throw new KpoInvoiceConflictException($this->invoiceEditConflict($invoice, 'deleted_entry'));
+                continue;
             }
 
             $amounts = $calculation['categories'][$entry->income_category];
@@ -215,7 +252,60 @@ class KpoEntryService
             $updated[] = $entry->id;
         }
 
-        return ['status' => $updated === [] ? 'unchanged' : 'updated', 'updated' => $updated];
+        return ['status' => ($updated === [] && $missingCategories->isEmpty() && $obsoleteEntries->isEmpty()) ? 'unchanged' : 'updated', 'updated' => $updated];
+    }
+
+    private function assertCanRemoveEntry(KpoEntry $entry, bool $allowManualOverwrite): void
+    {
+        if ($this->isManuallyEdited($entry) && ! $allowManualOverwrite) {
+            throw new KpoInvoiceConflictException($this->invoiceEditConflict($entry->sourceInvoice()->firstOrFail(), 'manual_edit'));
+        }
+    }
+
+    private function softDeleteInvoiceEntry(KpoEntry $entry, string $reason): void
+    {
+        $previous = $this->revisionValues($entry);
+        $entry->delete();
+        KpoEntryRevision::create([
+            'kpo_entry_id' => $entry->id,
+            'acting_user_id' => auth()->id(),
+            'action_type' => 'deleted',
+            'previous_values' => $previous,
+            'new_values' => ['removal_reason' => $reason],
+            'manual_edit_overwritten' => $this->isManuallyEdited($entry),
+        ]);
+    }
+
+    private function createInvoiceCategoryEntry(Invoice $invoice, string $category, array $amounts): KpoEntry
+    {
+        $entryDate = $invoice->issue_date;
+        $entry = KpoEntry::create([
+            'company_id' => $invoice->company_id,
+            'source_invoice_id' => $invoice->id,
+            'year' => $entryDate->year,
+            'entry_number' => $this->nextNumber($invoice->company_id, (int) $entryDate->year),
+            'entry_date' => $entryDate->toDateString(),
+            'source_type' => 'invoice',
+            'origin' => 'generated',
+            'income_type' => $category === 'product' ? 'proizvod' : 'usluga',
+            'income_category' => $category,
+            'currency' => $invoice->currency,
+            'amount_original' => $amounts['amount_original'],
+            'amount_rsd' => $amounts['amount_rsd'],
+            'adjustment_rsd' => '0.00',
+            'total_rsd' => $amounts['amount_rsd'],
+            'description' => 'Faktura '.$invoice->invoice_number.' - '.($category === 'product' ? 'proizvodi' : 'usluge'),
+        ]);
+        KpoEntryRevision::create([
+            'kpo_entry_id' => $entry->id,
+            'acting_user_id' => auth()->id(),
+            'action_type' => 'created',
+            'previous_values' => null,
+            'new_values' => $this->revisionValues($entry),
+            'manual_edit_overwritten' => false,
+        ]);
+
+        return $entry;
     }
 
     public function delete(KpoEntry $entry): void
@@ -241,6 +331,32 @@ class KpoEntryService
                 'new_values' => null,
                 'manual_edit_overwritten' => false,
             ]);
+        });
+    }
+
+    public function removeGeneratedEntry(KpoEntry $entry, string $reason): void
+    {
+        DB::transaction(function () use ($entry, $reason): void {
+            $entry = KpoEntry::query()->withTrashed()->lockForUpdate()->findOrFail($entry->id);
+            if ($entry->source_type !== 'invoice' || $entry->trashed()) {
+                throw ValidationException::withMessages(['entry' => 'Samo aktivni invoice KPO zapis može biti kontrolisano uklonjen.']);
+            }
+
+            $invoice = $entry->sourceInvoice()->with('items')->firstOrFail();
+            $calculation = $this->amountCalculator->calculate($invoice);
+            $categoryAmount = $calculation['categories'][$entry->income_category]['amount_rsd'] ?? '0.00';
+            $stillEligible = $invoice->include_in_kpo
+                && $invoice->vat_enabled_at_issue === false
+                && ($calculation['generation_readiness']['status'] ?? null) !== 'blocked'
+                && $categoryAmount !== '0.00';
+
+            if ($stillEligible) {
+                throw ValidationException::withMessages([
+                    'entry' => 'KPO zapis ne može biti uklonjen dok faktura i dalje sadrži prihode ove kategorije. Prvo izmenite fakturu.',
+                ]);
+            }
+
+            $this->softDeleteInvoiceEntry($entry, $reason);
         });
     }
 
@@ -563,9 +679,21 @@ class KpoEntryService
     public function invoiceEditConflict(Invoice $invoice, string $reason): array
     {
         $report = $this->regenerationInvoiceReport($invoice);
-        $requiresManualOverwrite = $reason === 'manual_edit';
+        if ($reason === 'kpo_exclusion') {
+            $report['obsolete_categories'] = collect($report['existing_entries'])
+                ->filter(static fn (array $entry): bool => empty($entry['deleted_at']))
+                ->map(static fn (array $entry): array => [
+                    'entry_id' => $entry['id'],
+                    'entry_number' => $entry['entry_number'],
+                    'income_category' => $entry['income_category'],
+                    'reason' => 'invoice_excluded_from_kpo',
+                    'total_rsd' => $entry['total_rsd'],
+                    'manually_edited' => (bool) ($entry['manually_edited'] ?? false),
+                ])->values()->all();
+        }
+        $requiresManualOverwrite = $reason === 'manual_edit'
+            || collect($report['existing_entries'])->contains(static fn (array $entry): bool => (bool) ($entry['manually_edited'] ?? false));
         $requiresRegeneration = in_array($reason, [
-            'category_change',
             'legacy_category',
             'financial_block',
             'deleted_entry',
@@ -615,16 +743,16 @@ class KpoEntryService
             'invoices' => $invoices->sortBy('id')->map(static function (Invoice $invoice): array {
                 return [
                     'id' => $invoice->id,
-                    'updated_at' => $invoice->updated_at?->toISOString(),
+                    'company_id' => $invoice->company_id,
                     'issue_date' => $invoice->issue_date?->toDateString(),
-                    'total_original' => (string) $invoice->total_original,
-                    'total_rsd' => (string) $invoice->total_rsd,
-                    'fx_rate_to_rsd' => (string) $invoice->fx_rate_to_rsd,
+                    'include_in_kpo' => (bool) $invoice->include_in_kpo,
+                    'total_original' => self::canonicalDecimal($invoice->total_original),
+                    'total_rsd' => self::canonicalDecimal($invoice->total_rsd),
+                    'fx_rate_to_rsd' => self::canonicalDecimal($invoice->fx_rate_to_rsd, 6),
                     'vat_enabled_at_issue' => $invoice->vat_enabled_at_issue,
                     'items' => $invoice->items->sortBy('id')->map(static fn ($item): array => [
                         'id' => $item->id,
-                        'updated_at' => $item->updated_at?->toISOString(),
-                        'total' => (string) $item->total,
+                        'total' => self::canonicalDecimal($item->total),
                         'income_category' => $item->income_category,
                     ])->values()->all(),
                     'kpo_entries' => $invoice->kpoEntries->sortBy('id')->map(static fn (KpoEntry $entry): array => [
@@ -637,14 +765,12 @@ class KpoEntryService
                         'source_type' => $entry->source_type,
                         'currency' => $entry->currency,
                         'description' => $entry->description,
-                        'updated_at' => $entry->updated_at?->toISOString(),
                         'income_category' => $entry->income_category,
-                        'amount_original' => (string) $entry->amount_original,
-                        'amount_rsd' => (string) $entry->amount_rsd,
-                        'adjustment_rsd' => (string) $entry->adjustment_rsd,
-                        'total_rsd' => (string) $entry->total_rsd,
+                        'amount_original' => self::canonicalDecimal($entry->amount_original),
+                        'amount_rsd' => self::canonicalDecimal($entry->amount_rsd),
+                        'adjustment_rsd' => self::canonicalDecimal($entry->adjustment_rsd),
+                        'total_rsd' => self::canonicalDecimal($entry->total_rsd),
                         'origin' => $entry->origin,
-                        'manually_edited_at' => $entry->manually_edited_at?->toISOString(),
                         'manually_edited_by' => $entry->manually_edited_by,
                         'deleted_at' => $entry->deleted_at?->toISOString(),
                     ])->values()->all(),
@@ -653,6 +779,21 @@ class KpoEntryService
         ];
 
         return hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR));
+    }
+
+    private static function canonicalDecimal(mixed $value, int $scale = 2): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+        $negative = str_starts_with($value, '-');
+        $value = ltrim($value, '+-');
+        [$whole, $fraction] = array_pad(explode('.', $value, 2), 2, '');
+        $fraction = str_pad(substr($fraction, 0, $scale), $scale, '0');
+
+        return ($negative ? '-' : '').((int) $whole).'.'.$fraction;
     }
 
     /** @return array<string, mixed> */
@@ -794,7 +935,8 @@ class KpoEntryService
         if ($unknownExistingCategories !== []) {
             $blockingReasons[] = 'unknown_existing_income_category';
         }
-        if ($deletedCategories !== []) {
+        $deletedExpectedCategories = array_values(array_intersect($deletedCategories, $proposedCategories->all()));
+        if ($deletedExpectedCategories !== []) {
             $blockingReasons[] = 'deleted_category_requires_resolution';
         }
         if (($calculation['generation_readiness']['status'] ?? null) === 'blocked') {
@@ -814,7 +956,7 @@ class KpoEntryService
         ) || $status !== 'ready'
             || $missingCategories !== []
             || $obsoleteCategories !== []
-            || $deletedCategories !== []
+            || $deletedExpectedCategories !== []
             || $legacyConflicts !== []
             || $unknownExistingCategories !== []
             || $calculation['unresolved_amount_rsd'] !== '0.00'
@@ -832,6 +974,7 @@ class KpoEntryService
             'amount_differences' => $amountDifferences,
             'legacy_classification_conflicts' => $legacyConflicts,
             'deleted_categories' => $deletedCategories,
+            'deleted_expected_categories' => $deletedExpectedCategories,
             'missing_categories' => $missingCategories,
             'obsolete_categories' => $obsoleteCategories,
             'unresolved' => [

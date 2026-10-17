@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Company;
+use App\Models\Invoice;
 use App\Models\KpoEntry;
 use App\Models\KpoEntryRevision;
 use App\Models\User;
@@ -94,4 +95,26 @@ it('does not allow deleting generated or cross-company entries', function () {
     $this->deleteJson('/api/kpo/'.$generated->id)->assertForbidden();
 
     expect(KpoEntry::findOrFail($generated->id)->deleted_at)->toBeNull();
+});
+
+it('requires an obsolete invoice-generated entry and records controlled removal', function () {
+    [$user, $company] = softDeleteKpoContext('kpo-generated-removal@example.com');
+    $client = $company->clients()->create(['name' => 'Removal client', 'client_type' => 'b2b']);
+    $invoice = Invoice::create([
+        'company_id' => $company->id, 'client_id' => $client->id, 'invoice_number' => 'REMOVE-1',
+        'issue_date' => '2026-10-15', 'due_date' => '2026-10-30', 'currency' => 'RSD',
+        'status' => 'draft', 'include_in_kpo' => true, 'vat_enabled_at_issue' => false,
+        'fx_rate_to_rsd' => 1, 'subtotal_original' => 100, 'tax_original' => 0, 'total_original' => 100,
+        'subtotal_rsd' => 100, 'tax_rsd' => 0, 'total_rsd' => 100, 'total' => 100,
+    ]);
+    $invoice->items()->create(['name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 100, 'sub_total' => 100, 'tax_amount' => 0, 'total' => 100, 'income_category' => 'service']);
+    $entry = KpoEntry::create(['company_id' => $company->id, 'source_invoice_id' => $invoice->id, 'year' => 2026, 'entry_number' => 3, 'entry_date' => '2026-10-15', 'source_type' => 'invoice', 'origin' => 'generated', 'income_category' => 'service', 'currency' => 'RSD', 'amount_original' => 100, 'amount_rsd' => 100, 'adjustment_rsd' => 0, 'total_rsd' => 100]);
+
+    $this->actingAs($user)->postJson('/api/kpo/'.$entry->id.'/remove-generated', ['confirm' => true, 'reason' => 'Faktura isključena iz KPO'])->assertUnprocessable();
+
+    $invoice->update(['include_in_kpo' => false]);
+    $this->actingAs($user)->postJson('/api/kpo/'.$entry->id.'/remove-generated', ['confirm' => true, 'reason' => 'Faktura isključena iz KPO'])->assertOk();
+
+    expect(KpoEntry::withTrashed()->findOrFail($entry->id)->trashed())->toBeTrue()
+        ->and(KpoEntryRevision::where('kpo_entry_id', $entry->id)->latest()->value('action_type'))->toBe('deleted');
 });

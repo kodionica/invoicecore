@@ -399,6 +399,7 @@ interface AppContextType {
     getKpoEntry: (id: number) => Promise<KpoEntry>;
     updateKpoEntry: (id: number, payload: KpoUpdatePayload) => Promise<KpoEntry>;
     deleteKpoEntry: (id: number) => Promise<void>;
+    removeGeneratedKpoEntry: (id: number, reason: string) => Promise<void>;
     getKpoHistory: (id: number) => Promise<{entry: any; revisions: any[]}>;
     previewKpoGeneration: (year: number, includeHistorical?: boolean) => Promise<KpoGenerationPreview>;
     generateKpoEntries: (year: number, entries: KpoGenerationSelection[], confirmManualOverlap?: boolean, includeHistorical?: boolean) => Promise<KpoGenerationResult>;
@@ -694,6 +695,10 @@ export function AppProvider({children}: { children: React.ReactNode }) {
 
     const deleteKpoEntry = async (id: number): Promise<void> => {
         await api.delete(`/api/kpo/${id}`);
+    };
+
+    const removeGeneratedKpoEntry = async (id: number, reason: string): Promise<void> => {
+        await api.post(`/api/kpo/${id}/remove-generated`, {reason, confirm: true});
     };
 
     const getKpoHistory = async (id: number): Promise<{entry: any; revisions: any[]}> => {
@@ -1228,6 +1233,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             getKpoEntry,
             updateKpoEntry,
             deleteKpoEntry,
+            removeGeneratedKpoEntry,
             getKpoHistory,
             previewKpoGeneration,
             generateKpoEntries,
