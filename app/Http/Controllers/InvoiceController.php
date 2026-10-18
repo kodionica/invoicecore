@@ -44,6 +44,18 @@ class InvoiceController extends Controller {
             ], 422 );
         }
 
+        $request->validate([
+            'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status' => ['sometimes', 'nullable', Rule::in(array_map(static fn ($case) => $case->value, InvoiceStatus::cases()))],
+            'client_id' => ['sometimes', 'nullable', 'integer'],
+            'currency' => ['sometimes', 'nullable', 'string', 'size:3'],
+            'issue_date_from' => ['sometimes', 'nullable', 'date'],
+            'issue_date_to' => ['sometimes', 'nullable', 'date', 'after_or_equal:issue_date_from'],
+            'overdue' => ['sometimes', 'boolean'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+
         $query = Invoice::query()
             ->forActiveCompany( $active_company->id )
             ->with( [ 'client', 'items' ] )
@@ -53,7 +65,35 @@ class InvoiceController extends Controller {
         if ($request->boolean('overdue')) {
             $query->overdue($today);
         }
-        $invoices = $query->get()->each(function (Invoice $invoice) use ($today): void {
+        if ($request->filled('search')) {
+            $search = trim((string) $request->input('search'));
+            $query->where(function ($builder) use ($search): void {
+                $builder->where('invoice_number', 'like', "%{$search}%")
+                    ->orWhereHas('client', static fn ($clientQuery) => $clientQuery->where('name', 'like', "%{$search}%"));
+            });
+        }
+        if ($request->filled('status')) {
+            $query->where('status', (string) $request->input('status'));
+        }
+        if ($request->filled('client_id')) {
+            $query->where('client_id', (int) $request->input('client_id'));
+        }
+        if ($request->filled('currency')) {
+            $query->where('currency', strtoupper((string) $request->input('currency')));
+        }
+        if ($request->filled('issue_date_from')) {
+            $query->whereDate('issue_date', '>=', $request->input('issue_date_from'));
+        }
+        if ($request->filled('issue_date_to')) {
+            $query->whereDate('issue_date', '<=', $request->input('issue_date_to'));
+        }
+
+        $paginated = $request->has('page') || $request->has('per_page');
+        $invoices = $paginated
+            ? $query->paginate(min(max((int) $request->input('per_page', 25), 1), 100))
+            : $query->get();
+        $collection = $paginated ? $invoices->getCollection() : $invoices;
+        $collection->each(function (Invoice $invoice) use ($today): void {
             $this->addDueStatusAttributes($invoice, $today);
         });
 

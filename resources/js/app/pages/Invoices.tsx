@@ -1,5 +1,5 @@
 import React, { useEffect, useState }                          from 'react';
-import { type InvoiceStatus, useApp }                         from '../context/AppContext';
+import { type InvoiceListFilters, type InvoiceStatus, useApp } from '../context/AppContext';
 import { formatCurrency }                                     from '../utils/format';
 import { ArrowDown, ArrowUp, ArrowUpDown, Eye, Trash2, Send } from 'lucide-react';
 import { Link, useNavigate }                                  from 'react-router';
@@ -10,29 +10,53 @@ import { getInvoiceStatusOptions, invoiceStatusSelectClass }  from "../utils/inv
 import SectionHeader                                          from "../components/invoices/SectionHeader";
 import Filters                                                from "../components/invoices/Filters";
 import {LoadingButton, LoadingSpinner}                         from '../components/Loading';
+import {companyToday} from '../utils/timezone';
 
 type SortColumn = 'status' | 'number' | 'client' | 'date' | 'dueDate' | 'total';
 type SortDirection = 'asc' | 'desc';
 
 export default function Invoices() {
-    const { invoices, clients, activeCompanyId, updateInvoiceStatus, deleteInvoice, sendInvoiceEmail, loadInvoices, meta } = useApp();
+    const { invoices, clients, companies, activeCompanyId, updateInvoiceStatus, deleteInvoice, sendInvoiceEmail, loadInvoicePage, meta } = useApp();
     const navigate = useNavigate();
-    const [ searchTerm, setSearchTerm ] = useState( '' );
     const [ sort, setSort ] = useState<{ column: SortColumn; direction: SortDirection } | null>( null );
     const [ sendingInvoiceId, setSendingInvoiceId ] = useState<number | null>( null );
     const [ updatingStatusId, setUpdatingStatusId ] = useState<number | null>( null );
     const [ deletingInvoiceId, setDeletingInvoiceId ] = useState<number | null>( null );
     const [ kpoDeletionConfirmation, setKpoDeletionConfirmation ] = useState<{invoiceId: number; entries: any[]} | null>(null);
-    const [ overdueOnly, setOverdueOnly ] = useState(false);
+    const [ filtersOpen, setFiltersOpen ] = useState(false);
+    const [ draftFilters, setDraftFilters ] = useState<InvoiceListFilters>({});
+    const [ appliedFilters, setAppliedFilters ] = useState<InvoiceListFilters>({});
+    const [ page, setPage ] = useState(1);
+    const [ lastPage, setLastPage ] = useState(1);
+    const [ totalInvoices, setTotalInvoices ] = useState(0);
+    const [ selectedInvoiceIds, setSelectedInvoiceIds ] = useState<number[]>([]);
+    const [ bulkStatus, setBulkStatus ] = useState<InvoiceStatus | ''>('');
+    const [ bulkPaidAt, setBulkPaidAt ] = useState('');
+    const [ bulkPaymentNote, setBulkPaymentNote ] = useState('');
+    const [ bulkPaidDialogOpen, setBulkPaidDialogOpen ] = useState(false);
+    const [ bulkBusy, setBulkBusy ] = useState(false);
     const statusOptions = getInvoiceStatusOptions( meta?.invoice_statuses );
 
-    useEffect(() => {
-        loadInvoices(overdueOnly).catch(() => undefined);
-    }, [overdueOnly, activeCompanyId]);
+    const activeCompany = companies.find(company => company.id === activeCompanyId);
+    const currencies = meta?.currencies
+        ? (Array.isArray(meta.currencies) ? meta.currencies.map(currency => ({code: currency.code, name: currency.name})) : Object.entries(meta.currencies).map(([code, details]) => ({code, name: details.name})))
+        : [];
 
-    const filteredInvoices = invoices
-        .filter( inv => ( activeCompanyId ? inv.companyId === activeCompanyId : false ) )
-        .filter( inv => inv.number.includes( searchTerm ) || clients.find( c => c.id === inv.clientId )?.name.toLowerCase().includes( searchTerm.toLowerCase() ) );
+    useEffect(() => {
+        loadInvoicePage({...appliedFilters, page, perPage: 25}).then(result => {
+            setLastPage(result.lastPage);
+            setTotalInvoices(result.total);
+        }).catch(error => toast.error(error?.response?.data?.message ?? 'Učitavanje faktura nije uspelo.'));
+    }, [activeCompanyId, appliedFilters, page]);
+
+    useEffect(() => {
+        setSelectedInvoiceIds([]);
+        setPage(1);
+        setDraftFilters({});
+        setAppliedFilters({});
+    }, [activeCompanyId]);
+
+    const filteredInvoices = invoices.filter(inv => activeCompanyId ? inv.companyId === activeCompanyId : false);
 
     const sortedInvoices = sort
                            ? [ ...filteredInvoices ].sort( ( a, b ) => {
@@ -76,6 +100,74 @@ export default function Invoices() {
         return sort.direction === 'asc'
                ? <ArrowUp className="ml-1 inline h-3 w-3"/>
                : <ArrowDown className="ml-1 inline h-3 w-3"/>;
+    };
+
+    const filtersActive = Boolean(appliedFilters.search || appliedFilters.overdue || appliedFilters.status || appliedFilters.clientId || appliedFilters.currency || appliedFilters.issueDateFrom || appliedFilters.issueDateTo);
+    const allCurrentPageSelected = sortedInvoices.length > 0 && sortedInvoices.every(invoice => selectedInvoiceIds.includes(invoice.id));
+
+    const applyFilters = () => {
+        setAppliedFilters({...draftFilters});
+        setPage(1);
+        setSelectedInvoiceIds([]);
+    };
+
+    const resetFilters = () => {
+        setDraftFilters({});
+        setAppliedFilters({});
+        setPage(1);
+        setSelectedInvoiceIds([]);
+    };
+
+    const toggleInvoiceSelection = (id: number) => {
+        setSelectedInvoiceIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
+    };
+
+    const toggleCurrentPage = () => {
+        const ids = sortedInvoices.map(invoice => invoice.id);
+        setSelectedInvoiceIds(current => allCurrentPageSelected ? current.filter(id => !ids.includes(id)) : Array.from(new Set([...current, ...ids])));
+    };
+
+    const reloadCurrentPage = async () => {
+        const result = await loadInvoicePage({...appliedFilters, page, perPage: 25});
+        setLastPage(result.lastPage);
+        setTotalInvoices(result.total);
+    };
+
+    const applyBulkStatus = async (status: InvoiceStatus, payment?: {paidAt?: string | null; paymentNote?: string | null}) => {
+        if (!selectedInvoiceIds.length || bulkBusy) return;
+        setBulkBusy(true);
+        const results = await Promise.allSettled(selectedInvoiceIds.map(id => updateInvoiceStatus(id, status, payment)));
+        const failed = results.filter(result => result.status === 'rejected');
+        setBulkBusy(false);
+        setBulkPaidDialogOpen(false);
+        setBulkStatus('');
+        setSelectedInvoiceIds([]);
+        await reloadCurrentPage();
+        if (failed.length) toast.error(`${results.length - failed.length} uspešno, ${failed.length} neuspešno. Proverite greške pojedinačnih zahteva.`);
+        else toast.success(`Status promenjen za ${results.length} faktura.`);
+    };
+
+    const requestBulkStatus = () => {
+        if (!bulkStatus || !selectedInvoiceIds.length) return;
+        if (bulkStatus === 'paid') {
+            setBulkPaidAt(companyToday(activeCompany?.timezone));
+            setBulkPaidDialogOpen(true);
+            return;
+        }
+        void applyBulkStatus(bulkStatus);
+    };
+
+    const applyBulkDelete = async () => {
+        if (!selectedInvoiceIds.length || bulkBusy) return;
+        if (!window.confirm(`Da li želite da obrišete ${selectedInvoiceIds.length} označenih faktura?`)) return;
+        setBulkBusy(true);
+        const results = await Promise.allSettled(selectedInvoiceIds.map(id => deleteInvoice(id)));
+        const failed = results.filter(result => result.status === 'rejected');
+        setBulkBusy(false);
+        setSelectedInvoiceIds([]);
+        await reloadCurrentPage();
+        if (failed.length) toast.error(`${results.length - failed.length} uspešno obrisano, ${failed.length} neuspešno. KPO potvrde rešite pojedinačno.`);
+        else toast.success(`Obrisano faktura: ${results.length}.`);
     };
 
     const handleStatusChange = async ( id: number, newStatus: string ) => {
@@ -153,12 +245,38 @@ export default function Invoices() {
             )}
 
             <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
-                <Filters searchTerm={ searchTerm } onSearchTermChange={ setSearchTerm } overdueOnly={ overdueOnly } onOverdueOnlyChange={ setOverdueOnly }/>
+                <Filters
+                    filters={draftFilters}
+                    clients={clients.filter(client => client.companyId === activeCompanyId)}
+                    currencies={currencies}
+                    statusOptions={statusOptions}
+                    open={filtersOpen}
+                    active={filtersActive}
+                    onToggle={() => setFiltersOpen(open => !open)}
+                    onChange={setDraftFilters}
+                    onApply={applyFilters}
+                    onReset={resetFilters}
+                />
+
+                {selectedInvoiceIds.length > 0 && <div className="flex flex-wrap items-center gap-3 border-b border-indigo-100 bg-indigo-50 px-4 py-3 text-sm">
+                    <span className="font-medium text-indigo-900">Označeno: {selectedInvoiceIds.length}</span>
+                    <select value={bulkStatus} onChange={event => setBulkStatus(event.target.value as InvoiceStatus | '')} disabled={bulkBusy} className="rounded-md border-gray-300 text-sm"><option value="">Promeni status...</option>{statusOptions.map(status => <option key={status.key} value={status.key}>{status.label}</option>)}</select>
+                    <button type="button" onClick={requestBulkStatus} disabled={!bulkStatus || bulkBusy} className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Primeni status</button>
+                    <button type="button" onClick={() => void applyBulkDelete()} disabled={bulkBusy} className="rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Obriši označene</button>
+                </div>}
+
+                {bulkPaidDialogOpen && <div className="border-b border-amber-200 bg-amber-50 p-4" role="dialog" aria-label="Podaci o grupnoj uplati">
+                    <h2 className="font-semibold text-amber-950">Označite fakture kao plaćene</h2>
+                    <p className="mt-1 text-sm text-amber-900">Datum i napomena biće primenjeni na {selectedInvoiceIds.length} faktura.</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-amber-950">Datum uplate<input type="date" value={bulkPaidAt} onChange={event => setBulkPaidAt(event.target.value)} className="mt-1 block w-full rounded-md border-amber-300" /></label><label className="text-sm font-medium text-amber-950">Napomena<input type="text" value={bulkPaymentNote} onChange={event => setBulkPaymentNote(event.target.value)} className="mt-1 block w-full rounded-md border-amber-300" /></label></div>
+                    <div className="mt-3 flex gap-2"><LoadingButton type="button" loading={bulkBusy} loadingLabel="Čuvanje..." onClick={() => void applyBulkStatus('paid', {paidAt: bulkPaidAt, paymentNote: bulkPaymentNote || null})} className="rounded-md bg-amber-700 px-3 py-2 text-sm font-medium text-white">Potvrdi</LoadingButton><button type="button" onClick={() => setBulkPaidDialogOpen(false)} className="rounded-md border border-amber-400 px-3 py-2 text-sm text-amber-900">Otkaži</button></div>
+                </div>}
 
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                         <tr>
+                            <th scope="col" className="px-4 py-3"><input type="checkbox" aria-label="Izaberi sve fakture na ovoj stranici" checked={allCurrentPageSelected} onChange={toggleCurrentPage} /></th>
                             <th scope="col" aria-sort={ sort?.column === 'status' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
                                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 <button type="button" onClick={ () => toggleSort( 'status' ) }>Status{ sortIcon( 'status' ) }</button>
@@ -193,6 +311,7 @@ export default function Invoices() {
                             const client = clients.find( c => c.id === invoice.clientId );
                             return (
                                 <tr key={ invoice.id } className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-4 py-4"><input type="checkbox" aria-label={`Izaberi fakturu ${invoice.number}`} checked={selectedInvoiceIds.includes(invoice.id)} onChange={() => toggleInvoiceSelection(invoice.id)} /></td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <select
                                             value={ invoice.status }
@@ -250,6 +369,10 @@ export default function Invoices() {
                             Nema pronađenih faktura.
                         </div>
                     ) }
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                    <span>{totalInvoices} faktura · Strana {page} od {lastPage}</span>
+                    <div className="flex gap-2"><button type="button" disabled={page <= 1} onClick={() => {setPage(current => Math.max(1, current - 1)); setSelectedInvoiceIds([]);}} className="rounded-md border border-gray-300 bg-white px-3 py-1.5 disabled:opacity-50">Prethodna</button><button type="button" disabled={page >= lastPage} onClick={() => {setPage(current => Math.min(lastPage, current + 1)); setSelectedInvoiceIds([]);}} className="rounded-md border border-gray-300 bg-white px-3 py-1.5 disabled:opacity-50">Sledeća</button></div>
                 </div>
             </div>
         </div>

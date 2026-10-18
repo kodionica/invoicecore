@@ -364,6 +364,25 @@ export type CsvImportPreview = {
     can_import: boolean;
 };
 
+export interface InvoiceListFilters {
+    search?: string;
+    overdue?: boolean;
+    status?: InvoiceStatus | '';
+    clientId?: number | '';
+    currency?: string;
+    issueDateFrom?: string;
+    issueDateTo?: string;
+    page?: number;
+    perPage?: number;
+}
+
+export interface InvoiceListPage {
+    invoices: Invoice[];
+    currentPage: number;
+    lastPage: number;
+    total: number;
+}
+
 interface InvoiceCreatePayload {
     clientId: number;
     date: string;
@@ -454,6 +473,7 @@ interface AppContextType {
     getNextInvoiceNumber: () => Promise<string>;
     updateInvoiceStatus: (id: number, status: InvoiceStatus, payment?: {paidAt?: string | null; paymentNote?: string | null}) => Promise<void>;
     loadInvoices: (overdue?: boolean) => Promise<void>;
+    loadInvoicePage: (filters?: InvoiceListFilters) => Promise<InvoiceListPage>;
     updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
     sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string }, idempotencyKey?: string) => Promise<any>;
@@ -740,11 +760,34 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         }
     };
 
+    const loadInvoicePage = async (filters: InvoiceListFilters = {}): Promise<InvoiceListPage> => {
+        const params = {
+            search: filters.search || undefined,
+            overdue: filters.overdue ? 1 : undefined,
+            status: filters.status || undefined,
+            client_id: filters.clientId || undefined,
+            currency: filters.currency || undefined,
+            issue_date_from: filters.issueDateFrom || undefined,
+            issue_date_to: filters.issueDateTo || undefined,
+            page: filters.page,
+            per_page: filters.perPage,
+        };
+        const response = await api.get('/api/invoices', {params});
+        const payload = response.data ?? {};
+        const rawInvoices = Array.isArray(payload) ? payload : (Array.isArray(payload.data) ? payload.data : []);
+        const normalized = rawInvoices.map(normalizeInvoice);
+        setInvoices(normalized);
+        return {
+            invoices: normalized,
+            currentPage: Number(payload.current_page ?? 1),
+            lastPage: Number(payload.last_page ?? 1),
+            total: Number(payload.total ?? normalized.length),
+        };
+    };
+
     const loadInvoices = async (overdue = false) => {
         try {
-            const response = await api.get('/api/invoices', {params: overdue ? {overdue: 1} : undefined});
-            const data = Array.isArray(response.data) ? response.data : [];
-            setInvoices(data.map(normalizeInvoice));
+            await loadInvoicePage({overdue});
         } catch (error: any) {
             if (error?.response?.status === 422) {
                 setInvoices([]);
@@ -1414,6 +1457,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             getNextInvoiceNumber,
             updateInvoiceStatus,
             loadInvoices,
+            loadInvoicePage,
             updateInvoiceItemClassifications,
             downloadInvoicePdf,
             downloadInvoicePdfVersion,
