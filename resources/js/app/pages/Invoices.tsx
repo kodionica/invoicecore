@@ -278,27 +278,27 @@ export default function Invoices() {
                         <tr>
                             <th scope="col" className="px-4 py-3"><input type="checkbox" aria-label="Izaberi sve fakture na ovoj stranici" checked={allCurrentPageSelected} onChange={toggleCurrentPage} /></th>
                             <th scope="col" aria-sort={ sort?.column === 'status' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150] text-nowrap">
                                 <button type="button" onClick={ () => toggleSort( 'status' ) }>Status{ sortIcon( 'status' ) }</button>
                             </th>
                             <th scope="col" aria-sort={ sort?.column === 'number' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-nowrap">
                                 <button type="button" onClick={ () => toggleSort( 'number' ) }>Broj Fakture{ sortIcon( 'number' ) }</button>
                             </th>
                             <th scope="col" aria-sort={ sort?.column === 'client' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-nowrap">
                                 <button type="button" onClick={ () => toggleSort( 'client' ) }>Klijent{ sortIcon( 'client' ) }</button>
                             </th>
                             <th scope="col" aria-sort={ sort?.column === 'date' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-nowrap">
                                 <button type="button" onClick={ () => toggleSort( 'date' ) }>Datum{ sortIcon( 'date' ) }</button>
                             </th>
                             <th scope="col" aria-sort={ sort?.column === 'dueDate' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-nowrap">
                                 <button type="button" onClick={ () => toggleSort( 'dueDate' ) }>Rok{ sortIcon( 'dueDate' ) }</button>
                             </th>
                             <th scope="col" aria-sort={ sort?.column === 'total' ? ( sort.direction === 'asc' ? 'ascending' : 'descending' ) : 'none' }
-                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-nowrap">
                                 <button type="button" onClick={ () => toggleSort( 'total' ) }>Iznos{ sortIcon( 'total' ) }</button>
                             </th>
                             <th scope="col" className="relative px-6 py-3">
