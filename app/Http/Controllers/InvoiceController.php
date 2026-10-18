@@ -1352,6 +1352,7 @@ class InvoiceController extends Controller {
                 'totalOriginal' => (float) ( $invoice->total_original ?? $invoice->total ),
                 'totalRsd' => (float) ( $invoice->total_rsd ?? $invoice->total ),
                 'vatEnabledAtIssue' => $invoice->vat_enabled_at_issue,
+                'bankAccountId' => $invoice->bank_account_id,
                 'bankAccountBankName' => $invoice->bank_account_bank_name ?? null,
                 'bankAccountNumber' => $invoice->bank_account_number ?? $legacyBankAccount,
                 'bankAccountIban' => $invoice->bank_account_iban ?? $legacyIban,

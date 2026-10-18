@@ -59,11 +59,69 @@ it('supports multiple same-currency accounts and keeps one active default per cu
     $this->assertDatabaseHas('company_bank_accounts', ['account_number' => '160-0000000000000-00', 'swift_bic' => 'OTHERBIC']);
 });
 
+it('requires only the bank account number for RSD accounts', function () {
+    [$user, $company] = bankAccountFixture('rsd-validation');
+    $this->actingAs($user);
+
+    $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'iban' => null,
+        'swift_bic' => null,
+    ]))->assertCreated();
+
+    $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'account_number' => null,
+        'iban' => null,
+        'swift_bic' => null,
+    ]))->assertUnprocessable()->assertJsonValidationErrors(['account_number']);
+});
+
+it('requires IBAN and SWIFT/BIC for non-RSD accounts without requiring an account number', function () {
+    [$user, $company] = bankAccountFixture('foreign-validation');
+    $this->actingAs($user);
+
+    $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'account_number' => null,
+        'iban' => 'DE89370400440532013000',
+        'swift_bic' => 'COBADEFFXXX',
+        'currency' => 'EUR',
+        'account_type' => 'foreign',
+        'is_default' => false,
+    ]))->assertCreated();
+
+    $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'account_number' => null,
+        'iban' => null,
+        'swift_bic' => 'COBADEFFXXX',
+        'currency' => 'EUR',
+        'account_type' => 'foreign',
+    ]))->assertUnprocessable()->assertJsonValidationErrors(['iban']);
+
+    $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'account_number' => null,
+        'iban' => 'DE89370400440532013000',
+        'swift_bic' => null,
+        'currency' => 'EUR',
+        'account_type' => 'foreign',
+    ]))->assertUnprocessable()->assertJsonValidationErrors(['swift_bic']);
+
+    $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'currency' => 'EUR',
+        'account_type' => 'domestic',
+    ]))->assertUnprocessable()->assertJsonValidationErrors(['currency']);
+
+    $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'currency' => 'RSD',
+        'account_type' => 'foreign',
+        'account_number' => null,
+        'iban' => 'RS35160000000000000000',
+        'swift_bic' => 'TESTRSBG',
+    ]))->assertUnprocessable()->assertJsonValidationErrors(['currency']);
+});
+
 it('copies an account as a new non-default record without changing the original', function () {
     [$user, $company] = bankAccountFixture('copy');
     $this->actingAs($user);
     $original = $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload())->assertCreated()->json();
-
     $copy = $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
         'label' => 'Kopija',
         'swift_bic' => 'COPIEDBIC',
@@ -75,6 +133,46 @@ it('copies an account as a new non-default record without changing the original'
         ->and($copy['swift_bic'])->toBe('COPIEDBIC')
         ->and($copy['is_default'])->toBeFalse();
     $this->assertDatabaseHas('company_bank_accounts', ['id' => $original['id'], 'swift_bic' => 'TESTRSBG', 'is_default' => true]);
+});
+
+it('supports copying an RSD account into EUR with editable fields', function () {
+    [$user, $company] = bankAccountFixture('copy-currency');
+    $this->actingAs($user);
+    $original = $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload())->assertCreated()->json();
+    $existingEur = $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'label' => 'Postojeći EUR',
+        'account_number' => null,
+        'iban' => 'FR7630006000011234567890189',
+        'swift_bic' => 'AGRIFRPP',
+        'currency' => 'EUR',
+        'account_type' => 'foreign',
+    ]))->assertCreated()->json();
+
+    $copy = $this->postJson("/api/companies/{$company->id}/bank-accounts", bankAccountPayload([
+        'label' => 'Devizni račun',
+        'bank_name' => 'Druga banka',
+        'account_number' => null,
+        'iban' => 'DE89370400440532013000',
+        'swift_bic' => 'COBADEFFXXX',
+        'currency' => 'EUR',
+        'account_type' => 'foreign',
+        'payment_instructions' => 'EUR instrukcije',
+        'is_default' => false,
+    ]))->assertCreated()->json();
+
+    expect($copy['id'])->not->toBe($original['id'])
+        ->and($copy['currency'])->toBe('EUR')
+        ->and($copy['account_number'])->toBeNull()
+        ->and($copy['iban'])->toBe('DE89370400440532013000')
+        ->and($copy['swift_bic'])->toBe('COBADEFFXXX')
+        ->and($copy['is_default'])->toBeFalse();
+    expect($existingEur['is_default'])->toBeTrue();
+    $this->assertDatabaseHas('company_bank_accounts', [
+        'id' => $original['id'],
+        'currency' => 'RSD',
+        'account_number' => '160-0000000000000-00',
+        'is_default' => true,
+    ]);
 });
 
 it('selects the currency account and stores an immutable invoice snapshot', function () {

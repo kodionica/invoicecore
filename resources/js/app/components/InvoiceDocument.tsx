@@ -63,6 +63,7 @@ export interface InvoiceDocumentInvoice {
     totalRsd?: number;
     fxRateToRsd?: number;
     vatEnabledAtIssue?: boolean | null;
+    bankAccountId?: number | null;
     bankAccountNumber?: string | null;
     bankAccountBankName?: string | null;
     bankAccountIban?: string | null;
@@ -102,10 +103,10 @@ export default function InvoiceDocument({
     const {name: cname, address: caddress = '', city: ccity = '', country: ccountry = '', email: cemail, phone: cphone, tax_id: ctax_id, registration_number: cregistration_number} = client;
     const effectiveCompany: InvoiceDocumentCompany = {
         ...company,
-        bank_account: invoice.bankAccountNumber ?? company.bank_account,
-        iban: invoice.bankAccountIban ?? company.iban,
-        swift: invoice.bankAccountSwiftBic ?? company.swift,
-        payment_instructions: invoice.bankAccountPaymentInstructions ?? null,
+        bank_account: invoice.bankAccountId ? (invoice.bankAccountNumber ?? '') : (invoice.bankAccountNumber ?? company.bank_account),
+        iban: invoice.bankAccountId ? (invoice.bankAccountIban ?? '') : (invoice.bankAccountIban ?? company.iban),
+        swift: invoice.bankAccountId ? (invoice.bankAccountSwiftBic ?? '') : (invoice.bankAccountSwiftBic ?? company.swift),
+        payment_instructions: invoice.bankAccountId ? (invoice.bankAccountPaymentInstructions ?? '') : (invoice.bankAccountPaymentInstructions ?? company.payment_instructions),
     };
     const {
         resolvedCurrency,
@@ -161,18 +162,20 @@ export default function InvoiceDocument({
         );
     };
 
-    const bodyParams = buildIpsQrBodyParams({
-        company,
-        client,
-        invoice,
-        amountInRSD: resolvedAmountInRSD,
-        clientTypeCode,
-    });
+    const bodyParams = canGenerateQrCode && effectiveCompany.bank_account
+        ? buildIpsQrBodyParams({
+            company: effectiveCompany,
+            client,
+            invoice,
+            amountInRSD: resolvedAmountInRSD,
+            clientTypeCode,
+        })
+        : [];
 
     const {data, isLoading, error} = useQuery({
         queryKey: ['qrCode', invoice.number, bodyParams.join('|')],
         queryFn: () => fetchIpsQrCodeResponse(bodyParams),
-        enabled: providedQrCode === undefined && canGenerateQrCode && (!shouldConvertToRSD || Boolean(exchangeRate)),
+        enabled: providedQrCode === undefined && bodyParams.length > 0 && (!shouldConvertToRSD || Boolean(exchangeRate)),
     });
 
     const qrCode = providedQrCode ?? (data?.s?.code === 0 ? data.i : null);

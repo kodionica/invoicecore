@@ -31,7 +31,7 @@ export default function CompanyBankAccounts({companyId, accounts}: {companyId: n
     };
 
     const beginCopy = (account: CompanyBankAccount) => {
-        setDraft(toDraft(account));
+        setDraft({...toDraft(account), is_default: false});
         setEditingId(null);
         setCopyMode(true);
         setFormOpen(true);
@@ -40,8 +40,14 @@ export default function CompanyBankAccounts({companyId, accounts}: {companyId: n
     const submit = async (event: React.FormEvent) => {
         event.preventDefault();
         if (saving) return;
-        if (!draft.bank_name.trim() || !draft.account_number.trim() || !draft.currency) {
-            toast.error('Banka, broj računa i valuta su obavezni.');
+        const isDomestic = draft.account_type === 'domestic';
+        const currencyMismatch = (isDomestic && draft.currency !== 'RSD') || (!isDomestic && draft.currency === 'RSD');
+        if (currencyMismatch || !draft.bank_name.trim() || !draft.currency || (isDomestic && !draft.account_number.trim()) || (!isDomestic && (!draft.iban?.trim() || !draft.swift_bic?.trim()))) {
+            toast.error(currencyMismatch
+                ? (isDomestic ? 'Dinarski račun mora imati valutu RSD.' : 'Devizni račun ne može imati valutu RSD.')
+                : (isDomestic
+                    ? 'Banka, valuta i broj računa su obavezni.'
+                    : 'Banka, valuta, IBAN i SWIFT/BIC su obavezni za devizni račun.'));
             return;
         }
         setSaving(true);
@@ -60,6 +66,9 @@ export default function CompanyBankAccounts({companyId, accounts}: {companyId: n
             setSaving(false);
         }
     };
+
+    const currencyMismatch = (draft.account_type === 'domestic' && draft.currency !== 'RSD')
+        || (draft.account_type === 'foreign' && draft.currency === 'RSD');
 
     return <section className="rounded-lg bg-white p-6 shadow-sm ring-1 ring-gray-200">
         <div className="flex items-center justify-between gap-3">
@@ -97,14 +106,15 @@ export default function CompanyBankAccounts({companyId, accounts}: {companyId: n
         {(formOpen || editingId || copyMode) && <form onSubmit={submit} className="mt-6 grid gap-3 border-t pt-5 md:grid-cols-2">
             <h3 className="md:col-span-2 font-medium text-gray-900">{editingId ? 'Izmeni račun' : copyMode ? 'Kopiraj račun' : 'Novi račun'}</h3>
             <input value={draft.label ?? ''} onChange={e => setDraft({...draft, label: e.target.value})} placeholder="Naziv / oznaka" className="rounded-md border px-3 py-2 text-sm" />
-            <input disabled={copyMode} value={draft.bank_name} onChange={e => setDraft({...draft, bank_name: e.target.value})} placeholder="Naziv banke *" className="rounded-md border px-3 py-2 text-sm disabled:bg-gray-100" />
-            <input disabled={copyMode} value={draft.account_number} onChange={e => setDraft({...draft, account_number: e.target.value})} placeholder="Broj računa *" className="rounded-md border px-3 py-2 text-sm disabled:bg-gray-100" />
-            <input disabled={copyMode} value={draft.iban ?? ''} onChange={e => setDraft({...draft, iban: e.target.value})} placeholder="IBAN" className="rounded-md border px-3 py-2 text-sm disabled:bg-gray-100" />
-            <input value={draft.swift_bic ?? ''} onChange={e => setDraft({...draft, swift_bic: e.target.value})} placeholder="SWIFT/BIC" className="rounded-md border px-3 py-2 text-sm" />
-            <select disabled={copyMode} value={draft.currency} onChange={e => setDraft({...draft, currency: e.target.value})} className="rounded-md border px-3 py-2 text-sm disabled:bg-gray-100"><option>RSD</option><option>EUR</option><option>USD</option><option>GBP</option><option>CAD</option></select>
-            <select disabled={copyMode} value={draft.account_type} onChange={e => setDraft({...draft, account_type: e.target.value as 'domestic' | 'foreign'})} className="rounded-md border px-3 py-2 text-sm disabled:bg-gray-100"><option value="domestic">Domaći</option><option value="foreign">Devizni</option></select>
-            <textarea disabled={copyMode} value={draft.payment_instructions ?? ''} onChange={e => setDraft({...draft, payment_instructions: e.target.value})} placeholder="Dodatne instrukcije za plaćanje" className="rounded-md border px-3 py-2 text-sm md:col-span-2 disabled:bg-gray-100" rows={3}/>
-            {!copyMode && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.is_default === true} onChange={e => setDraft({...draft, is_default: e.target.checked})}/> Podrazumevani za ovu valutu</label>}
+            <label className="text-sm text-gray-700">Naziv banke <span className="text-red-600">*</span><input value={draft.bank_name} onChange={e => setDraft({...draft, bank_name: e.target.value})} className="mt-1 w-full rounded-md border px-3 py-2 text-sm" /></label>
+            <label className="text-sm text-gray-700">Broj računa {draft.account_type === 'domestic' && <span className="text-red-600">*</span>}<input value={draft.account_number ?? ''} onChange={e => setDraft({...draft, account_number: e.target.value})} className="mt-1 w-full rounded-md border px-3 py-2 text-sm" /></label>
+            <label className="text-sm text-gray-700">IBAN {draft.account_type === 'foreign' && <span className="text-red-600">*</span>}<input value={draft.iban ?? ''} onChange={e => setDraft({...draft, iban: e.target.value})} className="mt-1 w-full rounded-md border px-3 py-2 text-sm" /></label>
+            <label className="text-sm text-gray-700">SWIFT/BIC {draft.account_type === 'foreign' && <span className="text-red-600">*</span>}<input value={draft.swift_bic ?? ''} onChange={e => setDraft({...draft, swift_bic: e.target.value})} className="mt-1 w-full rounded-md border px-3 py-2 text-sm" /></label>
+            <select value={draft.currency} onChange={e => setDraft({...draft, currency: e.target.value})} className="rounded-md border px-3 py-2 text-sm"><option>RSD</option><option>EUR</option><option>USD</option><option>GBP</option><option>CAD</option></select>
+            <select value={draft.account_type} onChange={e => setDraft({...draft, account_type: e.target.value as 'domestic' | 'foreign'})} className="rounded-md border px-3 py-2 text-sm"><option value="domestic">Domaći</option><option value="foreign">Devizni</option></select>
+            {currencyMismatch && <p className="text-sm text-red-600 md:col-span-2">{draft.account_type === 'domestic' ? 'Dinarski račun mora imati valutu RSD.' : 'Devizni račun ne može imati valutu RSD.'}</p>}
+            <textarea value={draft.payment_instructions ?? ''} onChange={e => setDraft({...draft, payment_instructions: e.target.value})} placeholder="Dodatne instrukcije za plaćanje" className="rounded-md border px-3 py-2 text-sm md:col-span-2" rows={3}/>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.is_default === true} onChange={e => setDraft({...draft, is_default: e.target.checked})}/> Podrazumevani za ovu valutu</label>
             <div className="flex gap-2 md:col-span-2"><LoadingButton type="submit" loading={saving} loadingLabel="Čuvanje..." className="rounded-md bg-indigo-600 px-3 py-2 text-sm text-white">Sačuvaj</LoadingButton><button type="button" onClick={reset} className="rounded-md border px-3 py-2 text-sm">Otkaži</button></div>
         </form>}
     </section>;

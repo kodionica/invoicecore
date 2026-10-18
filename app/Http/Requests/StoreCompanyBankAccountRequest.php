@@ -25,10 +25,32 @@ class StoreCompanyBankAccountRequest extends FormRequest
         return [
             'label' => ['nullable', 'string', 'max:100'],
             'bank_name' => ['required', 'string', 'max:255'],
-            'account_number' => ['required', 'string', 'max:255'],
-            'iban' => ['nullable', 'string', 'max:255'],
-            'swift_bic' => ['nullable', 'string', 'max:32'],
-            'currency' => ['required', 'string', Rule::in(array_keys(config('currency', [])))],
+            'account_number' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::requiredIf(fn (): bool => $this->input('account_type') === 'domestic'),
+            ],
+            'iban' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::requiredIf(fn (): bool => $this->input('account_type') === 'foreign'),
+            ],
+            'swift_bic' => [
+                'nullable',
+                'string',
+                'max:32',
+                Rule::requiredIf(fn (): bool => $this->input('account_type') === 'foreign'),
+            ],
+            'currency' => [
+                'required',
+                'string',
+                Rule::in(array_keys(config('currency', []))),
+                $this->input('account_type') === 'domestic'
+                    ? Rule::in(['RSD'])
+                    : Rule::notIn(['RSD']),
+            ],
             'account_type' => ['required', 'in:domestic,foreign'],
             'payment_instructions' => ['nullable', 'string', 'max:5000'],
             'is_default' => ['sometimes', 'boolean'],

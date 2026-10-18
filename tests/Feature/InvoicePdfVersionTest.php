@@ -4,6 +4,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\InvoiceEmailSend;
 use App\Models\InvoicePdfVersion;
+use App\Models\CompanyBankAccount;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -63,6 +64,46 @@ it('creates one current PDF version and reuses it on repeated downloads', functi
     expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->count())->toBe(1);
     $this->assertDatabaseHas('invoice_pdf_versions', ['invoice_id' => $invoice->id, 'version' => 1, 'protected_at' => null]);
     expect($invoice->fresh()->pdf_path)->not->toBeNull();
+});
+
+it('does not render an empty account number row for a foreign-currency snapshot', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-foreign-bank@example.com');
+    $account = CompanyBankAccount::create([
+        'company_id' => $company->id,
+        'bank_name' => 'Devizna banka',
+        'account_number' => null,
+        'iban' => 'DE89370400440532013000',
+        'swift_bic' => 'COBADEFFXXX',
+        'currency' => 'EUR',
+        'account_type' => 'foreign',
+        'is_default' => true,
+        'is_active' => true,
+    ]);
+    $invoice->update([
+        'currency' => 'EUR',
+        'bank_account_id' => $account->id,
+        'bank_account_bank_name' => $account->bank_name,
+        'bank_account_number' => null,
+        'bank_account_iban' => $account->iban,
+        'bank_account_swift_bic' => $account->swift_bic,
+        'bank_account_currency' => 'EUR',
+    ]);
+
+    Storage::fake('local');
+    $builder = Mockery::mock(PdfBuilder::class);
+    $builder->shouldReceive('format')->andReturnSelf();
+    $builder->shouldReceive('withBrowsershot')->andReturnSelf();
+    $builder->shouldReceive('disk')->andReturnSelf();
+    $builder->shouldReceive('save')->andReturnUsing(function (string $path) use ($builder) {
+        Storage::disk('local')->put($path, '%PDF-1.7 test');
+        return $builder;
+    });
+    Pdf::shouldReceive('html')
+        ->once()
+        ->withArgs(fn (string $html): bool => ! str_contains($html, 'BROJ RAČUNA:'))
+        ->andReturn($builder);
+
+    $this->actingAs($user)->getJson("/api/invoices/{$invoice->id}/pdf")->assertOk();
 });
 
 it('protects the exact PDF version after successful email and keeps it after status changes', function () {
