@@ -90,6 +90,7 @@ export interface Invoice {
     taxOriginal?: number;
     totalOriginal: number;
     totalRsd: number;
+    hasRsdSnapshot?: boolean;
     fxRateToRsd?: number;
     includeInKpo: boolean;
     vatEnabledAtIssue?: boolean | null;
@@ -631,6 +632,7 @@ const normalizeInvoice = (invoice: any): Invoice => {
         taxOriginal: taxOriginal >= 0 ? taxOriginal : undefined,
         totalOriginal: totalOriginal > 0 ? totalOriginal : total,
         totalRsd: totalRsd > 0 ? totalRsd : total,
+        hasRsdSnapshot: invoice.total_rsd !== null && invoice.total_rsd !== undefined,
         fxRateToRsd: invoice.fx_rate_to_rsd !== undefined && invoice.fx_rate_to_rsd !== null
             ? Number(invoice.fx_rate_to_rsd)
             : undefined,

@@ -1,4 +1,4 @@
-export const formatCurrency = ( amount: number, currency?: string, locale = 'sr-RS' ) => {
+export const formatCurrency = ( amount: number | null | undefined, currency?: string, locale = 'sr-RS' ) => {
     const code = currency || 'RSD';
     const value = Number.isFinite( amount ) ? amount : 0;
 
@@ -13,6 +13,32 @@ export const formatCurrency = ( amount: number, currency?: string, locale = 'sr-
     } catch {
         return `${ code } ${ value.toFixed( 2 ) }`;
     }
+};
+
+export interface InvoiceRsdSnapshot {
+    currency?: string | null;
+    total: number;
+    totalRsd: number;
+    fxRateToRsd?: number;
+    hasRsdSnapshot?: boolean;
+}
+
+/** Returns the persisted final invoice amount in RSD, or null when the snapshot is unusable. */
+export const getInvoiceAmountInRsd = (invoice: InvoiceRsdSnapshot): number | null => {
+    if ((invoice.currency ?? 'RSD').toUpperCase() === 'RSD') {
+        return Number.isFinite(invoice.totalRsd) ? invoice.totalRsd : invoice.total;
+    }
+
+    if (
+        invoice.hasRsdSnapshot === false
+        || !Number.isFinite(invoice.fxRateToRsd)
+        || (invoice.fxRateToRsd ?? 0) <= 0
+        || !Number.isFinite(invoice.totalRsd)
+    ) {
+        return null;
+    }
+
+    return invoice.totalRsd;
 };
 
 interface formatCurrencyAltParameters {

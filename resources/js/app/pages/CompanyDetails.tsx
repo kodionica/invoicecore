@@ -6,6 +6,7 @@ import {toast} from 'sonner';
 import {LoadingButton} from '../components/Loading';
 import CompanyBankAccounts from '../components/CompanyBankAccounts';
 import {DEFAULT_COMPANY_TIMEZONE, supportedTimezones} from '../utils/timezone';
+import {formatCurrency, getInvoiceAmountInRsd} from '../utils/format';
 
 export default function CompanyDetails() {
     const {id} = useParams();
@@ -58,7 +59,9 @@ export default function CompanyDetails() {
     const companyClients = clients.filter(c => c.companyId === company.id);
     const companyInvoices = invoices.filter(inv => inv.companyId === company.id);
     const paidInvoices = companyInvoices.filter(inv => inv.status === 'paid');
-    const totalRevenue = paidInvoices.reduce((sum, inv) => sum + inv.total, 0);
+    const paidAmountsInRsd = paidInvoices.map(getInvoiceAmountInRsd);
+    const totalRevenue = paidAmountsInRsd.reduce((sum, amount) => sum + (amount ?? 0), 0);
+    const invoicesWithoutRsdSnapshot = paidAmountsInRsd.filter(amount => amount === null).length;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -203,7 +206,8 @@ export default function CompanyDetails() {
                             <div className="ml-5 w-0 flex-1">
                                 <dl>
                                     <dt className="text-sm font-medium text-gray-500 truncate">Ukupan Prihod</dt>
-                                    <dd className="text-lg font-bold text-gray-900">€{totalRevenue.toLocaleString()}</dd>
+                        <dd className="text-lg font-bold text-gray-900">{formatCurrency(totalRevenue, 'RSD')}</dd>
+                        {invoicesWithoutRsdSnapshot > 0 && <p className="mt-1 text-xs text-amber-700">{invoicesWithoutRsdSnapshot} plaćenih faktura nije uključeno zbog nevažećeg ili nedostajućeg RSD snapshot-a.</p>}
                                 </dl>
                             </div>
                         </div>
