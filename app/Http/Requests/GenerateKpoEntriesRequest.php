@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Company;
+use Illuminate\Support\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 
 class GenerateKpoEntriesRequest extends FormRequest
@@ -9,7 +11,8 @@ class GenerateKpoEntriesRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         if ($this->missing('year')) {
-            $this->merge(['year' => now()->year]);
+            $timezone = $this->user()?->activeCompany?->effectiveTimezone() ?? Company::DEFAULT_TIMEZONE;
+            $this->merge(['year' => Carbon::now($timezone)->year]);
         }
 
         if ($this->has('confirm_manual_overlap')) {

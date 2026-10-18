@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
+use DateTimeZone;
 
 /**
  * @property int                                                                     $id
@@ -18,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string|null                                                             $address
  * @property string|null                                                             $city
  * @property string|null                                                             $country
+ * @property string|null                                                             $timezone
  * @property string|null                                                             $email
  * @property string|null                                                             $phone
  * @property string|null                                                             $bank_account
@@ -79,6 +82,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class Company extends Model {
     use HasFactory;
 
+    public const DEFAULT_TIMEZONE = 'Europe/Belgrade';
+
     protected $fillable   = [
         'name',
         'tax_id',
@@ -86,6 +91,7 @@ class Company extends Model {
         'address',
         'city',
         'country',
+        'timezone',
         'email',
         'phone',
         'bank_account',
@@ -153,6 +159,23 @@ class Company extends Model {
         $value = data_get($this->other_settings ?? [], 'invoice_pdf.max_unprotected_versions', 5);
 
         return max(0, min(100, (int) $value));
+    }
+
+    public function effectiveTimezone(): string
+    {
+        $timezone = $this->timezone ?: self::DEFAULT_TIMEZONE;
+
+        try {
+            new DateTimeZone($timezone);
+            return $timezone;
+        } catch (\Throwable) {
+            return self::DEFAULT_TIMEZONE;
+        }
+    }
+
+    public function businessToday(): Carbon
+    {
+        return Carbon::now($this->effectiveTimezone())->startOfDay();
     }
 
     public function scopeForUser( Builder $query, int $userId ): Builder {

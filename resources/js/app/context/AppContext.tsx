@@ -13,6 +13,7 @@ export interface Company {
     address: string;
     city: string;
     country: string;
+    timezone?: string | null;
     email: string;
     phone: string;
     bank_account: string;
@@ -323,6 +324,7 @@ interface CompanyCreatePayload {
     address: string;
     city: string;
     country: string;
+    timezone?: string | null;
     email: string;
     phone: string;
     bank_account: string;
@@ -350,6 +352,17 @@ interface ClientCreatePayload {
     country?: string;
     client_type?: string;
 }
+
+export type CsvImportPreview = {
+    type: 'clients' | 'invoices';
+    headers: string[];
+    fields: string[];
+    mapping: Record<string, string>;
+    preview: string[][];
+    errors: string[];
+    summary: { rows: number; invoices: number; items: number; clients: number; duplicates: number };
+    can_import: boolean;
+};
 
 interface InvoiceCreatePayload {
     clientId: number;
@@ -456,6 +469,9 @@ interface AppContextType {
     generateKpoEntries: (year: number, entries: KpoGenerationSelection[], confirmManualOverlap?: boolean, includeHistorical?: boolean) => Promise<KpoGenerationResult>;
     previewKpoRegeneration: (year: number, invoiceIds?: number[], includeHistorical?: boolean) => Promise<KpoRegenerationPreview>;
     regenerateKpoEntries: (year: number, invoiceIds: number[], previewFingerprint: string, confirmManualOverwrite?: boolean, includeHistorical?: boolean) => Promise<KpoRegenerationResult>;
+    previewCsvImport: (type: 'clients' | 'invoices', file: File, mapping?: Record<string, string>) => Promise<CsvImportPreview>;
+    importCsv: (type: 'clients' | 'invoices', file: File, mapping: Record<string, string>) => Promise<any>;
+    exportCsv: (type: 'clients' | 'invoices') => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -511,6 +527,7 @@ const normalizeCompany = (company: any): Company => {
         address: company.address ?? '',
         city: company.city ?? '',
         country: company.country ?? '',
+        timezone: company.timezone ?? null,
         email: company.email ?? '',
         phone: company.phone ?? '',
         bank_account: company.bank_account ?? '',
@@ -735,6 +752,38 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             }
             throw error;
         }
+    };
+
+    const previewCsvImport = async (type: 'clients' | 'invoices', file: File, mapping: Record<string, string> = {}) => {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('mapping', JSON.stringify(mapping));
+        const response = await api.post(`/api/import-export/${type}/preview`, form);
+        return response.data as CsvImportPreview;
+    };
+
+    const importCsv = async (type: 'clients' | 'invoices', file: File, mapping: Record<string, string>) => {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('mapping', JSON.stringify(mapping));
+        form.append('confirmed', '1');
+        const response = await api.post(`/api/import-export/${type}/import`, form);
+        await Promise.all([loadClients(), loadInvoices()]);
+        return response.data;
+    };
+
+    const exportCsv = async (type: 'clients' | 'invoices') => {
+        const response = await api.get(`/api/import-export/${type}/export`, {responseType: 'blob'});
+        const disposition = response.headers['content-disposition'] as string | undefined;
+        const filename = disposition?.match(/filename="?([^";]+)"?/i)?.[1] ?? `${type}.csv`;
+        const url = window.URL.createObjectURL(new Blob([response.data], {type: 'text/csv;charset=utf-8'}));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
     };
 
     const loadKpo = async (filters?: KpoFilters): Promise<KpoListResponse> => {
@@ -1381,6 +1430,9 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             generateKpoEntries,
             previewKpoRegeneration,
             regenerateKpoEntries,
+            previewCsvImport,
+            importCsv,
+            exportCsv,
         }}>
             {children}
         </AppContext.Provider>

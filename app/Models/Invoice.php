@@ -146,7 +146,7 @@ class Invoice extends Model {
 
     public function scopeOverdue(Builder $query, ?Carbon $today = null): Builder
     {
-        $today ??= Carbon::today();
+        $today ??= Carbon::today(Company::DEFAULT_TIMEZONE);
 
         return $query
             ->whereNotNull('due_date')
@@ -160,9 +160,9 @@ class Invoice extends Model {
             return false;
         }
 
-        $today ??= Carbon::today();
+        $today ??= Carbon::today($this->company?->effectiveTimezone() ?? Company::DEFAULT_TIMEZONE);
 
-        return $this->due_date->copy()->startOfDay()->lt($today->copy()->startOfDay());
+        return $this->due_date->toDateString() < $today->toDateString();
     }
 
     public function overdueDays(?Carbon $today = null): int
@@ -171,8 +171,19 @@ class Invoice extends Model {
             return 0;
         }
 
-        $today ??= Carbon::today();
+        $today ??= Carbon::today($this->company?->effectiveTimezone() ?? Company::DEFAULT_TIMEZONE);
 
-        return $this->due_date->copy()->startOfDay()->diffInDays($today->copy()->startOfDay());
+        $dueDate = Carbon::createFromFormat(
+            'Y-m-d',
+            $this->due_date->toDateString(),
+            $today->getTimezone()
+        )->startOfDay();
+        $businessToday = Carbon::createFromFormat(
+            'Y-m-d',
+            $today->toDateString(),
+            $today->getTimezone()
+        )->startOfDay();
+
+        return (int) $dueDate->diffInDays($businessToday);
     }
 }

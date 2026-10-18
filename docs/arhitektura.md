@@ -1,50 +1,41 @@
 # Arhitektura i struktura
 
-## Status nalaza
-
-- **Potvrđeno u kodu:** Laravel SPA; web ruta vraća `resources/views/app.blade.php`, React Router upravlja dashboard-om, a API je u `routes/api.php`.
-- **Potvrđeno u manifestima:** PHP `^8.2`, Laravel Framework `v12.53.0` iz `composer.lock`, React `^18.3.1`, TypeScript `^5.9.2`, Vite `^7.0.7`.
-
 ## Tehnologije
 
-- Backend: PHP 8.2, Laravel 12, Eloquent ORM i Laravel Sanctum.
-- Frontend: React 18, TypeScript, Vite i React Router 7.
-- API klijent: Axios, centralizovan u `resources/js/app/context/AppContext.tsx`.
-- UI: Tailwind CSS v4, SCSS, Lucide React i postojeće utility komponente.
-- PDF: `spatie/laravel-pdf`, Browsershot/Puppeteer i postojeći SSR obrazac.
-- Testovi: Pest/PHPUnit; formatiranje radi Laravel Pint.
-- Dodatno: TanStack Query za deo dokumenta fakture, Recharts za dashboard, React Hook Form za forme i Puppeteer/Browsershot za PDF.
+- Backend: PHP 8.2+ constraint, Laravel 12, Eloquent i Sanctum.
+- Lokalno okruženje: DDEV, PHP 8.4, MariaDB 11.8, Chromium.
+- Frontend: React 18, TypeScript, Vite 7, React Router 7, Axios i Tailwind CSS 4.
+- Testovi: Pest/PHPUnit; frontend nema zaseban test runner u package.json.
+- PDF: Spatie Laravel PDF, Browsershot/Puppeteer i React SSR.
 
-## Tok aplikacije
+## Tok
 
-`routes/web.php` vraća Laravel Blade view `resources/views/app.blade.php`. React Router zatim upravlja dashboard stranicama definisanim u `resources/js/app/routes.ts`.
+routes/web.php vraća SPA Blade view, React Router upravlja dashboard stranicama, a routes/api.php sadrži Sanctum API. AppContext centralizuje frontend API pozive i normalizaciju.
 
-API rute su u `routes/api.php`. Zaštićene rute su u `auth:sanctum` grupi. Poslovno stanje i API pozivi za frontend nalaze se u `AppContext`, dok stranice prikazuju i menjaju stanje kroz postojeće context metode.
+## Struktura
 
-## Važne putanje
-
-| Oblast | Putanja |
-|---|---|
-| Modeli | `app/Models/` |
-| Kontroleri | `app/Http/Controllers/` |
-| Validacija | `app/Http/Requests/` |
-| Autorizacija | `app/Policies/` |
-| Servisi | `app/Services/` |
-| Migracije | `database/migrations/` |
-| React stranice | `resources/js/app/pages/` |
-| React context/API | `resources/js/app/context/AppContext.tsx` |
-| React rute | `resources/js/app/routes.ts` |
-| API rute | `routes/api.php` |
-| Testovi | `tests/Feature/`, `tests/Unit/` |
+- app/Models — User, Company, Client, Invoice, InvoiceItem, KPO, PDF i audit modeli
+- app/Http/Controllers i app/Http/Requests — API tokovi i validacija
+- app/Policies — ownership i active-company autorizacija
+- app/Services — FX, KPO obračun/generisanje i poslovni tokovi
+- database/migrations — šema
+- resources/js/app — React stranice, context, komponente i utilities
+- resources/js/ssr — PDF dokument SSR
+- scripts — host backup/restore i SSR pomoć
+- tests/Feature, tests/Unit — testovi
+- docs — projektna dokumentacija
 
 ## Konvencije
 
-Pre izmene proveriti postojeći model, request, kontroler, servis i sličnu React stranicu. Ne uvoditi novu biblioteku ili novi obrazac ako postojeći obrazac pokriva zahtev. Tenant filter i serverska autorizacija moraju postojati bez obzira na frontend filtere.
+Pre izmene proveriti postojeći model, request, policy, servis, rutu i sličnu React stranicu. Serverski company scope i authorization su obavezni; frontend filter nije sigurnosna granica. Šema se menja samo novom migracijom.
 
-## Pokretanje i migracije
+## DDEV i komande
 
-- `composer run dev` pokreće Laravel server, queue listener, Pail i Vite.
-- `composer run setup` instalira zavisnosti, generiše ključ, migrira i gradi frontend.
-- `php artisan migrate` primenjuje migracije; `php artisan migrate:status` proverava stanje.
-- `.env.example` koristi MySQL/MariaDB, dok Laravel konfiguracija ima SQLite fallback.
-- Queue je podrazumevano database-backed, ali slanje fakture trenutno koristi sinhroni `Mail::send`.
+    ddev start
+    ddev exec composer install
+    ddev exec php artisan test
+    ddev exec npx tsc --noEmit --allowImportingTsExtensions
+    ddev exec npm run build
+    ddev exec npm run build:ssr
+
+Migracije nisu deo redovne verifikacije i zahtevaju eksplicitno odobrenje.

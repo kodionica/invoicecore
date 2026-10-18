@@ -6,7 +6,7 @@ import {toast} from 'sonner';
 import {getInvoiceStatusLabelMap, getInvoiceStatusOptions, invoiceStatusSelectClass} from '../utils/invoiceStatus';
 import InvoiceDocument from '../components/InvoiceDocument';
 import {LoadingButton, LoadingSpinner} from '../components/Loading';
-import {formatLocalDate} from '../utils/format';
+import {companyToday} from '../utils/timezone';
 
 export default function InvoiceDetails() {
    const {id} = useParams();
@@ -40,7 +40,7 @@ export default function InvoiceDetails() {
     const pdfMenuRef = useRef<HTMLDivElement>(null);
 
     const openPaymentDialog = () => {
-        setPaymentDate(invoice?.paidAt ? invoice.paidAt.slice(0, 10) : formatLocalDate(new Date()));
+        setPaymentDate(invoice?.paidAt ? invoice.paidAt.slice(0, 10) : companyToday(company?.timezone));
         setPaymentNote(invoice?.paymentNote ?? '');
         setPaymentDialogOpen(true);
     };

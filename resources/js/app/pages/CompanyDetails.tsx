@@ -5,6 +5,7 @@ import {ArrowLeft, Building2, Save, Trash2, CheckCircle, Users, FileText, Calcul
 import {toast} from 'sonner';
 import {LoadingButton} from '../components/Loading';
 import CompanyBankAccounts from '../components/CompanyBankAccounts';
+import {DEFAULT_COMPANY_TIMEZONE, supportedTimezones} from '../utils/timezone';
 
 export default function CompanyDetails() {
     const {id} = useParams();
@@ -26,6 +27,7 @@ export default function CompanyDetails() {
         address: company?.address || '',
         city: company?.city || '',
         country: company?.country || '',
+        timezone: company?.timezone || DEFAULT_COMPANY_TIMEZONE,
         email: company?.email || '',
         phone: company?.phone || '',
         bank_account: company?.bank_account || '',
@@ -227,6 +229,7 @@ export default function CompanyDetails() {
                                         address: company.address,
                                         city: company.city,
                                         country: company.country,
+                                        timezone: company.timezone || DEFAULT_COMPANY_TIMEZONE,
                                         email: company.email,
                                         phone: company.phone,
                                         bank_account: company.bank_account,
@@ -255,6 +258,7 @@ export default function CompanyDetails() {
                                             address: company.address,
                                             city: company.city,
                                             country: company.country,
+                                            timezone: company.timezone || DEFAULT_COMPANY_TIMEZONE,
                                             email: company.email,
                                             phone: company.phone,
                                             bank_account: company.bank_account,
@@ -441,6 +445,28 @@ export default function CompanyDetails() {
                                     />
                                 ) : (
                                     <p className="text-sm text-gray-900 py-2">{company.country}</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label htmlFor="timezone" className="block text-sm font-medium text-gray-700">
+                                Vremenska zona
+                            </label>
+                            <div className="mt-1">
+                                {isEditing ? (
+                                    <select
+                                        id="timezone"
+                                        value={formData.timezone}
+                                        onChange={(e) => setFormData({...formData, timezone: e.target.value})}
+                                        className="block w-full rounded-md border-gray-300 bg-white py-2 px-3 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                    >
+                                        {supportedTimezones().map(timezone => (
+                                            <option key={timezone} value={timezone}>{timezone}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <p className="text-sm text-gray-900 py-2">{company.timezone || DEFAULT_COMPANY_TIMEZONE}</p>
                                 )}
                             </div>
                         </div>

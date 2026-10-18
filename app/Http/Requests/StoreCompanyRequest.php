@@ -3,6 +3,8 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use DateTimeZone;
+use Illuminate\Validation\Rule;
 
 class StoreCompanyRequest extends FormRequest {
     /**
@@ -33,6 +35,7 @@ class StoreCompanyRequest extends FormRequest {
             'address'             => [ 'nullable', 'string' ],
             'city'                => [ 'nullable', 'string' ],
             'country'             => [ 'nullable', 'string' ],
+            'timezone'            => [ 'nullable', 'string', 'max:64', Rule::in(DateTimeZone::listIdentifiers()) ],
             'email'               => [ 'nullable', 'email' ],
             'phone'               => [ 'nullable', 'string' ],
             'bank_account'        => [ 'nullable', 'string' ],

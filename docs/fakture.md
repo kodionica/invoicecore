@@ -2,54 +2,42 @@
 
 ## Stranice i API
 
-- `/dashboard/invoices` — lista i inline promena statusa, `resources/js/app/pages/Invoices.tsx`.
-- `/dashboard/invoices/new` — kreiranje, `InvoiceForm.tsx`.
-- `/dashboard/invoices/:id` — detalj, `InvoiceDetails.tsx`.
-- `GET /api/invoices` — lista aktivne firme.
-- `POST /api/invoices` — kreiranje.
-- `GET|PUT|DELETE /api/invoices/{invoice}` — standardne operacije uz policy.
-- `GET /api/invoices/{invoice}/pdf` — PDF.
-- `POST /api/invoices/{invoice}/email` — slanje emaila.
-- `GET /api/invoices/next-number` — predlog broja fakture.
+- /dashboard/invoices — lista, filteri, dospele fakture i statusi
+- /dashboard/invoices/new — kreiranje
+- /dashboard/invoices/:id — detalj, plaćanje, PDF, e-mail i istorija
+- GET|POST|PUT|DELETE /api/invoices — company-scoped CRUD
+- GET /api/invoices/{invoice}/pdf — privatni PDF
+- POST /api/invoices/{invoice}/email — idempotentno slanje
+- GET /api/invoices/next-number — predlog broja
 
-Implementacija je u `InvoiceController`, `StoreInvoiceRequest`, `InvoicePolicy` i `Invoice` modelu.
+Implementacija je u InvoiceController, Form Request klasama, Invoice modelu, policies i AppContext/React stranicama.
 
-## Kreiranje
+## Iznosi, valute i PDV
 
-`StoreInvoiceRequest` validira klijenta, datume, valutu, način plaćanja i stavke. `InvoiceController::store()` proverava pripadnost klijenta aktivnoj firmi, koristi invoice counter, računa stavke, PDV i RSD snapshot preko `ExchangeRateService`.
+Server čuva subtotal, porez i total u originalnoj valuti i RSD, uz fx_rate_to_rsd, fx_provider i fx_date snapshot. Kurs dobavlja ExchangeRateService; nova faktura ne zavisi od kasnije promene kursa.
 
-Na fakturi postoje originalni i RSD iznosi (`*_original`, `*_rsd`). Statusi su definisani kroz `App\Enums\InvoiceStatus`.
+vat_enabled_at_issue čuva poreski snapshot. KPO eligibility koristi snapshot, a ne trenutni Company.vat_enabled. Istorijske fakture sa NULL snapshotom mogu biti blokirane dok se status eksplicitno ne razreši.
 
-`StoreInvoiceRequest` zahteva najmanje jednu stavku, validira količinu/cenu, sprečava rok pre datuma izdavanja i trenutno ne prihvata datum izdavanja pre današnjeg dana. Kreiranje je u DB transakciji i koristi mesečni `invoice_counters` po firmi/godini/mesecu uz zaključavanje.
+## Numeracija i izmene
 
-## Statusi, izmene i slanje
+Brojevi faktura su jedinstveni po firmi kroz bazu i serversku validaciju. Counter je po firmi, godini i mesecu. Izmena bez promene broja je dozvoljena; konflikt sa drugim brojem vraća validation grešku.
 
-Statusi su `draft`, `sent`, `paid`, `overdue` i `cancelled`. `InvoiceController::update()` prihvata bilo koji status; nema serverski definisanih prelaza, automatskog overdue-a, storna kao posebnog događaja ili istorije izmena. DELETE trajno briše fakturu i stavke kroz cascade.
+Izmena fakture može zahtevati KPO confirmation. Potvrđene strukturne promene se izvršavaju transakcijski: zadržani KPO zapisi čuvaju ID/broj, obsolete generated zapisi se soft-delete-uju, a audit ostaje sačuvan.
 
-`POST /api/invoices/{invoice}/email` generiše/reupotrebljava PDF, šalje `InvoiceMail` klijentu i postavlja status na `sent`. **Delimično:** nema istorije slanja, retry-ja ili potvrde isporuke; `.env.example` koristi `MAIL_MAILER=log`.
+## Statusi i plaćanje
 
-## Naplata
+Statusi su draft, sent, paid, overdue i cancelled. Minimalna evidencija plaćanja koristi paid_at i payment_note na fakturi; nema parcijalnih uplata, salda ili Payment tabele. paid zahteva datum uplate za nove promene. Vraćanje iz paid čisti aktivne payment vrednosti uz invoice revision audit.
 
-`payment_method` je samo string na fakturi. Nema `Payment` modela, migracije, API-ja za uplate, delimičnih uplata, duga ili povezivanja sa KPO. Stari `database/factories/InvoiceFactory.php` i `database/seeders/InvoiceSeeder.php` referenciraju nepostojeći `App\Models\Payment` i zastarela polja, pa nisu dokaz postojeće payment funkcionalnosti.
+Dospelost se računa kada due_date postoji, prethodi današnjem datumu firme i status nije paid, cancelled ili draft. Filter se izvršava na backendu pre paginacije.
 
-## Valute i PDV
+## Bankovni račun fakture
 
-Server snapshot-uje kurs, provajdera i datum kroz `ExchangeRateService`; RSD koristi kurs 1, a strane valute podatke sa `kurs.resenje.org`. PDV se računa samo kada je `Company::vat_enabled=true`. `total_original` i `total_rsd` su relevantni snapshot iznosi za nove fakture.
+Faktura čuva bank_account_id i snapshot bankarskih instrukcija. Pri kreiranju se bira aktivan račun odgovarajuće valute; kasnija promena/deaktiviranje računa ne menja već sačuvanu fakturu ili PDF. Stare fakture bez snapshot-a koriste legacy payment polja.
 
-## Bankarske instrukcije po valuti — predlog
+## KPO
 
-Pri kreiranju fakture budući API treba da dobije `bank_account_id` ili eksplicitnu odluku da se koristi predloženi račun. Server mora proveriti da račun pripada aktivnoj firmi, da je aktivan i da je njegova valuta jednaka valuti fakture ili da je označen kao potvrđeni opšti račun. Ako nema odgovarajućeg računa, UI treba jasno da prikaže upozorenje i zahtev za izbor/dopunu podataka; ne sme automatski prikazati račun druge valute.
+include_in_kpo kontroliše da li se faktura nudi za novo KPO generisanje. KPO datum može koristiti paid_at kao predlog, ali korisnik potvrđuje konačan datum. Promena statusa plaćanja ne menja postojeće KPO zapise.
 
-Faktura treba da sačuva `bank_account_id` kao istorijski trag kada je moguće i kopiju svih instrukcija korišćenih pri izdavanju u `bank_instructions_snapshot`. Snapshot mora obuhvatiti i opciona polja koja je korisnik uneo, a kasnije izmene ili deaktiviranje računa ne smeju promeniti već izdat dokument. Ručni izbor je dozvoljen samo među računima koji su validni za valutu fakture; izbor ne sme zaobići tenant proveru.
+## Otvorena pitanja
 
-## KPO uključivanje
-
-Faktura ima boolean `include_in_kpo`, dodat migracijom `2026_10_15_000003_add_include_in_kpo_to_invoices_table.php`.
-
-- Podrazumevana vrednost je `true`.
-- Checkbox/toggle se nalazi na `InvoiceForm.tsx`.
-- Vrednost se šalje kao `include_in_kpo` kroz `AppContext`.
-- KPO preview i generisanje ignorišu fakture sa `include_in_kpo=false`.
-- Direktno serversko kreiranje KPO zapisa iz isključene fakture je odbijeno u `KpoEntryService`.
-
-Isključivanje ne briše već postojeći KPO zapis.
+Računovodstveno značenje KPO prihoda, storno i zaključavanje perioda dokumentovani su u otvorena-pitanja.md.

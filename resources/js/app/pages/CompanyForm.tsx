@@ -5,6 +5,7 @@ import {useApp} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft} from 'lucide-react';
 import {LoadingButton} from '../components/Loading';
+import {deviceTimezone, supportedTimezones} from '../utils/timezone';
 
 interface CompanyFormData {
     name: string;
@@ -13,6 +14,7 @@ interface CompanyFormData {
     address: string;
     city: string;
     country: string;
+    timezone: string;
     email: string;
     phone: string;
     bank_account: string;
@@ -32,6 +34,7 @@ export default function CompanyForm() {
         defaultValues: {
             currency: 'RSD',
             vat_enabled: true,
+            timezone: deviceTimezone(),
         },
     });
 
@@ -46,6 +49,7 @@ export default function CompanyForm() {
             address: data.address,
             city: data.city,
             country: data.country,
+            timezone: data.timezone,
             email: data.email,
             phone: data.phone,
             bank_account: data.bank_account,
@@ -168,6 +172,22 @@ export default function CompanyForm() {
                                 />
                                 {errors.address && <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>}
                             </div>
+                        </div>
+
+                        <div className="sm:col-span-6">
+                            <label htmlFor="timezone" className="block text-sm font-medium text-gray-700">
+                                Vremenska zona
+                            </label>
+                            <select
+                                id="timezone"
+                                {...register('timezone', {required: 'Vremenska zona je obavezna'})}
+                                className="mt-1 block w-full rounded-md border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                            >
+                                {supportedTimezones().map(timezone => (
+                                    <option key={timezone} value={timezone}>{timezone}</option>
+                                ))}
+                            </select>
+                            {errors.timezone && <p className="mt-1 text-sm text-red-600">{errors.timezone.message}</p>}
                         </div>
 
                         <div className="sm:col-span-4">

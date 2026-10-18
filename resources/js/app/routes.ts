@@ -14,6 +14,7 @@ import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
 import Turnover from "./pages/Turnover";
 import Kpo from "./pages/Kpo";
+import ImportExport from "./pages/ImportExport";
 
 export const router = createBrowserRouter([
   {
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       { path: "companies/new", Component: CompanyForm },
       { path: "companies/:id", Component: CompanyDetails },
       { path: "settings", Component: Settings },
+      { path: "import-export", Component: ImportExport },
     ],
   },
   {

@@ -11,7 +11,7 @@ import {
     ChevronDown,
     Bell,
     Search,
-    Menu, CurrencyIcon, BookOpen
+    Menu, CurrencyIcon, BookOpen, ArrowDownUp
 } from 'lucide-react';
 import {useApp} from '../context/AppContext';
 import clsx from 'clsx';
@@ -87,6 +87,7 @@ export default function DashboardLayout() {
         {to: "/dashboard/clients", icon: Users, label: "Klijenti"},
         {to: "/dashboard/invoices", icon: FileText, label: "Fakture"},
         {to: "/dashboard/companies", icon: Building2, label: "Moje Firme"},
+        {to: "/dashboard/import-export", icon: ArrowDownUp, label: "Import / Export"},
     ];
 
     return (

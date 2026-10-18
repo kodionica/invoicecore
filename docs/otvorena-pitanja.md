@@ -1,42 +1,26 @@
 # Otvorena pitanja i poznata ograničenja
 
-Ovo nisu pretpostavljena pravila. Potrebna je potvrda pre promene poslovne logike.
+## KPO i računovodstvo
 
-## KPO
+- Da li KPO prihod treba tretirati po izdavanju ili naplati u svim scenarijima?
+- Kako se tretiraju storno, otkazivanje i zaključavanje KPO godine?
+- Koja su pravila za VAT osnovicu KPO-a i poreska izuzeća?
+- Koji dodatni elementi zvaničnog KPO obrasca su potrebni za konkretan poreski slučaj?
 
-- Da li se KPO prihod evidentira po izdavanju fakture, naplati ili drugom događaju?
-- Koji datum treba koristiti kada se datum izdavanja i datum naplate razlikuju?
-- Da li status `paid` ima računovodstveno značenje ili je samo aplikativni status? U repozitorijumu nije potvrđen poseban Payment domen.
-- Kako se klasifikuju proizvodi i usluge? `InvoiceItem` nema potvrđeno polje za tu klasifikaciju; trenutno generisani invoice-sourced KPO dobija podrazumevani `usluga`.
-- Kako treba tretirati storno, otkazivanje, izmene izvornog dokumenta i više uplata?
-- Kada se KPO godina zaključava i da li su izmene posle zaključavanja dozvoljene?
-- Da li je trenutni PDF pravno usaglašen obrazac? To nije potvrđeno kodom.
+## Fakture i banke
 
-## Fakture
+- Da li faktura bez matching bankovnog računa sme da se izda ili samo sačuva kao draft?
+- Koja dodatna međunarodna polja traži konkretna banka?
+- Kako postupati sa legacy fakturama bez bank account snapshot-a?
+- Da li su postojeći legacy bank_account/iban/swift podaci dovoljno pouzdani za migraciju?
 
-- Da li isključenje `include_in_kpo` treba da bude dozvoljeno i za fakturu koja već ima KPO zapis? Trenutna implementacija ne briše i ne menja postojeći zapis.
-- Da li treba omogućiti naknadnu izmenu ovog polja na detalju fakture? Trenutni zahtev pokriva kreiranje fakture.
-- Da li `currency=null` znači opšti račun za sve valute ili svaki račun mora imati eksplicitnu valutu?
-- Da li faktura bez odgovarajućeg računa sme da se sačuva kao nacrt ili izdavanje mora biti blokirano?
-- Koja polja su obavezna po banci/valuti: naziv banke, broj računa, IBAN, SWIFT/BIC, ABA/routing, correspondent/intermediary bank, purpose/reference ili druga instrukcija?
-- Da li postojeći pojedinačni podaci firme predstavljaju jedan stvarni račun i koju valutu imaju? To se ne sme zaključiti samo iz IBAN-a/SWIFT-a.
+## Payment domen
 
-## Profil, podešavanja i operativni rizici
-
-- Da li su `app_settings` preference korisničke ili firmine? Pre produkcije obavezno ukloniti globalni scope ili potvrditi da je globalno ponašanje namerno.
-- Da li se e-mail šalje sinhrono ili kroz queue, i koji rezultat slanja treba trajno čuvati?
-- Da li brisanje firme/fakture sme da bude trajno cascade brisanje ili je potreban archive/soft delete?
-- Koji backup/restore cilj, retention i odgovornost važe za bazu, logo fajlove i PDF fajlove?
-- Da li aplikacija mora imati verifikaciju e-maila, reset lozinke, revizijski trag i upravljanje sesijama?
-
-## Integracije i produkcija
-
-- Da li je potrebna SEF/eFaktura integracija, u kom obimu i uz koje sertifikate/statusne povratne informacije?
-- Koji su podržani izvori kursa, fallback i tolerancija kada eksterni servis nije dostupan?
-- Stari `InvoiceFactory`/`InvoiceSeeder` nisu usklađeni sa aktuelnom šemom i referenciraju nepostojeći Payment model; odlučiti da li ih popraviti ili ukloniti kao razvojni dug.
+Trenutno postoji samo status paid, paid_at i payment_note. Nema parcijalnih uplata, salda, refundacija ili Payment tabele. Ako je to potrebno, mora se posebno definisati valuta uplate, kurs, saldo i audit.
 
 ## Operativna ograničenja
 
-- Status migracija zavisi od dostupnosti konfigurisanog MariaDB hosta.
-- Nema zasebne frontend test skripte u `package.json`.
-- Ne tvrditi da su build ili type-check prošli bez pokretanja konkretne komande.
+- Lokalni backup/restore je host-skriptni workflow za DDEV i iCloud Drive, ne automatski servis.
+- Email se šalje sinhrono; idempotency zaštita postoji, ali nema queue-based delivery sistema.
+- MariaDB concurrency testovi zahtevaju namensku bazu i eksplicitno uključivanje.
+- Ne tvrditi da su migracije, build ili spoljašnja MariaDB provera izvršeni bez konkretne komande.

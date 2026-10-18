@@ -2,33 +2,28 @@
 
 ## Autentifikacija
 
-Login, registracija i logout su u `app/Http/Controllers/Api/AuthController.php`. API koristi Laravel Sanctum. Zaštićene rute u `routes/api.php` nalaze se u `Route::middleware('auth:sanctum')` grupi.
-
-Frontend koristi Axios sa stateful SPA pristupom i pozivom CSRF cookie mehanizma u `AppContext.tsx`.
-
-Registracija generiše username, prijava prihvata e-mail ili username, a logout invalidira sesiju i regeneriše CSRF token. Email verification i upravljanje aktivnim sesijama nisu implementirani.
+Login, registracija i logout su u app/Http/Controllers/Api/AuthController.php. API koristi Laravel Sanctum i zaštićene rute u routes/api.php koriste auth:sanctum. Frontend koristi stateful Axios i CSRF cookie.
 
 ## Aktivna firma
 
-Korisnik ima `active_company_id`. Aktivna firma se dobija kroz `User::activeCompany()`. Pre čitanja ili izmene podataka kontroler treba da:
+Aktivna firma je users.active_company_id, a User::activeCompany() vraća firmu. Promena se radi preko POST /api/companies/switch. Liste i mutacije nad fakturama, klijentima, KPO zapisima i bankovnim računima proveravaju aktivnu firmu na serveru.
 
-1. proveri da korisnik ima aktivnu firmu;
-2. filtrira zapis po `company_id` aktivne firme;
-3. izvrši policy/autorizaciju na serveru.
+## Potvrđeno
 
-Promena firme koristi `POST /api/companies/switch` i `CompanySwitchController`.
+- Fakture koriste company_id scope i InvoicePolicy.
+- Klijenti koriste company_id scope i ClientPolicy.
+- KPO, PDF, PDF verzije, istorija, e-mail istorija i company resursi imaju serversku autorizaciju.
+- Direktan ID druge firme ne prebacuje aktivnu firmu i ne vraća podatke resursa.
+- Korisnici mogu imati više firmi; promena firme osvežava frontend kontekst.
 
-## Pravila izolacije
+## Podešavanja
 
-- Fakture koriste `Invoice::scopeForActiveCompany()` i proveru klijenta aktivne firme.
-- KPO lista i generisanje koriste aktivnu firmu i policy proveru.
-- Detalji i izmene koriste odgovarajuće policy klase.
-- Frontend `activeCompanyId` služi za prikaz, ali nije sigurnosna granica.
+Korisničke preference app_settings su izolovane po user_id u settings tabeli. Legacy globalni zapis bez user_id ostaje sačuvan, ali se ne koristi kao korisničko podešavanje. Globalni helper setting() ima odvojenu semantiku i ne sme se koristiti za user preference bez odgovarajućeg scope-a.
 
-Kod novog endpointa ne oslanjati se samo na ID koji šalje frontend. Svi povezani resursi moraju biti ponovo provereni na serveru.
+## Vremenska zona
 
-## Poznati rizici
+Company ima nullable timezone. Company::effectiveTimezone() koristi sačuvani validni IANA identifikator ili Europe/Belgrade kao fallback. Sistemski timestampovi ostaju UTC; poslovni datum aktivne firme koristi njenu efektivnu zonu.
 
-- **Poznato ograničenje:** `settings` tabela i `SettingsController` koriste jedinstveni ključ `app_settings` bez `user_id` ili `company_id`; podešavanja nisu izolovana po korisniku/firmi.
-- **Poznato ograničenje:** `ProfileController` ne proverava jedinstvenost username-a pri izmeni.
-- **Potvrđeno testovima:** KPO i faktura imaju testove za pristup druge firme; zasebni feature testovi za profile/settings nisu potvrđeni.
+## Ograničenja
+
+Email verification, reset lozinke e-mailom i upravljanje sesijama nisu deo potvrđenog scope-a. Ne tretirati frontend activeCompanyId kao sigurnosnu granicu.

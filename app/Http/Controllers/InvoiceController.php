@@ -49,11 +49,10 @@ class InvoiceController extends Controller {
             ->with( [ 'client', 'items' ] )
             ->latest();
 
+        $today = $active_company->businessToday();
         if ($request->boolean('overdue')) {
-            $query->overdue();
+            $query->overdue($today);
         }
-
-        $today = Carbon::today();
         $invoices = $query->get()->each(function (Invoice $invoice) use ($today): void {
             $this->addDueStatusAttributes($invoice, $today);
         });
@@ -70,7 +69,7 @@ class InvoiceController extends Controller {
             ], 422 );
         }
 
-        $now = now();
+        $now = Carbon::now($active_company->effectiveTimezone());
         $year = (int) $now->year;
         $month = (int) $now->month;
 
@@ -125,8 +124,9 @@ class InvoiceController extends Controller {
         try {
             $invoice = DB::transaction( function () use ( $attrs, $active_company, $exchangeRateService, $effectiveVatEnabled ) {
             $now = now();
-            $year = (int) $now->year;
-            $month = (int) $now->month;
+            $businessNow = Carbon::now($active_company->effectiveTimezone());
+            $year = (int) $businessNow->year;
+            $month = (int) $businessNow->month;
 
             $attrs[ 'company_id' ] = $active_company->id;
 
@@ -175,7 +175,7 @@ class InvoiceController extends Controller {
             $attrs[ 'invoice_number' ] = $providedNumber ?: sprintf( '%d-%02d-%03d', $year, $month, $sequence );
             $issueDate = isset( $attrs[ 'issue_date' ] ) && $attrs[ 'issue_date' ]
                 ? Carbon::parse( $attrs[ 'issue_date' ] )
-                : $now->copy();
+                : $businessNow->copy();
             $dueDate = isset( $attrs[ 'due_date' ] ) && $attrs[ 'due_date' ]
                 ? Carbon::parse( $attrs[ 'due_date' ] )
                 : $issueDate->copy()->addDays( (int) ( $active_company->payment_due_days ?? 0 ) );
@@ -215,7 +215,7 @@ class InvoiceController extends Controller {
 
             $attrs['fx_rate_to_rsd'] = $fxRateToRsd;
             $attrs['fx_provider'] = (string) ( $ratePayload['provider'] ?? 'unknown' );
-            $attrs['fx_date'] = (string) ( $ratePayload['date'] ?? now()->toDateString() );
+            $attrs['fx_date'] = (string) ( $ratePayload['date'] ?? $businessNow->toDateString() );
             $attrs['subtotal_original'] = round( $subtotalOriginal, 2 );
             $attrs['tax_original'] = round( $taxOriginal, 2 );
             $attrs['total_original'] = round( $totalOriginal, 2 );
@@ -276,7 +276,7 @@ class InvoiceController extends Controller {
      */
     public function show( Invoice $invoice ) {
         $this->authorize( 'view', $invoice );
-        $this->addDueStatusAttributes($invoice, Carbon::today());
+        $this->addDueStatusAttributes($invoice, $invoice->company->businessToday());
         $user          = auth()->user();
         $invoice_items = $invoice->items;
         $company       = $invoice->company;
@@ -701,7 +701,7 @@ class InvoiceController extends Controller {
                 $ratePayload = app(ExchangeRateService::class)->getTodayRate($currency);
                 $fxRate = (float) $ratePayload['exchange_middle'];
                 $data['fx_provider'] = (string) ($ratePayload['provider'] ?? 'unknown');
-                $data['fx_date'] = (string) ($ratePayload['date'] ?? now()->toDateString());
+                $data['fx_date'] = (string) ($ratePayload['date'] ?? Carbon::now($invoice->company->effectiveTimezone())->toDateString());
             }
 
             if ($itemsProvided) {
@@ -1077,42 +1077,74 @@ class InvoiceController extends Controller {
     private function deletePdfVersionSafely(InvoicePdfVersion $version, ?string $currentPath): void
     {
         $attributes = $version->getAttributes();
-        $deleted = DB::transaction(function () use ($version, $currentPath): bool {
-            $lockedVersion = InvoicePdfVersion::query()->lockForUpdate()->find($version->id);
-
-            if (! $lockedVersion
-                || $lockedVersion->protected_at
-                || $lockedVersion->path === $currentPath
-                || $lockedVersion->emailSends()->exists()) {
-                return false;
-            }
-
-            return (bool) $lockedVersion->delete();
-        }, 3);
-
-        if (! $deleted) {
-            return;
+        $disk = Storage::disk('local');
+        if (! $disk->exists($version->path)) {
+            throw new \RuntimeException("PDF verzija {$version->id} nije pronađena; zadržavanje podataka je prekinuto.");
         }
 
+        $stagingPath = 'pdf-retention/.pending/' . $version->id . '-' . \Illuminate\Support\Str::uuid() . '.pdf';
+        if (! $disk->copy($version->path, $stagingPath) || ! $disk->exists($stagingPath)) {
+            throw new \RuntimeException("Privremeno čuvanje PDF verzije {$version->id} nije uspelo; DB zapis nije menjan.");
+        }
+
+        $deleted = false;
         try {
-            if (! Storage::disk('local')->exists($version->path)) {
-                throw new \RuntimeException("PDF verzija {$version->id} nije pronađena; zadržavanje podataka je prekinuto.");
+            $deleted = DB::transaction(function () use ($version, $currentPath): bool {
+                $lockedVersion = InvoicePdfVersion::query()->lockForUpdate()->find($version->id);
+
+                if (! $lockedVersion
+                    || $lockedVersion->protected_at
+                    || $lockedVersion->path === $currentPath
+                    || $lockedVersion->emailSends()->exists()) {
+                    return false;
+                }
+
+                return (bool) $lockedVersion->delete();
+            }, 3);
+
+            if (! $deleted) {
+                $disk->delete($stagingPath);
+                return;
             }
-            if (! Storage::disk('local')->delete($version->path)) {
+
+            if (! $disk->delete($version->path)) {
                 throw new \RuntimeException("PDF verzija {$version->id} nije mogla biti obrisana sa diska.");
             }
+
+            if (! $disk->delete($stagingPath)) {
+                throw new \RuntimeException("Privremeni PDF zapis za verziju {$version->id} nije mogao biti uklonjen.");
+            }
         } catch (\Throwable $exception) {
+            if ($deleted) {
+                $fileRestored = $disk->exists($version->path)
+                    || ($disk->copy($stagingPath, $version->path) && $disk->exists($version->path));
+
+                if ($fileRestored) {
+                    try {
+                        DB::transaction(function () use ($attributes): void {
+                            InvoicePdfVersion::query()->insert($attributes);
+                        }, 3);
+                    } catch (\Throwable $restoreException) {
+                        report($restoreException);
+                        throw new \RuntimeException(
+                            'PDF retention nije uspela; fajl je vraćen, ali DB zapis nije mogao biti vraćen.',
+                            0,
+                            $exception
+                        );
+                    }
+                } else {
+                    report(new \RuntimeException(
+                        "PDF verzija {$version->id} nije mogla biti vraćena; DB zapis je ostao uklonjen radi sprečavanja reference na nepostojeći fajl.",
+                        0,
+                        $exception
+                    ));
+                }
+            }
+
             try {
-                DB::transaction(function () use ($attributes): void {
-                    InvoicePdfVersion::query()->insert($attributes);
-                }, 3);
-            } catch (\Throwable $restoreException) {
-                report($restoreException);
-                throw new \RuntimeException(
-                    'PDF retention nije uspela i DB zapis nije mogao biti vraćen.',
-                    0,
-                    $exception
-                );
+                $disk->delete($stagingPath);
+            } catch (\Throwable $cleanupException) {
+                report($cleanupException);
             }
 
             throw $exception;

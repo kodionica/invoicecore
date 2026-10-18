@@ -5,6 +5,7 @@ import {useApp, type InvoiceKpoConfirmation} from '../context/AppContext';
 import {toast} from 'sonner';
 import {ArrowLeft, Plus, Trash2, Calendar, User}         from 'lucide-react';
 import { addDaysToDate, formatCurrency, formatLocalDate } from "../utils/format";
+import {companyToday} from "../utils/timezone";
 import {LoadingButton, LoadingOverlay} from '../components/Loading';
 
 interface InvoiceFormData {
@@ -37,8 +38,9 @@ export default function InvoiceForm() {
     const [saving, setSaving] = useState(false);
     const editInitialCurrency = useRef<string | null>(null);
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
-    const today = new Date();
-    const todayString = formatLocalDate(today);
+    const todayString = companyToday(activeCompany?.timezone);
+    const [todayYear, todayMonth, todayDay] = todayString.split('-').map(Number);
+    const today = new Date(todayYear, todayMonth - 1, todayDay);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const lastDayOfMonthString = formatLocalDate(lastDayOfMonth);
     const dueDate = addDaysToDate(lastDayOfMonth, 15);
@@ -47,7 +49,7 @@ export default function InvoiceForm() {
         defaultValues: {
             number: '',
             date: lastDayOfMonthString,
-            dueDate: dueDate.toISOString().split('T')[0],
+            dueDate: formatLocalDate(dueDate),
             currency: '',
             paymentMethod: '',
             includeInKpo: true,
@@ -179,10 +181,11 @@ export default function InvoiceForm() {
         if (!activeCompany?.payment_due_days) return;
         if (!watchDate) return;
         if (dirtyFields.dueDate) return;
-        const baseDate = new Date(watchDate);
+        const [year, month, day] = watchDate.split('-').map(Number);
+        const baseDate = new Date(year, month - 1, day);
         if (Number.isNaN(baseDate.getTime())) return;
-        const dueDate = new Date(baseDate.getTime() + activeCompany.payment_due_days * 24 * 60 * 60 * 1000);
-        setValue('dueDate', dueDate.toISOString().split('T')[0], {shouldDirty: false});
+        const dueDate = addDaysToDate(baseDate, activeCompany.payment_due_days);
+        setValue('dueDate', formatLocalDate(dueDate), {shouldDirty: false});
     }, [activeCompany?.payment_due_days, dirtyFields.dueDate, setValue, watchDate]);
 
     useEffect(() => {

@@ -814,7 +814,7 @@ class KpoEntryService
             ->get());
         $base = $this->regenerationFingerprint(
             $invoice->company,
-            (int) ($invoice->issue_date?->year ?? now()->year),
+            (int) ($invoice->issue_date?->year ?? Carbon::now($invoice->company->effectiveTimezone())->year),
             false,
             collect([$invoice])
         );

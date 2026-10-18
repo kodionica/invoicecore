@@ -1,25 +1,25 @@
 # Dokumenti i PDF
 
-## Faktura
+## Invoice PDF
 
-PDF fakture generiše `InvoiceController::generatePDF()`. Postojeći obrazac koristi SSR/React dokument, Vite manifest i `resources/js/app/components/InvoiceDocument.tsx`.
+InvoiceController generiše PDF preko Spatie Laravel PDF, Browsershot/Puppeteer i SSR React dokumenta. DDEV web image sadrži Chromium, a Vite manifest i SSR bundle moraju postojati.
 
-Preuzimanje ide kroz `GET /api/invoices/{invoice}/pdf`, uz policy proveru.
+PDF verzije su u invoice_pdf_versions, sa verzijom, immutable storage putanjom, protected_at/sent_at i current PDF vezom preko fakture. Zaštićene i aktivne verzije nisu predmet retention brisanja. Retention radi staging kopiju i prijavljuje filesystem/DB grešku bez lažnog uspeha.
 
-PDF se kešira u `invoices/{godina}/{mesec}/faktura-{broj}.pdf`; `?refresh=1` regeneriše dokument. E-mail koristi isti PDF i `resources/views/emails/invoice.blade.php`. Produkcija zahteva Vite manifest, SSR bundle i Chromium/Puppeteer runtime.
+Ponovljeni download bez promene koristi postojeću verziju. Izmena poslate fakture pravi novu trenutnu verziju i čuva prethodnu zaštićenu verziju. E-mail beleži tačnu PDF verziju.
 
-## Bankarske instrukcije na fakturi
+PDF fajlovi su u privatnom storage-u i ne treba ih izlagati javnim URL-ovima. Preuzimanje i istorija proveravaju policy i aktivnu firmu.
 
-Trenutni PDF koristi pojedinačne podatke firme (`bank_account`, `iban`, `swift`) i nema izbor računa ni istorijski snapshot. `InvoiceDocument.tsx` prikazuje broj računa, a IBAN/SWIFT za eksterno plaćanje; `ipsQrCode.ts` koristi `company.bank_account` kao IPS QR račun. Predložena implementacija treba da u `InvoiceDocument` payload prosledi snapshot instrukcija iz trenutka izdavanja: naziv banke, račun, IBAN, SWIFT/BIC, valutu i dodatne instrukcije samo kada su podešeni i dozvoljeni za tu fakturu. PDF regeneracija mora koristiti snapshot sa fakture, a ne ponovo čitati aktuelni `Company`/`BankAccount` zapis.
+## E-mail
 
-Ako za valutu nema odgovarajućeg računa, PDF ne treba da prikazuje račun druge valute kao podrazumevanu vrednost. UI/API treba da prikažu jasno upozorenje i omoguće nastavak samo prema potvrđenom poslovnom pravilu.
+InvoiceController::sendEmail koristi invoice_email_sends i idempotency ključ. Isti ključ se ne šalje ponovo; nova namerna operacija dobija novi ključ. Uspešno slanje štiti korišćenu PDF verziju i postavlja fakturu na sent. Neuspeh se beleži, a neizvestan ishod se ne predstavlja kao uspeh.
 
-## KPO
+## Bankarski podaci
 
-KPO PDF generiše `KpoController::generatePDF()` server-side iz podataka učitanih iz baze. Sadrži period, podatke firme ako postoje, datum, opis, prihode od proizvoda, prihode od usluga i ukupan prihod.
+PDF koristi invoice snapshot payment instrukcija kada postoji, a legacy podatke firme za stare fakture bez snapshot-a.
 
-KPO PDF ruta koristi `spatie/laravel-pdf` i Browsershot/Puppeteer. Frontend preuzima blob kroz `downloadKpoPdf()`.
+## KPO PDF
 
-PDF ne treba opisivati kao pravno usaglašen obrazac bez zasebne potvrde zahteva. Posebno proveriti poslovna pravila za klasifikaciju prihoda i računovodstveni datum.
+KpoController generiše server-side PDF sa pet fizičkih kolona: redni broj, datum/opis, proizvodi, usluge i ukupno. income_category je primarni izvor, a legacy NULL kategorija koristi poznati income_type mapping. Nepoznata legacy klasifikacija se prikazuje kao unresolved/warning i ne dobija izmišljenu kategoriju.
 
-**Poznato ograničenje:** nema dokumentovanog backup-a PDF fajlova niti verzionisanja renderovanog dokumenta; kasnija regeneracija može koristiti nove podatke firme.
+KPO PDF ne treba označavati kao potpuno pravno usaglašen obrazac bez računovodstvene/propisne potvrde.

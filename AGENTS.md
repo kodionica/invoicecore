@@ -80,31 +80,27 @@ Ovaj dokument opisuje provereno stanje repozitorijuma. Pre svake izmene proverit
 - Generisanje PDF-a koristi SSR bundle `bootstrap/ssr/renderInvoiceDocument.js` i Vite manifest `public/build/manifest.json`.
 - Za novi dokument prvo ponovo koristiti postojeći SSR/PDF obrazac i proveriti da su bundle i manifest dostupni.
 
-## Testiranje i provere
++## Testiranje i provere
 
-Relevantne komande:
+Relevantne komande izvršavati kroz DDEV:
 
-```bash
-php artisan test
-composer test
-php artisan route:list --path=api --except-vendor
-npx tsc --noEmit
-npm run build
-npm run build:ssr
-```
+    ddev exec php artisan test
+    ddev exec composer test
+    ddev exec vendor/bin/pint --test
+    ddev exec php artisan route:list --path=api --except-vendor
+    ddev exec npx tsc --noEmit --allowImportingTsExtensions
+    ddev exec npm run build
+    ddev exec npm run build:ssr
+    git diff --check
 
-- `php artisan test` pokreće Pest testove uz SQLite in-memory bazu iz `phpunit.xml`.
-- Nema zasebne lint npm skripte. Laravel Pint je instaliran kao dev dependency, ali nije definisana skripta.
-- Ne tvrditi da je provera uspešna ako nije pokrenuta.
-- Pri prijavi rezultata navesti tačnu komandu, rezultat i poznate neuspehe.
-- Trenutno potvrđena TypeScript napomena: `npx tsc --noEmit` prijavljuje TS5097 zbog `.tsx` ekstenzije u importu `resources/js/main.tsx`; ne popravljati to u okviru nepovezanog zadatka.
+Redovni PHP testovi koriste SQLite in-memory bazu iz phpunit.xml. Nema zasebne lint npm skripte. Ne tvrditi da je provera uspešna ako nije pokrenuta; prijaviti tačnu komandu, rezultat i poznate neuspehe.
 
 ## KPO i nepotvrđene poslovne činjenice
 
-- KPO backend model, migracije, servis, kontroler, API rute, React stranica i server-side PDF izvoz sada postoje; payment domen nije potvrđen kao postojeći.
-- Pre KPO implementacije potvrditi da li se evidentiraju izdati ili naplaćeni prihodi, koji datum i iznos se koriste, kako se razlikuju proizvodi/usluge, kako rade ručne korekcije, storno, zaključavanje i numeracija po firmi/godini.
+- KPO backend model, migracije, servis, kontroler, API rute, React stranica i server-side PDF izvoz sada postoje; postoje kategorije prihoda, preview/generisanje, regeneracija, soft-delete i audit.
+- Evidencija plaćanja je minimalna: paid_at i payment_note na fakturi; nema parcijalnih uplata ili Payment tabele.
 - Ne donositi računovodstvene odluke na osnovu naziva `paid`, `Turnover` ili postojećeg UI-ja bez potvrđenog poslovnog pravila.
-- Ako zahtev zavisi od naplate, prvo proveriti da li je uveden stvarni payment domen; trenutno nije potvrđen.
+- Ako budu potrebne parcijalne uplate ili saldo, to je zaseban payment domen i ne treba ga izvoditi iz statusa paid.
 
 ## Opšta pravila rada
 
@@ -116,6 +112,50 @@ npm run build:ssr
 - Veće funkcionalnosti raditi u nezavisnim, proverljivim fazama; posle svake faze pokrenuti relevantne provere.
 - Pregledati kompletan diff, proveriti API/frontend ugovore i navesti sve preostale probleme.
 - Ne implementirati KPO u okviru dokumentacionog zadatka.
+
+## Development environment
+
+- Projekat se razvija lokalno na macOS-u kroz DDEV.
+- PHP, Composer, Artisan, Node, npm i npx komande izvršavati kroz DDEV.
+- Ne pokretati npm run build direktno na macOS hostu. Rollup macOS optional-dependency greška na hostu nije problem aplikacije ako DDEV build uspe.
+- scripts/backup.sh i scripts/restore.sh su host skripte i pokreću se na macOS hostu, ne unutar DDEV kontejnera.
+
+## Code conventions
+
+- Laravel koristi standardne modele, Form Request klase, kontrolere, servise, policies i migracije.
+- React stranice su u resources/js/app/pages/, a API i poslovno stanje u AppContext.tsx.
+- Validaciju rade postojeći Form Request-i; autorizaciju rade policies i serverski company scope.
+- Aktivna firma je users.active_company_id; frontend stanje nije sigurnosna granica.
+- Prati postojeći stil projekta i ne uvodi novi obrazac kada postojeći pokriva zahtev.
+
+## Tests
+
+Fokusirane testove pokrenuti pre celog suite-a. PHP, Composer, Artisan, TypeScript i frontend build pokretati kroz DDEV:
+
+    ddev exec php artisan test tests/Feature/RelevantTest.php
+    ddev exec php artisan test
+    ddev exec npx tsc --noEmit --allowImportingTsExtensions
+    ddev exec npm run build
+    ddev exec npm run build:ssr
+    git diff --check
+
+Redovni PHP testovi koriste izolovanu SQLite in-memory bazu iz phpunit.xml.
+
+## Safety
+
+- Ne pokretati migracije bez eksplicitnog odobrenja.
+- Ne menjati postojeće razvojne podatke bez odobrenja.
+- Ne pokretati backup ili restore bez odobrenja.
+- Ne izvršavati destruktivne DB komande.
+- Ne raditi commit/push bez zahteva.
+- Ne prikazivati tajne iz .env fajlova.
+
+## Reporting
+
+- Navesti izmenjene fajlove.
+- Navesti tačne izvršene komande i rezultate.
+- Razlikovati grešku u kodu od greške u okruženju.
+- Prijaviti neizvršene provere i razlog.
 - Pre izmene postojeće funkcionalnosti pročitati relevantni dokument iz `docs/`.
 - Kada se promene API ugovor, model, migracija, poslovno pravilo ili korisnički tok, ažurirati odgovarajući dokument i `docs/plan-razvoja.md` ako se stanje ili prioritet promenio.
 - Otvorena poslovna ili računovodstvena pitanja ne označavati kao rešena bez potvrde.

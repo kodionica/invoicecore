@@ -1,59 +1,75 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# InvoiceCore
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+InvoiceCore je lokalna Laravel/React aplikacija za fakture, PDF dokumente, slanje e-mailom i KPO evidenciju za više firmi po korisniku.
 
-## About Laravel
+## Stack i zahtevi
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Laravel 12, PHP constraint 8.2 ili noviji
+- MariaDB 11.8 kroz DDEV
+- React 18, TypeScript, Vite 7, Tailwind CSS 4
+- Laravel Sanctum, Eloquent, Pest/PHPUnit
+- Spatie Laravel PDF, Browsershot/Puppeteer i Chromium u DDEV web kontejneru
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Lokalno pokretanje
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Potrebni su macOS, Docker i DDEV. Iz root direktorijuma projekta:
 
-## Learning Laravel
+    ddev start
+    ddev exec composer install
+    ddev exec npm install
+    ddev exec php artisan key:generate
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+Web aplikacija je dostupna na DDEV adresi koju prijavi ddev describe. Za razvoj frontenda:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+    ddev exec npm run dev
 
-## Laravel Sponsors
+PHP, Composer, Artisan, Node, npm i npx komande pokretati kroz DDEV. Host skripte scripts/backup.sh i scripts/restore.sh su izuzetak i pokreću se na macOS hostu.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Migracije, testovi i build
 
-### Premium Partners
+Migracije se izvršavaju samo uz eksplicitno odobrenje:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+    ddev exec php artisan migrate
+    ddev exec php artisan migrate:status
 
-## Contributing
+Testovi:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+    ddev exec php artisan test tests/Feature/RelevantTest.php
+    ddev exec php artisan test
+    ddev exec npx tsc --noEmit --allowImportingTsExtensions
+    ddev exec npm run build
+    ddev exec npm run build:ssr
+    git diff --check
 
-## Code of Conduct
+Redovni PHP testovi koriste SQLite in-memory bazu iz phpunit.xml. MariaDB KPO concurrency testovi imaju zasebnu zaštitu i koriste samo namensku test bazu kada su eksplicitno uključeni.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Struktura
 
-## Security Vulnerabilities
+- app/Models, app/Http/Controllers, app/Http/Requests, app/Policies — backend
+- app/Services — kurs, KPO obračun/generisanje i prateća poslovna logika
+- database/migrations — šema i naknadne izmene
+- resources/js/app — React stranice, context, komponente i utility funkcije
+- routes/api.php — API
+- tests/Feature i tests/Unit — testovi
+- scripts — lokalni backup/restore i SSR pomoćne skripte
+- docs — detaljna projektna dokumentacija
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Implementirane oblasti
 
-## License
+Trenutno postoje fakture i company-scoped numeracija, više firmi i izolacija aktivne firme, valute i FX snapshot, minimalna evidencija plaćanja, PDF verzije/retention, e-mail istorija i idempotency zaštita, KPO generisanje/regeneracija sa kategorijama i auditom, bankovni računi po valuti, dospele fakture i timezone firme.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Računovodstvena pravila koja nisu potvrđena kodom ostaju označena u docs/otvorena-pitanja.md.
+
+## Dokumentacija
+
+- docs/arhitektura.md — stack i struktura
+- docs/fakture.md — fakture, iznosi, statusi, plaćanja i numeracija
+- docs/dokumenti-i-pdf.md — PDF verzije, privatni storage i e-mail
+- docs/kpo.md — KPO preview, generisanje, regeneracija i PDF
+- docs/kompanije-klijenti-podesavanja.md — firme, timezone i bankovni računi
+- docs/autentifikacija-i-tenant.md — Sanctum, active company i autorizacija
+- docs/local-backup.md — lokalni backup/restore
+- docs/testiranje-i-razvoj.md — DDEV komande i bezbedne provere
+- docs/plan-razvoja.md — status i prioriteti
+
+Ne čuvati tajne vrednosti ili lokalne apsolutne putanje u dokumentaciji.

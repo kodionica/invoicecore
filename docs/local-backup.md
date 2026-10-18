@@ -1,43 +1,29 @@
 # Lokalni backup i restore
 
-Skripte koriste pokrenuti DDEV projekat, MariaDB dump i privatni direktorijum `storage/app/private`. Backup arhive se podrazumevano čuvaju u:
-
-`~/Library/Mobile Documents/com~apple~CloudDocs/InvoiceCore/Backups`
+Skripte se pokreću na macOS hostu iz root-a projekta, ne iz DDEV kontejnera. Koriste pokrenut DDEV i MariaDB 11.8.
 
 ## Backup
 
-```bash
-scripts/backup.sh
-```
+    ./scripts/backup.sh
 
-Skripta kreira `.tar.gz` arhivu, `manifest.txt` unutar arhive i zaseban `.sha256` fajl. Ne uključuje `.env`, lozinke, kod, Git, `vendor` ili `node_modules`. Prethodne arhive se ne brišu.
+Podrazumevana destinacija je iCloud Drive folder ~/Library/Mobile Documents/com~apple~CloudDocs/InvoiceCore/Backups. Može se promeniti:
 
-Druga destinacija:
+    BACKUP_DESTINATION=/putanja/do/Backups ./scripts/backup.sh
 
-```bash
-BACKUP_DESTINATION="/putanja/do/Backups" scripts/backup.sh
-```
+Backup pravi timestamped tar.gz sa manifestom, MariaDB SQL dumpom, storage/app/private i SHA-256 fajlom. Ne uključuje .env, lozinke, vendor, node_modules ili Git fajlove. Prethodne arhive se ne brišu. Skripta proverava da je aktivni DDEV projekat baš InvoiceCore.
 
-Backup se smatra sinhronizovanim tek kada se arhiva i pripadajući `.sha256` fajl vide u iCloud Drive folderu i iCloud status više ne prikazuje čekanje sinhronizacije. Pre restore-a proverite da je fajl potpuno dostupan lokalno.
+Pre restore-a u Finderu proveriti da su arhiva i checksum potpuno sinhronizovani u iCloud-u.
 
 ## Provera bez vraćanja podataka
 
-```bash
-shasum -a 256 -c invoicecore-YYYYmmdd-HHMMSS.tar.gz.sha256
-tar -tzf invoicecore-YYYYmmdd-HHMMSS.tar.gz
-tar -xOzf invoicecore-YYYYmmdd-HHMMSS.tar.gz manifest.txt
-```
+    shasum -a 256 -c invoicecore-YYYYmmdd-HHMMSS.tar.gz.sha256
+    tar -tzf invoicecore-YYYYmmdd-HHMMSS.tar.gz
+    tar -xOzf invoicecore-YYYYmmdd-HHMMSS.tar.gz manifest.txt
 
-Ove komande samo čitaju backup.
+Ove komande ne menjaju bazu ili storage.
 
 ## Restore
 
-Restore zahteva pokrenut DDEV, proverava checksum i sadržaj arhive, prikazuje manifest i zahteva unos `RESTORE`:
+    ./scripts/restore.sh /putanja/do/invoicecore-YYYYmmdd-HHMMSS.tar.gz
 
-```bash
-scripts/restore.sh "/putanja/do/invoicecore-YYYYmmdd-HHMMSS.tar.gz"
-```
-
-Pre promene pravi novi sigurnosni backup trenutne baze i privatnog storage-a u `BACKUP_DESTINATION`. Ne menja `.env` niti aplikacioni kod. Ako restore baze ili storage-a ne uspe, operacija se prekida uz putanju sigurnosnog backupa za oporavak.
-
-Restore nije pokretan automatski i ne treba ga izvršavati nad aktivnim podacima bez prethodne provere arhive.
+Restore proverava checksum i bezbedne putanje, prikazuje manifest i zahteva unos RESTORE. Pre promene pravi sigurnosni backup trenutnog stanja. Ne menja .env ili kod. Ne pokretati restore bez eksplicitne provere arhive i odobrenja.

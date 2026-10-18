@@ -190,6 +190,27 @@ it('fails retention explicitly when an unprotected historical PDF file is missin
     expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->where('version', 1)->exists())->toBeTrue();
 });
 
+it('restores the DB row when filesystem deletion returns false', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-retention-storage-failure@example.com');
+    $company->update(['other_settings' => ['invoice_pdf' => ['max_unprotected_versions' => 0]]]);
+    fakeInvoicePdf();
+
+    $this->actingAs($user)->getJson("/api/invoices/{$invoice->id}/pdf")->assertOk();
+    $oldPath = $invoice->fresh()->pdf_path;
+    $oldVersion = InvoicePdfVersion::where('invoice_id', $invoice->id)->firstOrFail();
+    $realDisk = Storage::disk('local');
+    $disk = Mockery::mock($realDisk)->makePartial();
+    $disk->shouldReceive('delete')->with($oldPath)->andReturnFalse();
+    Storage::shouldReceive('disk')->with('local')->andReturn($disk);
+
+    $this->actingAs($user)
+        ->putJson("/api/invoices/{$invoice->id}", ['note' => 'Nova verzija'])
+        ->assertServerError();
+
+    expect(InvoicePdfVersion::whereKey($oldVersion->id)->exists())->toBeTrue()
+        ->and($realDisk->exists($oldPath))->toBeTrue();
+});
+
 it('keeps the PDF file and database row when retention database deletion fails', function () {
     [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-retention-db-failure@example.com');
     $company->update(['other_settings' => ['invoice_pdf' => ['max_unprotected_versions' => 0]]]);

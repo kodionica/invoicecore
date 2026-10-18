@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use DateTimeZone;
 
 class UpdateCompanyRequest extends FormRequest {
     /**
@@ -44,6 +45,7 @@ class UpdateCompanyRequest extends FormRequest {
             'address'              => [ 'sometimes', 'string' ],
             'city'                 => [ 'sometimes', 'string' ],
             'country'              => [ 'sometimes', 'string' ],
+            'timezone'             => [ 'sometimes', 'nullable', 'string', 'max:64', Rule::in(DateTimeZone::listIdentifiers()) ],
             'email'                => [ 'sometimes', 'email' ],
             'phone'                => [ 'sometimes', 'string' ],
             'bank_account'         => [ 'sometimes', 'string' ],

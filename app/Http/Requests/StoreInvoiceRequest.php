@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Support\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
+use App\Models\Company;
 
 class StoreInvoiceRequest extends FormRequest {
     /**
@@ -14,7 +15,7 @@ class StoreInvoiceRequest extends FormRequest {
     public function rules(): array {
         return [
             'client_id'      => [ 'required', 'integer' ],
-            'issue_date'     => [ 'nullable', 'date', 'after_or_equal:today' ],
+            'issue_date'     => [ 'nullable', 'date' ],
             'due_date'       => [ 'nullable', 'date' ],
             'invoice_number' => [ 'nullable', 'string', 'max:255' ],
             'currency'       => [ 'nullable', 'string', 'size:3' ],
@@ -37,17 +38,23 @@ class StoreInvoiceRequest extends FormRequest {
         $validator->after( function ( $validator ) {
             $issueDate = $this->input( 'issue_date' );
             $dueDate   = $this->input( 'due_date' );
+            $timezone = $this->user()?->activeCompany?->effectiveTimezone() ?? Company::DEFAULT_TIMEZONE;
+
+            if ($issueDate && Carbon::parse($issueDate)->lt(Carbon::today($timezone))) {
+                $validator->errors()->add('issue_date', 'Datum izdavanja ne može biti u prošlosti.');
+            }
 
             if ( ! $dueDate ) {
                 return;
             }
 
-            $baseDate = $issueDate ? Carbon::parse( $issueDate ) : Carbon::today();
+            $baseDate = $issueDate ? Carbon::parse( $issueDate ) : Carbon::today($timezone);
             $due      = Carbon::parse( $dueDate );
 
             if ( $due->lt( $baseDate ) ) {
                 $validator->errors()->add( 'due_date', 'Rok plaćanja ne može biti pre datuma izdavanja.' );
             }
+
         } );
     }
 }

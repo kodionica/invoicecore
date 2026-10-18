@@ -12,6 +12,7 @@ use App\Http\Controllers\CompanyBankAccountController;
 use App\Http\Controllers\CompanySwitchController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\KpoController;
+use App\Http\Controllers\ImportExportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -38,6 +39,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('companies/switch', [CompanySwitchController::class, 'switch']);
 
     Route::apiResource('clients', ClientController::class);
+    Route::get('import-export/{type}/export', [ImportExportController::class, 'export']);
+    Route::post('import-export/{type}/preview', [ImportExportController::class, 'preview']);
+    Route::post('import-export/{type}/import', [ImportExportController::class, 'import']);
     Route::get('currency-rates/{currency}/today', CurrencyRateController::class);
 
     Route::get('invoices/next-number', [InvoiceController::class, 'nextNumber']);
