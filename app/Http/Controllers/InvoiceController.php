@@ -151,7 +151,8 @@ class InvoiceController extends Controller {
             ], 422 );
         }
 
-        if ( ! $active_company->clients()->whereKey( $attrs[ 'client_id' ] )->exists() ) {
+        $buyer = $active_company->clients()->find($attrs['client_id']);
+        if (! $buyer) {
             return response()->json( [
                 'message' => 'Izabrani klijent ne pripada aktivnoj firmi.',
             ], 422 );
@@ -162,7 +163,7 @@ class InvoiceController extends Controller {
             : (bool) $active_company->vat_enabled;
 
         try {
-            $invoice = DB::transaction( function () use ( $attrs, $active_company, $exchangeRateService, $effectiveVatEnabled ) {
+            $invoice = DB::transaction( function () use ( $attrs, $active_company, $exchangeRateService, $effectiveVatEnabled, $buyer ) {
             $now = now();
             $businessNow = Carbon::now($active_company->effectiveTimezone());
             $year = (int) $businessNow->year;
@@ -220,8 +221,9 @@ class InvoiceController extends Controller {
                 ? Carbon::parse( $attrs[ 'due_date' ] )
                 : $issueDate->copy()->addDays( (int) ( $active_company->payment_due_days ?? 0 ) );
             $attrs[ 'issue_date' ]     = $issueDate->toDateString();
+            $attrs['service_date'] ??= $attrs['issue_date'];
             $attrs[ 'due_date' ]       = $dueDate->toDateString();
-            $attrs[ 'currency' ]       = $attrs[ 'currency' ] ?? $active_company->currency ?? 'RSD';
+            $attrs[ 'currency' ]       = $attrs[ 'currency' ] ?? $buyer->default_currency ?? $active_company->currency ?? 'RSD';
             $attrs[ 'total' ]          = 0;
             $attrs[ 'status' ]         = InvoiceStatus::DRAFT;
 
@@ -264,9 +266,12 @@ class InvoiceController extends Controller {
             $attrs['total_rsd'] = round( $totalRsd, 2 );
             $attrs['vat_enabled_at_issue'] = $effectiveVatEnabled;
 
-            $invoice = Invoice::create( $attrs );
+            $invoice = new Invoice($attrs);
+            $invoice->forceFill([
+                'document_settings' => ['locale' => $attrs['document_locale'] ?? $buyer->preferred_language ?? 'sr-Latn'],
+            ])->save();
 
-            foreach ( $attrs[ 'items' ] as $item ) {
+            foreach ( $attrs[ 'items' ] as $position => $item ) {
                 $sub_total  = (float) $item[ 'quantity' ] * (float) $item[ 'price' ];
                 $tax_amount = $effectiveVatEnabled ? ( ( $sub_total * (float) $active_company->default_tax_percent ) / 100 ) : 0;
                 $total      = $sub_total + $tax_amount;
@@ -279,8 +284,10 @@ class InvoiceController extends Controller {
                         'sub_total'   => $sub_total,
                         'total'       => $total,
                         'tax_amount'  => $tax_amount,
+                        'tax_percent' => $effectiveVatEnabled ? $active_company->default_tax_percent : 0,
+                        'position' => $position,
                         'description' => $item[ 'description' ] ?? $item[ 'name' ],
-                        'income_category' => $item[ 'income_category' ] ?? null,
+                        'income_category' => $item[ 'income_category' ] ?? 'service',
                     ]
                 );
             }
@@ -319,10 +326,12 @@ class InvoiceController extends Controller {
         $this->addDueStatusAttributes($invoice, $invoice->company->businessToday());
         $user          = auth()->user();
         $invoice_items = $invoice->items;
-        $company       = $invoice->company;
-        $client        = $invoice->client;
+        $legacy_document = ! $invoice->issued_at && $invoice->hasProtectedHistory();
+        $company = $legacy_document ? null : ($invoice->issued_at ? $invoice->seller_snapshot : $invoice->company);
+        $client = $legacy_document ? null : ($invoice->issued_at ? $invoice->buyer_snapshot : $invoice->client);
+        $document = $legacy_document ? null : $this->buildInvoiceDocumentPayload($invoice, $company, $client, $invoice_items);
 
-        return response()->json( compact( 'invoice', 'user', 'invoice_items', 'company', 'client' ) );
+        return response()->json(compact('invoice', 'user', 'invoice_items', 'company', 'client', 'document', 'legacy_document'));
     }
 
     private function addDueStatusAttributes(Invoice $invoice, Carbon $today): void
@@ -364,10 +373,76 @@ class InvoiceController extends Controller {
      *
      * @return \Symfony\Component\HttpFoundation\StreamedResponse
      */
+    public function issue(Invoice $invoice)
+    {
+        $this->authorize('update', $invoice);
+
+        return DB::transaction(function () use ($invoice) {
+            $locked = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            if ($locked->issued_at) {
+                return response()->json($locked->load('items'));
+            }
+            abort_if($locked->hasProtectedHistory(), 409, 'Istorijska faktura je zaključana.');
+            $items = $locked->items;
+            abort_if($items->isEmpty() || $locked->vat_enabled_at_issue === null
+                || $items->contains(fn (InvoiceItem $item) => $item->tax_percent === null || $item->position === null)
+                || ($locked->currency !== 'RSD' && (float) $locked->fx_rate_to_rsd <= 0),
+                422, 'Faktura nema potpune podatke za izdavanje.');
+
+            $previous = $this->invoiceAuditSnapshot($locked);
+            $company = $locked->company()->lockForUpdate()->firstOrFail();
+            $client = $locked->client()->lockForUpdate()->firstOrFail();
+            $document = $this->buildInvoiceDocumentPayload($locked, $company, $client, $items);
+            $seller = $document['company'];
+            unset($seller['bank_account'], $seller['iban'], $seller['swift'], $seller['currency'], $seller['vat_enabled']);
+            abort_if($seller['logoUrl'] && ! str_starts_with($seller['logoUrl'], 'data:'),
+                422, 'Logo mora biti dostupan kao lokalni fajl za izdavanje.');
+            $locked->forceFill([
+                'seller_snapshot' => $seller,
+                'buyer_snapshot' => $document['client'],
+                'document_settings' => ['locale' => $locked->document_settings['locale'] ?? 'sr-Latn', 'template_version' => 1, 'meta' => $document['meta']],
+                'bank_account_number' => $document['invoice']['bankAccountNumber'],
+                'bank_account_iban' => $document['invoice']['bankAccountIban'],
+                'bank_account_swift_bic' => $document['invoice']['bankAccountSwiftBic'],
+                'issued_at' => now(),
+                'status' => InvoiceStatus::SENT->value,
+            ])->save();
+
+            $paymentCode = collect($document['meta']['client_types'])->firstWhere('value', $document['client']['client_type'])['code'] ?? null;
+            $buyerCountry = $document['client']['country_code'] ?? $document['client']['country'];
+            if ($paymentCode && $locked->bank_account_number && in_array($seller['country'], ['RS', 'Srbija'], true)
+                && in_array($buyerCountry, ['RS', 'Srbija'], true)) {
+                $issuedDocument = $this->buildInvoiceDocumentPayload($locked, null, null, $items);
+                unset($issuedDocument['qrCode']);
+                $settings = $locked->document_settings;
+                $settings['qr_code'] = json_decode($this->renderInvoiceDocumentWithSsr($issuedDocument, true), true, flags: JSON_THROW_ON_ERROR);
+                $locked->forceFill(['document_settings' => $settings])->save();
+            }
+
+            $this->ensureInvoicePdf($locked, true);
+            $this->protectCurrentPdfVersion($locked->refresh(), false);
+
+            $current = $this->invoiceAuditSnapshot($locked);
+            $locked->revisions()->create([
+                'acting_user_id' => auth()->id(),
+                'action_type' => 'issued',
+                'previous_values' => $previous,
+                'new_values' => $current,
+                'changed_fields' => $this->changedInvoiceFields($previous, $current),
+            ]);
+
+            return response()->json($locked->load('items'));
+        });
+    }
+
     public function generatePDF( Request $request, Invoice $invoice ) {
         $this->authorize( 'view', $invoice );
         $force_refresh = $request->boolean( 'refresh' );
-        $relative_path = $this->ensureInvoicePdf( $invoice, $force_refresh );
+        $relative_path = DB::transaction(function () use ($invoice, $force_refresh): string {
+            $locked = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+
+            return $this->ensureInvoicePdf($locked, $force_refresh);
+        });
         $file_name     = "faktura-{$invoice->invoice_number}.pdf";
 
         return Storage::disk( 'local' )->download( $relative_path, $file_name );
@@ -427,19 +502,24 @@ class InvoiceController extends Controller {
             return $this->emailIdempotencyResponse($existingAttempt, $invoice);
         }
 
-        $client = $invoice->client;
         $data = $request->validate([
             'recipient' => ['sometimes', 'nullable', 'email', 'max:255'],
             'subject' => ['sometimes', 'nullable', 'string', 'max:255'],
             'message' => ['sometimes', 'nullable', 'string', 'max:10000'],
+            'pdf_version_id' => ['sometimes', 'integer'],
         ]);
-        $recipient = $data['recipient'] ?? $client?->email;
+        abort_unless($invoice->hasProtectedHistory(), 409, 'Izdajte fakturu pre slanja.');
+        $recipient = $data['recipient'] ?? ($invoice->issued_at ? ($invoice->buyer_snapshot['email'] ?? null) : null);
         if (! $recipient) {
             return response()->json([
                 'message' => 'Unesite email adresu primaoca.',
                 'errors' => ['recipient' => ['Email adresa primaoca je obavezna.']],
             ], 422);
         }
+        $version = isset($data['pdf_version_id'])
+            ? $invoice->pdfVersions()->whereKey($data['pdf_version_id'])->whereNotNull('protected_at')->firstOrFail()
+            : $this->protectCurrentPdfVersion($invoice, false);
+        abort_unless(Storage::disk('local')->exists($version->path), 409, 'Izabrani PDF nije dostupan.');
         $subject = $data['subject'] ?? "Faktura #{$invoice->invoice_number}";
         $message = $data['message'] ?? null;
         try {
@@ -448,6 +528,7 @@ class InvoiceController extends Controller {
                 'invoice_id' => $invoice->id,
                 'idempotency_key' => $idempotencyKey,
                 'recipient' => $recipient,
+                'invoice_pdf_version_id' => $version->id,
                 'subject' => $subject,
                 'message' => $message,
                 'status' => 'pending',
@@ -469,28 +550,10 @@ class InvoiceController extends Controller {
             return $this->emailIdempotencyResponse($existingAttempt, $invoice);
         }
 
-        try {
-            $relative_path = $this->ensureInvoicePdf( $invoice );
-            // Protect before transport, but only mark as sent after the
-            // transport accepts the message.
-            $version = $this->protectCurrentPdfVersion($invoice, false);
-            $attempt->update([
-                'invoice_pdf_version_id' => $version->id,
-                'status' => 'sending',
-            ]);
-        } catch (\Throwable $exception) {
-            report($exception);
-            $attempt->update([
-                'status' => 'failed',
-                'failure_message' => 'PDF ili priprema slanja nije uspela.',
-                'failed_at' => now(),
-            ]);
-
-            return response()->json(['message' => 'PDF nije pripremljen za slanje.'], 500);
-        }
+        $attempt->update(['status' => 'sending']);
 
         try {
-            Mail::to( $recipient )->send( new InvoiceMail( $invoice, $relative_path, $subject, $message ) );
+            Mail::to( $recipient )->send( new InvoiceMail( $invoice, $version->path, $subject, $message ) );
         } catch (\Throwable $exception) {
             report($exception);
             try {
@@ -513,12 +576,9 @@ class InvoiceController extends Controller {
         }
 
         try {
-            DB::transaction(function () use ($attempt, $version, $invoice): void {
+            DB::transaction(function () use ($attempt, $version): void {
                 $attempt->update(['status' => 'accepted', 'accepted_at' => now()]);
                 $version->update(['sent_at' => $version->sent_at ?? now()]);
-                if ( $invoice->status !== InvoiceStatus::SENT ) {
-                    $invoice->update( [ 'status' => InvoiceStatus::SENT ] );
-                }
             }, 3);
         } catch (\Throwable $exception) {
             report($exception);
@@ -607,15 +667,7 @@ class InvoiceController extends Controller {
         }
 
         $data = $request->validated();
-        $markingSent = (($data['status'] ?? null) === InvoiceStatus::SENT->value)
-            && $invoice->status !== InvoiceStatus::SENT->value;
         $hadCurrentPdf = (bool) $invoice->pdf_path;
-
-        if ($markingSent) {
-            // Generate before changing status so a renderer failure cannot mark
-            // an invoice as sent without a PDF to protect.
-            $this->ensureInvoicePdf($invoice);
-        }
         $kpoConfirmation = $data['kpo_confirmation'] ?? null;
         unset($data['kpo_confirmation']);
         $hasKpoConfirmation = is_array($kpoConfirmation) && (bool) ($kpoConfirmation['confirmed'] ?? false);
@@ -625,7 +677,7 @@ class InvoiceController extends Controller {
         $expectedKpoConfirmationFingerprint = $kpoEntryService->invoiceEditConfirmationFingerprint($invoice, $data);
         $editableFields = ['client_id', 'invoice_number', 'issue_date', 'currency', 'items', 'include_in_kpo', 'vat_enabled_at_issue'];
         $isFullEdit = collect($editableFields)->contains(static fn (string $field): bool => array_key_exists($field, $data));
-        $hasPdfRelevantEdit = $isFullEdit || array_key_exists('note', $data);
+        $hasPdfRelevantEdit = $isFullEdit || array_key_exists('note', $data) || array_key_exists('service_date', $data);
 
         $requestedVatStatus = array_key_exists('vat_enabled_at_issue', $data)
             ? (bool) $data['vat_enabled_at_issue']
@@ -674,6 +726,53 @@ class InvoiceController extends Controller {
                 $kpoConfirmationFingerprint
             ): Invoice {
             $lockedInvoice = Invoice::query()->with('items')->lockForUpdate()->findOrFail($invoice->id);
+            $protected = $lockedInvoice->hasProtectedHistory();
+            $operationalFields = ['status', 'paid_at', 'payment_note', 'include_in_kpo'];
+            abort_if($protected && array_diff(array_keys($data), $operationalFields), 409, 'Podaci izdate fakture su zaključani.');
+            $issuedStatuses = [InvoiceStatus::SENT->value, InvoiceStatus::PAID->value, InvoiceStatus::OVERDUE->value];
+            abort_if(! $protected && in_array($data['status'] ?? null, $issuedStatuses, true),
+                409, 'Fakturu izdajte kroz akciju izdavanja.');
+            abort_if(($data['status'] ?? null) === InvoiceStatus::DRAFT->value && $protected, 409, 'Istorijska faktura ne može postati nacrt.');
+            $paymentDate = array_key_exists('paid_at', $data) ? $data['paid_at'] : $lockedInvoice->paid_at;
+            if (($data['status'] ?? $lockedInvoice->status) === InvoiceStatus::PAID->value
+                && (array_key_exists('status', $data) || array_key_exists('paid_at', $data)) && ! $paymentDate) {
+                throw ValidationException::withMessages(['paid_at' => ['Datum uplate je obavezan za plaćenu fakturu.']]);
+            }
+            if ($protected) {
+                $legacyProtected = ! $lockedInvoice->issued_at;
+                if (($data['status'] ?? $lockedInvoice->status) !== InvoiceStatus::PAID->value) {
+                    $data['paid_at'] = null;
+                    $data['payment_note'] = null;
+                }
+                $previous = $this->invoiceAuditSnapshot($lockedInvoice);
+                if ($hasKpoConfirmation && (! $kpoConfirmationFingerprint || ! hash_equals(
+                    $kpoConfirmationFingerprint,
+                    $kpoEntryService->invoiceEditConfirmationFingerprint($lockedInvoice, $data)
+                ))) {
+                    abort(409, 'Potvrda KPO konflikta je zastarela.');
+                }
+                $lockedInvoice->fill($data)->forceFill(['legacy_protected' => $legacyProtected])->save();
+                if ($lockedInvoice->wasChanged('include_in_kpo')) {
+                    $kpoEntryService->synchronizeAfterInvoiceUpdate(
+                        $lockedInvoice,
+                        $hasKpoConfirmation && (bool) ($kpoConfirmation['confirm_manual_overwrite'] ?? false),
+                        $hasKpoConfirmation,
+                        $hasKpoConfirmation
+                    );
+                }
+                $current = $this->invoiceAuditSnapshot($lockedInvoice);
+                if ($previous !== $current) {
+                    $lockedInvoice->revisions()->create([
+                        'acting_user_id' => auth()->id(),
+                        'action_type' => 'updated',
+                        'previous_values' => $previous,
+                        'new_values' => $current,
+                        'changed_fields' => $this->changedInvoiceFields($previous, $current),
+                    ]);
+                }
+
+                return $lockedInvoice;
+            }
             $previous = $this->invoiceAuditSnapshot($lockedInvoice);
 
             if ($hasKpoConfirmation) {
@@ -763,7 +862,7 @@ class InvoiceController extends Controller {
                     }
                 }
 
-                foreach ($data['items'] as $item) {
+                foreach ($data['items'] as $position => $item) {
                     $subTotal = (float) $item['quantity'] * (float) $item['price'];
                     $taxAmount = $vatEnabled
                         ? ($subTotal * (float) $activeCompany->default_tax_percent) / 100
@@ -775,8 +874,10 @@ class InvoiceController extends Controller {
                         'sub_total' => $subTotal,
                         'total' => $subTotal + $taxAmount,
                         'tax_amount' => $taxAmount,
+                        'tax_percent' => $vatEnabled ? $activeCompany->default_tax_percent : 0,
                         'description' => $item['description'] ?? $item['name'],
                         'income_category' => $item['income_category'] ?? null,
+                        'position' => $position,
                     ];
 
                     if (isset($item['id'])) {
@@ -796,6 +897,7 @@ class InvoiceController extends Controller {
                     $existingItem->update([
                         'sub_total' => $subTotal,
                         'tax_amount' => $taxAmount,
+                        'tax_percent' => $vatEnabled ? $activeCompany->default_tax_percent : 0,
                         'total' => $subTotal + $taxAmount,
                     ]);
                 }
@@ -868,12 +970,16 @@ class InvoiceController extends Controller {
             ], 409);
         }
 
-        if ($markingSent) {
-            $this->protectCurrentPdfVersion($updated, true);
-        } elseif ($hasPdfRelevantEdit && $hadCurrentPdf) {
+        if (! $updated->hasProtectedHistory() && $hasPdfRelevantEdit && $hadCurrentPdf) {
             // The old version remains immutable; the edited invoice gets a new
             // current version after the database transaction has committed.
-            $this->ensureInvoicePdf($updated, true);
+            DB::transaction(function () use ($updated): void {
+                $locked = Invoice::query()->lockForUpdate()->findOrFail($updated->id);
+                if (! $locked->hasProtectedHistory()) {
+                    $this->ensureInvoicePdf($locked, true);
+                    $updated->refresh();
+                }
+            });
         }
 
         return response()->json($updated->load(['pdfVersions']));
@@ -926,31 +1032,35 @@ class InvoiceController extends Controller {
             return response()->json(['message' => 'Faktura ne pripada aktivnoj firmi.'], 403);
         }
 
-        $linkedEntries = KpoEntry::query()
-            ->where('company_id', $invoice->company_id)
-            ->where('source_invoice_id', $invoice->id)
-            ->whereNull('deleted_at')
-            ->orderBy('entry_number')
-            ->get(['id', 'entry_number', 'income_category', 'amount_rsd', 'adjustment_rsd', 'total_rsd']);
-
-        if ($linkedEntries->isNotEmpty() && ! $request->boolean('confirm_kpo_removal')) {
-            return response()->json([
-                'message' => 'Faktura ima aktivne KPO zapise koji će biti kontrolisano uklonjeni.',
-                'requires_confirmation' => true,
-                'kpo_deletion_confirmation' => [
-                    'reason' => 'source_invoice_deleted',
-                    'entries' => $linkedEntries->values(),
-                ],
-            ], 409);
-        }
-
-        DB::transaction(function () use ($invoice, $kpoEntryService): void {
+        return DB::transaction(function () use ($invoice, $kpoEntryService, $request) {
             $lockedInvoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            if ($lockedInvoice->hasProtectedHistory()) {
+                return response()->json(['message' => 'Istorijska faktura ne može biti obrisana.'], 409);
+            }
+
+            $linkedEntries = KpoEntry::query()
+                ->where('company_id', $invoice->company_id)
+                ->where('source_invoice_id', $invoice->id)
+                ->whereNull('deleted_at')
+                ->orderBy('entry_number')
+                ->get(['id', 'entry_number', 'income_category', 'amount_rsd', 'adjustment_rsd', 'total_rsd']);
+
+            if ($linkedEntries->isNotEmpty() && ! $request->boolean('confirm_kpo_removal')) {
+                return response()->json([
+                    'message' => 'Faktura ima aktivne KPO zapise koji će biti kontrolisano uklonjeni.',
+                    'requires_confirmation' => true,
+                    'kpo_deletion_confirmation' => [
+                        'reason' => 'source_invoice_deleted',
+                        'entries' => $linkedEntries->values(),
+                    ],
+                ], 409);
+            }
+
             $kpoEntryService->softDeleteEntriesForInvoice($lockedInvoice, 'source_invoice_deleted');
             $lockedInvoice->delete();
-        });
 
-        return response()->noContent();
+            return response()->noContent();
+        });
     }
 
     private function ensureInvoicePdf( Invoice $invoice, bool $force_refresh = false ): string {
@@ -963,17 +1073,19 @@ class InvoiceController extends Controller {
             return $existing_path;
         }
 
+        abort_if(! $invoice->issued_at && $invoice->hasProtectedHistory(), 409,
+            'Istorijski PDF nije moguće regenerisati bez potvrđenih podataka.');
+
         $invoice_items = $invoice->items;
-        $company       = $invoice->company;
-        $client        = $invoice->client;
+        $company       = $invoice->issued_at ? null : $invoice->company;
+        $client        = $invoice->issued_at ? null : $invoice->client;
         $date          = $invoice->issue_date instanceof Carbon ? $invoice->issue_date : Carbon::parse( $invoice->issue_date );
         [$reservedVersion, $relative_path] = $this->reserveInvoicePdfVersion($invoice, $date);
 
         Storage::disk( 'local' )->makeDirectory( dirname( $relative_path ) );
 
-        $html = $this->renderInvoicePdfHtml( $invoice, $company, $client, $invoice_items );
-
         try {
+            $html = $this->renderInvoicePdfHtml( $invoice, $company, $client, $invoice_items );
             Pdf::html( $html )
                 ->format( Format::A4 )
                 ->withBrowsershot( function ( Browsershot $browsershot ) {
@@ -997,7 +1109,11 @@ class InvoiceController extends Controller {
             throw $exception;
         }
 
-        $this->applyPdfRetention($invoice);
+        if ($invoice->issued_at) {
+            $reservedVersion->update(['protected_at' => now()]);
+        } else {
+            DB::afterCommit(fn () => $this->applyPdfRetention($invoice));
+        }
 
         return $publishedPath;
     }
@@ -1033,7 +1149,8 @@ class InvoiceController extends Controller {
             $nextVersion = ((int) InvoicePdfVersion::query()
                 ->where('invoice_id', $lockedInvoice->id)
                 ->max('version')) + 1;
-            $relativePath = "invoices/{$date->format('Y')}/{$date->format('m')}/{$lockedInvoice->id}/v{$nextVersion}/faktura-{$lockedInvoice->invoice_number}.pdf";
+            $artifactId = (string) \Illuminate\Support\Str::uuid();
+            $relativePath = "invoices/{$date->format('Y')}/{$date->format('m')}/{$lockedInvoice->id}/v{$nextVersion}/{$artifactId}.pdf";
             $version = InvoicePdfVersion::create([
                 'company_id' => $lockedInvoice->company_id,
                 'invoice_id' => $lockedInvoice->id,
@@ -1241,7 +1358,8 @@ class InvoiceController extends Controller {
     {
         return [
             'invoice' => $invoice->only([
-                'id', 'company_id', 'client_id', 'invoice_number', 'issue_date', 'due_date',
+                'id', 'company_id', 'client_id', 'invoice_number', 'issue_date', 'service_date', 'due_date',
+                'issued_at', 'seller_snapshot', 'buyer_snapshot', 'document_settings',
                 'currency', 'fx_rate_to_rsd', 'fx_provider', 'fx_date', 'payment_method',
                 'subtotal_original', 'tax_original', 'total_original', 'subtotal_rsd',
                 'tax_rsd', 'total_rsd', 'total', 'vat_enabled_at_issue', 'include_in_kpo',
@@ -1252,7 +1370,7 @@ class InvoiceController extends Controller {
             ]),
             'items' => $invoice->items->map(static fn (InvoiceItem $item): array => $item->only([
                 'id', 'name', 'description', 'quantity', 'price', 'sub_total', 'tax_amount',
-                'total', 'income_category',
+                'total', 'income_category', 'tax_percent', 'position',
             ]))->values()->all(),
         ];
     }
@@ -1287,7 +1405,7 @@ class InvoiceController extends Controller {
         $title = 'Faktura ' . $invoice->invoice_number;
 
         return '<!DOCTYPE html>'
-            . '<html lang="' . e( str_replace( '_', '-', app()->getLocale() ) ) . '">'
+            . '<html lang="' . e( $invoice->document_settings['locale'] ?? 'sr-Latn' ) . '">'
             . '<head>'
             . '<meta charset="utf-8">'
             . '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -1313,12 +1431,12 @@ class InvoiceController extends Controller {
             || $invoice->bank_account_iban !== null
             || $invoice->bank_account_swift_bic !== null
             || $invoice->bank_account_payment_instructions !== null;
-        $legacyBankFallbackAllowed = ! $hasBankSnapshot
+        $legacyBankFallbackAllowed = ! $invoice->issued_at && ! $hasBankSnapshot
             && strtoupper((string) $invoice->currency) === strtoupper((string) $company->currency);
         $legacyBankAccount = $legacyBankFallbackAllowed ? $company->bank_account : null;
         $legacyIban = $legacyBankFallbackAllowed ? $company->iban : null;
         $legacySwift = $legacyBankFallbackAllowed ? $company->swift : null;
-        if ( $company?->logo_path ) {
+        if ( ! $invoice->issued_at && $company?->logo_path ) {
             $logo_path = (string) $company->logo_path;
             if ( str_starts_with( $logo_path, 'http://' ) || str_starts_with( $logo_path, 'https://' ) ) {
                 $logo_url = $logo_path;
@@ -1342,15 +1460,19 @@ class InvoiceController extends Controller {
                 'id'       => $invoice->id,
                 'number'   => (string) $invoice->invoice_number,
                 'date'     => (string) $invoice->issue_date,
+                'serviceDate' => $invoice->service_date?->toDateString(),
                 'dueDate'  => (string) $invoice->due_date,
                 'currency' => $invoice->currency,
-                'fxRateToRsd' => (float) ( $invoice->fx_rate_to_rsd ?? 1 ),
+                'fxRateToRsd' => $invoice->fx_rate_to_rsd === null ? null : (float) $invoice->fx_rate_to_rsd,
                 'paymentMethod' => (string) $invoice->payment_method,
                 'total'    => (float) $invoice->total,
                 'subtotalOriginal' => (float) ($invoice->subtotal_original ?? $invoice->total),
                 'taxOriginal' => (float) ($invoice->tax_original ?? 0),
                 'totalOriginal' => (float) ( $invoice->total_original ?? $invoice->total ),
-                'totalRsd' => (float) ( $invoice->total_rsd ?? $invoice->total ),
+                'subtotalRsd' => $invoice->subtotal_rsd === null ? null : (float) $invoice->subtotal_rsd,
+                'taxRsd' => $invoice->tax_rsd === null ? null : (float) $invoice->tax_rsd,
+                'totalRsd' => $invoice->total_rsd === null ? null : (float) $invoice->total_rsd,
+                'note' => $invoice->note,
                 'vatEnabledAtIssue' => $invoice->vat_enabled_at_issue,
                 'bankAccountId' => $invoice->bank_account_id,
                 'bankAccountBankName' => $invoice->bank_account_bank_name ?? null,
@@ -1365,10 +1487,16 @@ class InvoiceController extends Controller {
                         'description' => (string) ( $item->description ?? $item->name ?? '' ),
                         'quantity'    => (float) $item->quantity,
                         'price'       => (float) $item->price,
+                        'subtotal' => (float) $item->sub_total,
                     ];
                 } )->values()->all(),
             ],
-            'company' => [
+            'company' => $invoice->issued_at ? array_merge($invoice->seller_snapshot, [
+                'bank_account' => $invoice->bank_account_number ?? '',
+                'iban' => $invoice->bank_account_iban,
+                'swift' => $invoice->bank_account_swift_bic,
+                'vat_enabled' => $invoice->vat_enabled_at_issue,
+            ]) : [
                 'id'                   => $company->id,
                 'name'                 => $company->name,
                 'tax_id'               => $company->tax_id,
@@ -1385,20 +1513,24 @@ class InvoiceController extends Controller {
                 'vat_enabled'          => (bool) $company->vat_enabled,
                 'logoUrl'              => $logo_url,
             ],
-            'client' => [
+            'client' => $invoice->issued_at ? $invoice->buyer_snapshot : [
                 'id'                  => $client->id,
                 'name'                => $client->name,
                 'email'               => $client->email,
                 'address'             => $client->address,
                 'city'                => $client->city,
                 'country'             => $client->country,
+                'country_code'        => $client->country_code,
+                'postal_code'         => $client->postal_code,
                 'phone'               => $client->phone,
                 'tax_id'              => $client->tax_id,
                 'registration_number' => $client->registration_number,
                 'client_type'          => (string) $client->client_type,
             ],
-            'currency' => $invoice->currency ?: $company->currency,
-            'meta' => [
+            'locale' => $invoice->document_settings['locale'] ?? 'sr-Latn',
+            ...($invoice->issued_at ? ['qrCode' => $invoice->document_settings['qr_code'] ?? null] : []),
+            'currency' => $invoice->issued_at ? $invoice->currency : ($invoice->currency ?: $company->currency),
+            'meta' => $invoice->issued_at ? $invoice->document_settings['meta'] : [
                 'countries'       => config( 'countries' ),
                 'currencies'      => config( 'currency' ),
                 'payment_methods' => config( 'payment' ),
@@ -1407,7 +1539,7 @@ class InvoiceController extends Controller {
         ];
     }
 
-    private function renderInvoiceDocumentWithSsr( array $payload ): string {
+    private function renderInvoiceDocumentWithSsr( array $payload, bool $qrOnly = false ): string {
         $script_path = base_path( 'scripts/render-invoice-ssr.mjs' );
         $bundle_path = base_path( 'bootstrap/ssr/renderInvoiceDocument.js' );
 
@@ -1415,7 +1547,11 @@ class InvoiceController extends Controller {
             throw new \RuntimeException( 'SSR bundle not found. Run \"npm run build:ssr\" before generating PDFs.' );
         }
 
-        $process = new Process( [ 'node', $script_path ], base_path(), null, json_encode( $payload ), 20 );
+        $command = ['node', $script_path];
+        if ($qrOnly) {
+            $command[] = '--qr';
+        }
+        $process = new Process($command, base_path(), null, json_encode($payload, JSON_THROW_ON_ERROR), 20);
         $process->run();
 
         if ( ! $process->isSuccessful() ) {

@@ -4,7 +4,7 @@ export type InvoiceStatusOption = { key: InvoiceStatus; label: string };
 
 export const fallbackInvoiceStatuses: InvoiceStatusOption[] = [
     {key: 'draft', label: 'Nacrt'},
-    {key: 'sent', label: 'Poslato'},
+    {key: 'sent', label: 'Izdata'},
     {key: 'paid', label: 'Plaćeno'},
     {key: 'overdue', label: 'Kasni'},
     {key: 'cancelled', label: 'Otkazano'},
@@ -27,7 +27,7 @@ export const getInvoiceStatusOptions = (
 export const getInvoiceStatusLabelMap = (options: InvoiceStatusOption[]) => {
     const labelMap: Record<InvoiceStatus, string> = {
         draft: 'Nacrt',
-        sent: 'Poslato',
+        sent: 'Izdata',
         paid: 'Plaćeno',
         overdue: 'Kasni',
         cancelled: 'Otkazano',

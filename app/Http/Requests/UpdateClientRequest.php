@@ -2,36 +2,23 @@
 
 namespace App\Http\Requests;
 
+use App\Support\ClientProfile;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
-class UpdateClientRequest extends FormRequest {
-    private function allowedClientTypes(): array {
-        return collect( config( 'client-type', [] ) )
-            ->pluck( 'value' )
-            ->filter()
-            ->values()
-            ->all();
+class UpdateClientRequest extends FormRequest
+{
+    public function authorize(): bool
+    {
+        return $this->user()->can('update', $this->route('client'));
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
-    public function rules(): array {
-        $client = $this->route( 'client' );
-
-        return [
-            'name'                => [ 'sometimes', 'string', 'max:255' ],
-            'tax_id'              => [ 'sometimes', 'nullable', 'string', Rule::unique( 'clients', 'tax_id' )->ignore( $client ) ],
-            'registration_number' => [ 'sometimes', 'nullable', 'string', Rule::unique( 'clients', 'registration_number' )->ignore( $client ) ],
-            'address'             => [ 'sometimes', 'nullable', 'string' ],
-            'city'                => [ 'sometimes', 'nullable', 'string' ],
-            'country'             => [ 'sometimes', 'nullable', 'string' ],
-            'email'               => [ 'sometimes', 'email' ],
-            'phone'               => [ 'sometimes', 'nullable', 'string' ],
-            'client_type'         => [ 'sometimes', 'nullable', 'string', Rule::in( $this->allowedClientTypes() ) ],
-        ];
+    public function validator(): Validator
+    {
+        return ClientProfile::validator(
+            ClientProfile::normalize($this->all(), false),
+            (int) $this->user()->active_company_id,
+            $this->route('client')
+        );
     }
 }

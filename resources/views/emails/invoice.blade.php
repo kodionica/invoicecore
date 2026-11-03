@@ -13,7 +13,7 @@
                     <tr>
                         <td style="padding:24px 28px 12px;">
                             <h1 style="margin:0 0 8px; font-size:20px;">Faktura #{{ $invoice->invoice_number }}</h1>
-                            <p style="margin:0; color:#555;">Poštovani {{ $client->name }},</p>
+                            <p style="margin:0; color:#555;">Poštovani {{ $clientName }},</p>
                         </td>
                     </tr>
                     <tr>
@@ -26,7 +26,7 @@
                     <tr>
                         <td style="padding:0 28px 24px;">
                             <p style="margin:0; color:#333;">Pozdrav,</p>
-                            <p style="margin:4px 0 0; color:#333; font-weight:bold;">{{ $company->name }}</p>
+                            <p style="margin:4px 0 0; color:#333; font-weight:bold;">{{ $companyName }}</p>
                         </td>
                     </tr>
                 </table>

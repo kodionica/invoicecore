@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreClientRequest;
 use App\Http\Requests\UpdateClientRequest;
 use App\Models\Client;
+use App\Support\ClientProfile;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Request;
 
 class ClientController extends Controller {
@@ -40,7 +43,11 @@ class ClientController extends Controller {
             ], 422 );
         }
 
-        $client = $active_company->clients()->create( $data );
+        try {
+            $client = $active_company->clients()->create($data);
+        } catch (UniqueConstraintViolationException $exception) {
+            throw ValidationException::withMessages([ClientProfile::conflictField($exception) => 'Identifikator je već u upotrebi za ovu državu.']);
+        }
 
         return response()->json( $client, 201 );
     }
@@ -58,14 +65,17 @@ class ClientController extends Controller {
      * Update the specified resource in storage.
      */
     public function update( UpdateClientRequest $request, Client $client ) {
-        $this->authorize( 'update', $client );
         $data = $request->validated();
 
         $client->fill( $data );
 
         // Check if some data has been changed
         if ( $client->isDirty() ) {
-            $client->save();
+            try {
+                $client->save();
+            } catch (UniqueConstraintViolationException $exception) {
+                throw ValidationException::withMessages([ClientProfile::conflictField($exception) => 'Identifikator je već u upotrebi za ovu državu.']);
+            }
         }
 
         return response()->json( $client );
@@ -77,7 +87,15 @@ class ClientController extends Controller {
     public function destroy( Client $client ) {
         $this->authorize( 'delete', $client );
 
-        $client->delete();
+        try {
+            $client->delete();
+        } catch (\Illuminate\Database\QueryException $exception) {
+            if (! $exception instanceof \Illuminate\Database\ForeignKeyConstraintViolationException
+                && ($exception->errorInfo[0] ?? null) !== '23000') {
+                throw $exception;
+            }
+            return response()->json(['message' => 'Klijent ima povezane fakture.'], 409);
+        }
 
         return response()->noContent();
     }

@@ -48,6 +48,7 @@ it('stores item income categories and accepts all supported values', function ()
             ['name' => 'Proizvod', 'description' => 'Proizvod', 'quantity' => 1, 'price' => 100, 'income_category' => 'product'],
             ['name' => 'Usluga', 'description' => 'Usluga', 'quantity' => 1, 'price' => 200, 'income_category' => 'service'],
             ['name' => 'Nerazvrstano', 'description' => 'Nerazvrstano', 'quantity' => 1, 'price' => 300, 'income_category' => 'unclassified'],
+            ['name' => 'Podrazumevana usluga', 'quantity' => 1, 'price' => 0],
         ],
     ]);
 
@@ -56,10 +57,11 @@ it('stores item income categories and accepts all supported values', function ()
     $invoiceId = $response->json('id');
     expect($response->json('items.0.income_category'))->toBe('product')
         ->and($response->json('items.1.income_category'))->toBe('service')
-        ->and($response->json('items.2.income_category'))->toBe('unclassified');
+        ->and($response->json('items.2.income_category'))->toBe('unclassified')
+        ->and($response->json('items.3.income_category'))->toBe('service');
 
     expect($company->invoices()->findOrFail($invoiceId)->items()->pluck('income_category')->all())
-        ->toBe(['product', 'service', 'unclassified']);
+        ->toBe(['product', 'service', 'unclassified', 'service']);
 });
 
 it('rejects unsupported item income categories', function () {
@@ -116,7 +118,7 @@ it('rejects missing, empty, non-array, malformed and duplicate classification pa
     }
 
     expect($company->invoices()->findOrFail($invoice['id'])->items()->pluck('income_category')->all())
-        ->toBe([null, null]);
+        ->toBe(['service', 'service']);
 });
 
 it('updates only item classifications and preserves financial fields', function () {
@@ -196,7 +198,7 @@ it('preserves legacy null classification until the user saves a new value', func
     ])->assertCreated()->json();
 
     $item = $company->invoices()->findOrFail($invoice['id'])->items()->firstOrFail();
-    expect($item->income_category)->toBeNull();
+    $item->update(['income_category' => null]);
 
     $this->patchJson("/api/invoices/{$invoice['id']}/items/classifications", [
         'items' => [['id' => $item->id, 'income_category' => 'service']],
@@ -230,7 +232,7 @@ it('rejects item classification updates from another company', function () {
     ])->assertForbidden();
 
     expect($company->invoices()->findOrFail($invoice['id'])->items()->firstOrFail()->income_category)
-        ->toBeNull();
+        ->toBe('service');
 });
 
 it('rejects an item that does not belong to the selected invoice', function () {
@@ -260,7 +262,7 @@ it('rejects an item that does not belong to the selected invoice', function () {
     ])->assertUnprocessable();
 
     expect($company->invoices()->findOrFail($first['id'])->items()->firstOrFail()->income_category)
-        ->toBeNull()
+        ->toBe('service')
         ->and($company->invoices()->findOrFail($second['id'])->items()->firstOrFail()->income_category)
-        ->toBeNull();
+        ->toBe('service');
 });

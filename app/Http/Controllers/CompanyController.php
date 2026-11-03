@@ -95,11 +95,21 @@ class CompanyController extends Controller {
 
         $user = auth()->user();
 
-        if ( $user->active_company_id === $company->id ) {
-            $user->update( [ 'active_company_id' => null ] );
-        }
+        try {
+            \Illuminate\Support\Facades\DB::transaction(static function () use ($company, $user): void {
+                $company->delete();
 
-        $company->delete();
+                if ($user->active_company_id === $company->id) {
+                    $user->update(['active_company_id' => null]);
+                }
+            });
+        } catch (\Illuminate\Database\QueryException $exception) {
+            if (! $exception instanceof \Illuminate\Database\ForeignKeyConstraintViolationException
+                && ($exception->errorInfo[0] ?? null) !== '23000') {
+                throw $exception;
+            }
+            return response()->json(['message' => 'Firma ima povezanu istoriju dokumenata.'], 409);
+        }
 
         return response()->noContent();
     }

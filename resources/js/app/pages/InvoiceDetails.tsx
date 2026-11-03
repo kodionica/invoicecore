@@ -12,7 +12,7 @@ export default function InvoiceDetails() {
    const {id} = useParams();
    const navigate = useNavigate();
     const location = useLocation();
-    const {invoices, clients, companies, updateInvoiceStatus, refreshInvoice, updateInvoiceItemClassifications, getInvoiceHistory, getInvoicePdfVersions, downloadInvoicePdfVersion, getInvoiceEmailHistory, deleteInvoice, downloadInvoicePdf, sendInvoiceEmail, meta} = useApp();
+    const {invoices, companies, updateInvoiceStatus, refreshInvoice, updateInvoiceItemClassifications, getInvoiceHistory, getInvoicePdfVersions, downloadInvoicePdfVersion, getInvoiceEmailHistory, deleteInvoice, downloadInvoicePdf, sendInvoiceEmail, meta} = useApp();
     const printRef = useRef<HTMLDivElement>(null);
     const [sendingEmail, setSendingEmail] = useState(false);
     const emailOperationKeyRef = useRef<string | null>(null);
@@ -47,8 +47,7 @@ export default function InvoiceDetails() {
 
     const invoiceId = id ? Number(id) : null;
     const invoice = invoiceId ? invoices.find(i => i.id === invoiceId) : undefined;
-    const client = clients.find(c => c.id === invoice?.clientId);
-    const company = companies.find(c => c.id === invoice?.companyId);
+    const company = companies.find(company => company.id === invoice?.companyId);
     const statusOptions = getInvoiceStatusOptions(meta?.invoice_statuses);
     const statusLabelMap = getInvoiceStatusLabelMap(statusOptions);
 
@@ -81,7 +80,6 @@ export default function InvoiceDetails() {
         setEditingClassifications(false);
         setEmailSubject(`Faktura #${invoice.number}`);
         setEmailMessage('U prilogu se nalazi PDF faktura. Ako imate pitanja, slobodno nas kontaktirajte.');
-        setEmailRecipient(client?.email ?? '');
         getInvoiceEmailHistory(invoice.id).then(setEmailHistory).catch(() => setEmailHistory([]));
     }, [invoice?.id]);
 
@@ -119,7 +117,13 @@ export default function InvoiceDetails() {
         };
     }, [pdfMenuOpen]);
 
-    if (!invoice || !client || !company) {
+    useEffect(() => {
+        if (invoiceId && invoice?.document === undefined && !invoice?.legacyDocument) {
+            void refreshInvoice(invoiceId).catch(() => toast.error('Dokument trenutno nije dostupan.'));
+        }
+    }, [invoiceId, invoice?.document, invoice?.legacyDocument]);
+
+    if (!invoice) {
         return (
             <div className="text-center py-12">
                 <h2 className="text-2xl font-bold text-gray-900">Faktura nije pronađena</h2>
@@ -132,6 +136,8 @@ export default function InvoiceDetails() {
             </div>
         );
     }
+
+    const locked = Boolean(invoice.issuedAt || invoice.legacyDocument || invoice.status !== 'draft');
 
     const refreshPdfVersions = async (): Promise<void> => {
         await loadPdfVersions(invoice.id);
@@ -190,6 +196,7 @@ export default function InvoiceDetails() {
     };
 
     const toggleEmailForm = () => {
+        if (!emailFormOpen) setEmailRecipient(invoice.document?.client.email ?? '');
         setEmailFormOpen(open => {
             emailOperationKeyRef.current = open ? null : createEmailOperationKey();
             return !open;
@@ -202,6 +209,7 @@ export default function InvoiceDetails() {
         try {
             await sendInvoiceEmail(invoice.id, {
                 recipient: emailRecipient.trim(),
+                pdf_version_id: pdfVersions.find(version => version.protectedAt)?.id,
                 subject: emailSubject.trim() || undefined,
                 message: emailMessage.trim() || undefined,
             }, emailOperationKeyRef.current ?? createEmailOperationKey());
@@ -327,7 +335,6 @@ export default function InvoiceDetails() {
         }
     };
 
-    const currency = invoice.currency || company.currency || 'RSD';
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 pb-12">
@@ -368,7 +375,7 @@ export default function InvoiceDetails() {
                                 disabled={updatingStatus}
                                 className={`block rounded-md border-0 py-1.5 pl-3 pr-10 text-xs font-semibold ring-1 ring-inset focus:ring-2 focus:ring-indigo-600 sm:text-xs sm:leading-6 ${invoiceStatusSelectClass[invoice.status]}`}
                             >
-                                {statusOptions.map((status) => (
+                                {statusOptions.filter(status => status.key === invoice.status || (locked ? status.key !== 'draft' : status.key === 'cancelled')).map((status) => (
                                     <option key={status.key} value={status.key}>{status.label}</option>
                                 ))}
                             </select>
@@ -383,7 +390,11 @@ export default function InvoiceDetails() {
 
                 {/* Action buttons */}
                 <div className="flex flex-wrap gap-2 pl-14">
+                    {!locked && <LoadingButton onClick={() => void handleStatusChange('sent')} loading={updatingStatus}>
+                        Izdaj fakturu
+                    </LoadingButton>}
                     <button
+                        disabled={locked}
                         onClick={() => navigate(`/dashboard/invoices/${invoice.id}/edit`)}
                         className="inline-flex items-center px-4 py-2 border border-indigo-200 shadow-sm text-sm font-medium rounded-md text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
                     >
@@ -397,7 +408,7 @@ export default function InvoiceDetails() {
                     </button>
                     <LoadingButton
                         onClick={toggleEmailForm}
-                        disabled={sendingEmail}
+                        disabled={sendingEmail || !locked}
                         loading={sendingEmail}
                         loadingLabel="Slanje..."
                         className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 ${sendingEmail ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -440,6 +451,7 @@ export default function InvoiceDetails() {
                                         handleRegeneratePdf();
                                     }}
                             loading={downloadingPdf}
+                            disabled={invoice.legacyDocument}
                             loadingLabel="Generisanje PDF-a..."
                             className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                         >
@@ -450,6 +462,7 @@ export default function InvoiceDetails() {
                     </div>
                     <LoadingButton
                         onClick={() => { void handleDelete(); }}
+                        disabled={locked}
                         loading={deletingInvoice}
                         loadingLabel="Brisanje..."
                         className="inline-flex items-center px-4 py-2 border border-red-200 shadow-sm text-sm font-medium rounded-md text-red-600 bg-red-50 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -515,7 +528,11 @@ export default function InvoiceDetails() {
 
             {/* Invoice Document */}
             <div ref={printRef}>
-                <InvoiceDocument invoice={invoice} client={client} company={company} currency={currency} meta={meta}/>
+                {invoice.document ? <InvoiceDocument {...invoice.document}/> : (
+                    <p>{invoice.legacyDocument
+                        ? 'Istorijski dokument je dostupan kroz sačuvane PDF verzije.'
+                        : 'Dokument trenutno nije dostupan za prikaz.'}</p>
+                )}
             </div>
 
             <section className="rounded-lg bg-white shadow-sm ring-1 ring-gray-200 p-6 print:hidden">
@@ -595,7 +612,7 @@ export default function InvoiceDetails() {
                             <div key={version.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                                 <div>
                                     <p className="font-medium text-gray-900">Verzija {version.version}{version.path === invoice.pdfPath ? ' · Trenutna' : ''}</p>
-                                    <p className="text-gray-500">{version.createdAt ? new Date(version.createdAt).toLocaleString('sr-Latn-RS') : '—'} · {version.protectedAt || version.sentAt ? 'Poslata/zaštićena' : 'Nezaštićena'}</p>
+                                    <p className="text-gray-500">{version.createdAt ? new Date(version.createdAt).toLocaleString('sr-Latn-RS') : '—'} · {version.sentAt ? 'Poslata' : version.protectedAt ? 'Zaštićena' : 'Nezaštićena'}</p>
                                 </div>
                                 <button type="button" onClick={() => handleDownloadPdfVersion(version)} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Preuzmi</button>
                             </div>

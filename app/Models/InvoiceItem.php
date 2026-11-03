@@ -43,6 +43,8 @@ class InvoiceItem extends Model {
         'sub_total',
         'total',
         'tax_amount',
+        'tax_percent',
+        'position',
         'description',
         'income_category',
     ];

@@ -13,7 +13,7 @@ export default function Clients() {
 
   const filteredClients = clients
     .filter(c => (activeCompanyId ? c.companyId === activeCompanyId : false))
-    .filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.email.toLowerCase().includes(searchTerm.toLowerCase()));
+    .filter(c => [c.name, c.email, c.tax_id, c.registration_number].some(value => value?.toLowerCase().includes(searchTerm.toLowerCase())));
 
   const handleDelete = async (id: number) => {
     if (deletingClientId !== null) return;
@@ -55,7 +55,7 @@ export default function Clients() {
             <input
               type="text"
               className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2"
-              placeholder="Pretraži klijente..."
+              placeholder="Pretraži naziv, email ili identifikator..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -78,7 +78,9 @@ export default function Clients() {
                         <p className="flex items-center text-sm text-gray-500">
                            <span className="truncate">{client.email}</span>
                            <span className="mx-2 text-gray-300">&bull;</span>
-                           <span className="truncate">{client.tax_id || 'Nema PIB'}</span>
+                           <span className="truncate">{client.country_code === 'RS' ? 'Domaći' : client.country_code ? `Strani · ${client.country_code}` : client.country || 'Država nerazrešena'}
+                           {client.tax_id && ` · ${client.country_code === 'RS' ? 'PIB' : 'Tax ID'}: ${client.tax_id}`}
+                           {client.registration_number && ` · ${client.country_code === 'RS' ? 'MB' : 'Reg. br.'}: ${client.registration_number}`}</span>
                         </p>
                      </div>
                   </div>

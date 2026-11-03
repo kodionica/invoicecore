@@ -34,13 +34,13 @@ function invoicePdfFixture(string $email = 'invoice-pdf@example.com'): array
     $invoice->items()->create([
         'name' => 'PDF stavka', 'description' => 'PDF stavka', 'quantity' => 1,
         'price' => 100, 'sub_total' => 100, 'tax_amount' => 0, 'total' => 100,
-        'income_category' => 'service',
+        'income_category' => 'service', 'tax_percent' => 0, 'position' => 0,
     ]);
 
     return [$user, $company, $invoice->fresh(['client', 'company', 'items'])];
 }
 
-function fakeInvoicePdf(): void
+function fakeInvoicePdf(?Closure $matchesHtml = null): void
 {
     Storage::fake('local');
     $builder = Mockery::mock(PdfBuilder::class);
@@ -51,7 +51,11 @@ function fakeInvoicePdf(): void
         Storage::disk('local')->put($path, '%PDF-1.7 test');
         return $builder;
     });
-    Pdf::shouldReceive('html')->andReturn($builder);
+    $render = Pdf::shouldReceive('html');
+    if ($matchesHtml) {
+        $render->withArgs($matchesHtml);
+    }
+    $render->andReturn($builder);
 }
 
 it('creates one current PDF version and reuses it on repeated downloads', function () {
@@ -110,6 +114,7 @@ it('protects the exact PDF version after successful email and keeps it after sta
     [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-send@example.com');
     fakeInvoicePdf();
     Mail::fake();
+    $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/issue")->assertOk();
 
     $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/email", [
         'recipient' => 'accounting@example.com',
@@ -128,18 +133,18 @@ it('protects the exact PDF version after successful email and keeps it after sta
     $attempt = InvoiceEmailSend::where('invoice_id', $invoice->id)->firstOrFail();
     expect($attempt->status)->toBe('accepted')->and($attempt->invoice_pdf_version_id)->toBe($version->id);
 
-    $this->actingAs($user)->putJson("/api/invoices/{$invoice->id}", ['status' => 'draft'])->assertOk();
+    $this->actingAs($user)->putJson("/api/invoices/{$invoice->id}", ['status' => 'draft'])->assertConflict();
     expect($version->fresh()->protected_at)->not->toBeNull();
 });
 
-it('generates and protects the current PDF when the user manually marks an invoice sent', function () {
+it('generates and protects the PDF on explicit issuance', function () {
     [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-manual-send@example.com');
     fakeInvoicePdf();
 
-    $this->actingAs($user)->putJson("/api/invoices/{$invoice->id}", ['status' => 'sent'])->assertOk();
+    $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/issue")->assertOk();
 
     $version = InvoicePdfVersion::where('invoice_id', $invoice->id)->firstOrFail();
-    expect($version->protected_at)->not->toBeNull()->and($version->sent_at)->not->toBeNull();
+    expect($version->protected_at)->not->toBeNull()->and($version->sent_at)->toBeNull();
     expect($invoice->fresh()->status)->toBe('sent');
     expect(InvoiceEmailSend::where('invoice_id', $invoice->id)->count())->toBe(0);
 });
@@ -175,14 +180,15 @@ it('removes an old unprotected PDF when retention permits cleanup', function () 
     expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->count())->toBe(1);
 });
 
-it('does not mark a PDF or invoice as sent when mail delivery fails', function () {
+it('keeps issuance independent of a failed email delivery', function () {
     [$user, $company, $invoice] = invoicePdfFixture('invoice-pdf-fail@example.com');
     fakeInvoicePdf();
     Mail::shouldReceive('to')->once()->andThrow(new RuntimeException('SMTP failed'));
+    $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/issue")->assertOk();
 
     $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/email", [], ['Idempotency-Key' => 'pdf-version-fail-1'])->assertServerError();
 
-    expect($invoice->fresh()->status)->toBe('draft');
+    expect($invoice->fresh()->issued_at)->not->toBeNull();
     expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->whereNotNull('sent_at')->count())->toBe(0);
     expect(InvoiceEmailSend::where('invoice_id', $invoice->id)->firstOrFail()->status)->toBe('failed');
 });
@@ -192,10 +198,9 @@ it('keeps protected versions outside retention and scopes version history to the
     $company->update(['other_settings' => ['invoice_pdf' => ['max_unprotected_versions' => 0]]]);
     fakeInvoicePdf();
 
-    $this->actingAs($user)->getJson("/api/invoices/{$invoice->id}/pdf")->assertOk();
+    $this->actingAs($user)->postJson("/api/invoices/{$invoice->id}/issue")->assertOk();
     $oldPath = $invoice->fresh()->pdf_path;
-    $this->actingAs($user)->putJson("/api/invoices/{$invoice->id}", ['status' => 'sent'])->assertOk();
-    $this->actingAs($user)->putJson("/api/invoices/{$invoice->id}", ['note' => 'Nova verzija'])->assertOk();
+    $this->actingAs($user)->getJson("/api/invoices/{$invoice->id}/pdf?refresh=1")->assertOk();
 
     Storage::disk('local')->assertExists($oldPath);
     expect(InvoicePdfVersion::where('invoice_id', $invoice->id)->count())->toBe(2);
@@ -272,4 +277,99 @@ it('keeps the PDF file and database row when retention database deletion fails',
 
     Storage::disk('local')->assertExists($oldPath);
     expect(InvoicePdfVersion::whereKey($oldVersion->id)->exists())->toBeTrue();
+});
+
+it('locks the document and preserves the original after profile changes', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('invoice-integrity@example.com');
+    fakeInvoicePdf();
+    Storage::fake('public');
+    Storage::disk('public')->put('seller-logo.png', 'original-logo');
+    $company->update(['logo_path' => 'seller-logo.png']);
+    $account = $company->bankAccounts()->create([
+        'bank_name' => 'Original bank', 'account_number' => '160-0000000000000-00',
+        'currency' => 'RSD', 'account_type' => 'domestic',
+    ]);
+    $invoice->update([
+        'bank_account_id' => $account->id, 'bank_account_bank_name' => $account->bank_name,
+        'bank_account_number' => $account->account_number, 'bank_account_currency' => 'RSD',
+    ]);
+    $invoice->client->update(['client_type' => 'company', 'postal_code' => '11000']);
+    $url = "/api/invoices/{$invoice->id}";
+    $this->actingAs($user)->postJson("$url/issue")->assertOk();
+    $original = $this->getJson($url)->assertOk()->json('document');
+    $path = $invoice->fresh()->pdf_path;
+    expect($original['company']['logoUrl'])->toStartWith('data:');
+    expect($original['invoice']['bankAccountBankName'])->toBe('Original bank');
+    expect($original['client']['postal_code'])->toBe('11000')
+        ->and($original['client']['client_type'])->toBe('company')
+        ->and($original['qrCode'])->toBeNull();
+
+    $company->update(['name' => 'New seller', 'default_tax_percent' => 25, 'logo_path' => null]);
+    Storage::disk('public')->delete('seller-logo.png');
+    $account->update(['bank_name' => 'Changed bank', 'account_number' => '260-0000000000000-00']);
+    config(['payment' => ['bank_transfer' => 'Changed payment label']]);
+    $this->putJson("/api/clients/{$invoice->client_id}", [
+        'name' => 'New buyer', 'address' => 'New address', 'country_code' => 'DE',
+        'client_type' => 'entrepreneur', 'postal_code' => '01067',
+    ])->assertOk();
+
+    $this->postJson("$url/issue")->assertOk();
+    expect($invoice->pdfVersions()->count())->toBe(1);
+    expect($this->getJson($url)->assertOk()->json('document'))->toBe($original);
+    $this->putJson($url, ['due_date' => '2026-12-01'])->assertConflict();
+    $this->deleteJson($url)->assertConflict();
+    $this->deleteJson("/api/clients/{$invoice->client_id}")->assertConflict();
+    $this->deleteJson("/api/companies/{$company->id}")->assertConflict();
+    $this->getJson("$url/pdf?refresh=1")->assertOk();
+    Storage::disk('local')->assertExists($path);
+    expect($invoice->pdfVersions()->count())->toBe(2);
+});
+
+it('preserves a historical PDF and declines legacy regeneration', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('invoice-integrity-legacy@example.com');
+    Storage::fake('local');
+    Storage::disk('local')->put('historical.pdf', '%PDF historical');
+    $invoice->update(['status' => 'paid', 'pdf_path' => 'historical.pdf']);
+    $url = "/api/invoices/{$invoice->id}";
+
+    $this->actingAs($user)->getJson($url)->assertOk()
+        ->assertJsonPath('legacy_document', true)->assertJsonPath('document', null);
+    $this->getJson("$url/pdf")->assertOk();
+    $this->getJson("$url/pdf?refresh=1")->assertConflict();
+    expect(Storage::disk('local')->get('historical.pdf'))->toBe('%PDF historical');
+    expect($invoice->fresh()->issued_at)->toBeNull();
+});
+
+it('defaults and preserves service dates through the invoice API', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('service-date-api@example.test');
+    $issueDate = $company->businessToday()->addDay()->toDateString();
+    $serviceDate = $company->businessToday()->subDay()->toDateString();
+    $payload = [
+        'client_id' => $invoice->client_id,
+        'issue_date' => $issueDate,
+        'items' => [['name' => 'Usluga', 'quantity' => 1, 'price' => 100]],
+    ];
+    $this->actingAs($user)->postJson('/api/invoices', $payload)->assertCreated()
+        ->assertJsonPath('service_date', $issueDate.'T00:00:00.000000Z');
+    $created = $this->postJson('/api/invoices', $payload + ['service_date' => $serviceDate])
+        ->assertCreated()->assertJsonPath('service_date', $serviceDate.'T00:00:00.000000Z');
+    $url = '/api/invoices/'.$created->json('id');
+    $this->putJson($url, ['issue_date' => $company->businessToday()->addDays(2)->toDateString()])
+        ->assertOk()->assertJsonPath('service_date', $serviceDate.'T00:00:00.000000Z');
+    $this->putJson($url, ['service_date' => $issueDate])
+        ->assertOk()->assertJsonPath('service_date', $issueDate.'T00:00:00.000000Z');
+    $this->getJson($url)->assertOk()->assertJsonPath('document.invoice.serviceDate', $issueDate);
+    $this->putJson($url, ['service_date' => '2026-02-30'])
+        ->assertUnprocessable()->assertJsonValidationErrors('service_date');
+});
+
+it('renders the persisted service date independently and locks it on issuance', function () {
+    [$user, $company, $invoice] = invoicePdfFixture('service-date-pdf@example.test');
+    $invoice->update(['service_date' => '2026-10-09']);
+    fakeInvoicePdf(fn (string $html): bool => preg_match('/Datum izdavanja:<\/span>\s*<span[^>]*>17\./', $html)
+        && preg_match('/Datum prometa:<\/span>\s*<span[^>]*>09\./', $html));
+
+    $url = "/api/invoices/{$invoice->id}";
+    $this->actingAs($user)->postJson("$url/issue")->assertOk();
+    $this->putJson($url, ['service_date' => '2026-10-10'])->assertConflict();
 });

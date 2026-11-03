@@ -9,10 +9,10 @@ use Illuminate\Support\Facades\Cache;
 
 class MetaController extends Controller {
     public function __invoke(): JsonResponse {
-        $data = Cache::remember( 'meta:public', 3600, static function () {
+        $data = Cache::remember( 'meta:public:client-profiles', 3600, static function () {
             $statusLabels = [
                 InvoiceStatus::DRAFT->value     => 'Nacrt',
-                InvoiceStatus::SENT->value      => 'Poslato',
+                InvoiceStatus::SENT->value      => 'Izdata',
                 InvoiceStatus::PAID->value      => 'Plaćeno',
                 InvoiceStatus::OVERDUE->value   => 'Kasni',
                 InvoiceStatus::CANCELLED->value => 'Otkazano',
@@ -29,6 +29,8 @@ class MetaController extends Controller {
                 'countries'        => config( 'countries' ),
                 'currencies'       => config( 'currency' ),
                 'payment_methods'  => config( 'payment' ),
+                'client_countries' => \App\Support\ClientProfile::countries(),
+                'invoice_languages' => \App\Support\ClientProfile::LANGUAGES,
                 'client_types'     => config( 'client-type' ),
                 'invoice_statuses' => $invoiceStatuses,
             ];

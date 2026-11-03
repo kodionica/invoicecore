@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Enums\InvoiceStatus;
 use App\Models\Client;
+use App\Support\ClientProfile;
+use Illuminate\Database\UniqueConstraintViolationException;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\InvoiceRevision;
@@ -22,7 +24,7 @@ class CsvImportExportService
     public function fields(string $type): array
     {
         return $type === 'clients'
-            ? ['name', 'email', 'tax_id', 'registration_number', 'address', 'city', 'country', 'phone', 'client_type']
+            ? ['name', 'email', 'tax_id', 'registration_number', 'address', 'city', 'country', 'phone', 'client_type', 'country_code', 'postal_code', 'contact_person', 'default_currency', 'preferred_language']
             : ['invoice_number', 'issue_date', 'due_date', 'currency', 'status', 'client_id', 'client_name', 'payment_method', 'note', 'vat_enabled_at_issue', 'paid_at', 'payment_note', 'fx_rate_to_rsd', 'fx_provider', 'fx_date', 'item_name', 'item_description', 'quantity', 'price', 'tax_percent', 'income_category'];
     }
 
@@ -73,25 +75,28 @@ class CsvImportExportService
             if ($type === 'clients') {
                 fputcsv($handle, $this->fields('clients'));
                 $company->clients()->orderBy('id')->cursor()->each(function (Client $client) use ($handle): void {
-                    fputcsv($handle, array_map(fn ($value) => $this->safeCell($value), [
-                        $client->name, $client->email, $client->tax_id, $client->registration_number,
-                        $client->address, $client->city, $client->country, $client->phone, $client->client_type,
-                    ]));
+                    fputcsv($handle, array_map(
+                        fn (string $field) => $this->safeCell($client->$field),
+                        $this->fields('clients')
+                    ));
                 });
             } else {
                 $headers = $this->fields('invoices');
                 fputcsv($handle, $headers);
                 $company->invoices()->with(['client', 'items'])->orderBy('id')->cursor()->each(function (Invoice $invoice) use ($handle): void {
                     $items = $invoice->items->isEmpty() ? [null] : $invoice->items;
+                    $buyerName = $invoice->issued_at
+                        ? ($invoice->buyer_snapshot['name'] ?? null)
+                        : ($invoice->hasProtectedHistory() ? null : $invoice->client?->name);
                     foreach ($items as $item) {
                         fputcsv($handle, [
                             $this->safeCell($invoice->invoice_number), $this->safeCell($invoice->issue_date?->toDateString()),
                             $this->safeCell($invoice->due_date?->toDateString()), $this->safeCell($invoice->currency),
-                            $this->safeCell($invoice->status), $invoice->client_id, $this->safeCell($invoice->client?->name),
+                            $this->safeCell($invoice->status), $invoice->client_id, $this->safeCell($buyerName),
                             $this->safeCell($invoice->payment_method), $this->safeCell($invoice->note),
-                            $invoice->vat_enabled_at_issue ? '1' : '0', $this->safeCell($invoice->paid_at?->toDateString()),
+                            $invoice->vat_enabled_at_issue === null ? null : (int) $invoice->vat_enabled_at_issue, $this->safeCell($invoice->paid_at?->toDateString()),
                             $this->safeCell($invoice->payment_note), $invoice->fx_rate_to_rsd, $this->safeCell($invoice->fx_provider), $this->safeCell($invoice->fx_date?->toDateString()), $this->safeCell($item?->name), $this->safeCell($item?->description),
-                            $item?->quantity, $item?->price, $invoice->vat_enabled_at_issue ? $invoice->company?->default_tax_percent : 0, $this->safeCell($item?->income_category),
+                            $item?->quantity, $item?->price, $item?->tax_percent ?? ($invoice->vat_enabled_at_issue === false ? 0 : null), $this->safeCell($item?->income_category),
                         ]);
                     }
                 });
@@ -149,19 +154,25 @@ class CsvImportExportService
         if ($type === 'clients') {
             $seen = [];
             foreach ($rows as $index => $row) {
-                $name = $this->mappedValue($row, $mapping, 'name');
-                if ($name === '') $errors[] = 'Red '.($index + 2).': naziv klijenta je obavezan.';
-                $key = strtolower($this->mappedValue($row, $mapping, 'tax_id') ?: $this->mappedValue($row, $mapping, 'email'));
-                if ($key !== '' && isset($seen[$key])) { $summary['duplicates']++; $errors[] = 'Red '.($index + 2).': duplikat klijenta.'; }
-                foreach (['tax_id', 'registration_number', 'email'] as $field) {
-                    $value = $this->mappedValue($row, $mapping, $field);
-                    if ($value !== '' && $company->clients()->where($field, $value)->exists()) {
-                        $summary['duplicates']++;
-                        $errors[] = 'Red '.($index + 2).": klijent sa {$field} već postoji.";
-                        break;
+                $data = $this->clientRow($row, $mapping);
+                $validator = ClientProfile::validator($data, $company->id);
+                if ($validator->fails()) {
+                    foreach ($validator->errors()->all() as $error) {
+                        $errors[] = 'Red '.($index + 2).': '.$error;
                     }
+                    continue;
                 }
-                $seen[$key] = true;
+                foreach (['tax_id', 'registration_number'] as $field) {
+                    if (($data[$field] ?? null) === null) {
+                        continue;
+                    }
+                    $key = $data['country_code'].':'.$field.':'.$data[$field];
+                    if (isset($seen[$key])) {
+                        $summary['duplicates']++;
+                        $errors[] = 'Red '.($index + 2).": duplikat polja {$field}.";
+                    }
+                    $seen[$key] = true;
+                }
                 $summary['clients']++;
             }
         } else {
@@ -188,6 +199,13 @@ class CsvImportExportService
                 $status = $this->mappedValue($row, $mapping, 'status');
                 if ($status !== '' && !in_array($status, array_map(fn (InvoiceStatus $case) => $case->value, InvoiceStatus::cases()), true)) $errors[] = 'Red '.($index + 2).': status nije podržan.';
                 if ($status === InvoiceStatus::PAID->value && $this->mappedValue($row, $mapping, 'paid_at') === '') $errors[] = 'Red '.($index + 2).': plaćena faktura mora imati datum uplate.';
+                $taxPercent = $this->mappedValue($row, $mapping, 'tax_percent');
+                if ($taxPercent !== '' && (!is_numeric($taxPercent) || (float) $taxPercent < 0 || (float) $taxPercent > 100)) {
+                    $errors[] = 'Red '.($index + 2).': stopa PDV-a mora biti između 0 i 100.';
+                }
+                if (in_array(strtolower($this->mappedValue($row, $mapping, 'vat_enabled_at_issue')), ['1', 'true', 'yes', 'da'], true) && $taxPercent === '') {
+                    $errors[] = 'Red '.($index + 2).': PDV stopa je obavezna za stavku sa PDV-om.';
+                }
                 $category = $this->mappedValue($row, $mapping, 'income_category');
                 if ($category !== '' && !in_array($category, ['product', 'service', 'unclassified'], true)) $errors[] = 'Red '.($index + 2).': klasifikacija prihoda nije podržana.';
                 if ($this->mappedValue($row, $mapping, 'paid_at') !== '') {
@@ -212,25 +230,32 @@ class CsvImportExportService
         return $index === false ? '' : trim((string) ($row[$index] ?? ''));
     }
 
+    private function clientRow(array $row, array $mapping): array
+    {
+        $data = [];
+        foreach ($this->fields('clients') as $field) {
+            $value = $this->mappedValue($row, $mapping, $field);
+            if ($value !== '') {
+                $data[$field] = $value;
+            }
+        }
+
+        return ClientProfile::normalize($data, true);
+    }
+
     private function importClients(array $rows, array $mapping, Company $company): array
     {
-        $created = 0;
-        foreach ($rows as $row) {
-            $data = [];
-            foreach ($this->fields('clients') as $field) $data[$field] = $this->mappedValue($row, $mapping, $field) ?: null;
-            $data['client_type'] ??= 'b2b';
-            $duplicate = false;
-            foreach (['tax_id', 'registration_number', 'email'] as $field) {
-                if (!empty($data[$field]) && $company->clients()->where($field, $data[$field])->exists()) {
-                    $duplicate = true;
-                    break;
-                }
+        foreach ($rows as $index => $row) {
+            $data = ClientProfile::validator($this->clientRow($row, $mapping), $company->id)->validate();
+            try {
+                $company->clients()->create($data);
+            } catch (UniqueConstraintViolationException $exception) {
+                $field = ClientProfile::conflictField($exception);
+                throw ValidationException::withMessages(['file' => ['Red '.($index + 2).": duplikat polja {$field}."]]);
             }
-            if ($duplicate) throw ValidationException::withMessages(['file' => ['Klijent već postoji; postojeći klijenti se ne prepisuju.']]);
-            $company->clients()->create($data);
-            $created++;
         }
-        return ['created_clients' => $created, 'created_invoices' => 0, 'created_items' => 0];
+
+        return ['created_clients' => count($rows), 'created_invoices' => 0, 'created_items' => 0];
     }
 
     private function importInvoices(array $rows, array $mapping, Company $company): array
@@ -243,23 +268,26 @@ class CsvImportExportService
             $first = $invoiceRows[0];
             $client = $this->resolveClient($first, $mapping, $company);
             $currency = strtoupper($this->mappedValue($first, $mapping, 'currency'));
-            $vat = in_array(strtolower($this->mappedValue($first, $mapping, 'vat_enabled_at_issue')), ['1', 'true', 'da', 'yes'], true);
-            $taxPercent = is_numeric($this->mappedValue($first, $mapping, 'tax_percent')) && $this->mappedValue($first, $mapping, 'tax_percent') !== ''
-                ? (float) $this->mappedValue($first, $mapping, 'tax_percent')
-                : (float) ($company->default_tax_percent ?? 0);
+            $vatValue = $this->mappedValue($first, $mapping, 'vat_enabled_at_issue');
+            $vat = $vatValue === '' ? null : in_array(strtolower($vatValue), ['1', 'true', 'da', 'yes'], true);
             $subtotal = 0.0; $tax = 0.0; $items = [];
             foreach ($invoiceRows as $row) {
                 $quantity = (float) $this->mappedValue($row, $mapping, 'quantity');
                 $price = (float) $this->mappedValue($row, $mapping, 'price');
+                $rawTaxPercent = $this->mappedValue($row, $mapping, 'tax_percent');
+                if ($vat && $rawTaxPercent === '') {
+                    throw ValidationException::withMessages(['file' => ["Faktura {$number} nema stopu PDV-a na svakoj stavci."]]);
+                }
+                $taxPercent = $vat ? (float) $rawTaxPercent : ($vat === false ? 0 : null);
                 $sub = $quantity * $price; $itemTax = $vat ? $sub * $taxPercent / 100 : 0.0;
                 $subtotal += $sub; $tax += $itemTax;
-                $items[] = ['name' => $this->mappedValue($row, $mapping, 'item_name'), 'description' => $this->mappedValue($row, $mapping, 'item_description') ?: $this->mappedValue($row, $mapping, 'item_name'), 'quantity' => $quantity, 'price' => $price, 'sub_total' => $sub, 'tax_amount' => $itemTax, 'total' => $sub + $itemTax, 'income_category' => $this->mappedValue($row, $mapping, 'income_category') ?: null];
+                $items[] = ['name' => $this->mappedValue($row, $mapping, 'item_name'), 'description' => $this->mappedValue($row, $mapping, 'item_description') ?: $this->mappedValue($row, $mapping, 'item_name'), 'quantity' => $quantity, 'price' => $price, 'sub_total' => $sub, 'tax_amount' => $itemTax, 'tax_percent' => $taxPercent, 'position' => count($items), 'total' => $sub + $itemTax, 'income_category' => $this->mappedValue($row, $mapping, 'income_category') ?: null];
             }
             $rateValue = $currency === 'RSD' ? 1.0 : (float) $this->mappedValue($first, $mapping, 'fx_rate_to_rsd');
             $rate = [
                 'exchange_middle' => $rateValue,
                 'provider' => $this->mappedValue($first, $mapping, 'fx_provider') ?: ($currency === 'RSD' ? 'internal' : 'csv_import'),
-                'date' => $this->mappedValue($first, $mapping, 'fx_date') ?: now()->toDateString(),
+                'date' => $this->mappedValue($first, $mapping, 'fx_date') ?: null,
             ];
             $total = $subtotal + $tax; $issueDate = $this->mappedValue($first, $mapping, 'issue_date');
             $invoice = $company->invoices()->create(['invoice_number' => $number, 'client_id' => $client->id, 'issue_date' => $issueDate, 'due_date' => $this->mappedValue($first, $mapping, 'due_date') ?: null, 'currency' => $currency, 'status' => $this->mappedValue($first, $mapping, 'status') ?: InvoiceStatus::DRAFT->value, 'payment_method' => $this->mappedValue($first, $mapping, 'payment_method') ?: null, 'note' => $this->mappedValue($first, $mapping, 'note') ?: null, 'vat_enabled_at_issue' => $vat, 'paid_at' => $this->mappedValue($first, $mapping, 'paid_at') ?: null, 'payment_note' => $this->mappedValue($first, $mapping, 'payment_note') ?: null, 'include_in_kpo' => false, 'fx_rate_to_rsd' => $rate['exchange_middle'], 'fx_provider' => $rate['provider'], 'fx_date' => $rate['date'], 'subtotal_original' => round($subtotal, 2), 'tax_original' => round($tax, 2), 'total_original' => round($total, 2), 'subtotal_rsd' => round($subtotal * $rate['exchange_middle'], 2), 'tax_rsd' => round($tax * $rate['exchange_middle'], 2), 'total_rsd' => round($total * $rate['exchange_middle'], 2), 'total' => round($total, 2)]);

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\InvoiceStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -61,6 +62,7 @@ class Invoice extends Model {
     protected $fillable = [
         'invoice_number',
         'issue_date',
+        'service_date',
         'due_date',
         'currency',
         'fx_rate_to_rsd',
@@ -91,8 +93,16 @@ class Invoice extends Model {
         'bank_account_currency',
         'bank_account_payment_instructions',
     ];
+    protected $hidden = ['seller_snapshot', 'buyer_snapshot', 'document_settings'];
+
     protected $casts    = [
+        'issued_at' => 'datetime',
+        'seller_snapshot' => 'array',
+        'buyer_snapshot' => 'array',
+        'document_settings' => 'array',
+        'legacy_protected' => 'boolean',
         'issue_date' => 'date',
+        'service_date' => 'date',
         'due_date'   => 'date',
         'paid_at'    => 'date',
         'fx_date'    => 'date',
@@ -108,8 +118,17 @@ class Invoice extends Model {
         'include_in_kpo' => 'boolean',
     ];
 
+    public function hasProtectedHistory(): bool
+    {
+        return $this->issued_at !== null
+            || $this->legacy_protected
+            || $this->status !== InvoiceStatus::DRAFT->value
+            || $this->pdfVersions()->whereNotNull('protected_at')->exists()
+            || $this->emailSends()->whereNotNull('accepted_at')->exists();
+    }
+
     public function items(): HasMany {
-        return $this->hasMany( InvoiceItem::class );
+        return $this->hasMany( InvoiceItem::class )->orderByRaw('CASE WHEN position IS NULL THEN 1 ELSE 0 END')->orderBy('position')->orderBy('id');
     }
 
     public function client(): BelongsTo {

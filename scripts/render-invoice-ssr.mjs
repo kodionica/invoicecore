@@ -21,6 +21,6 @@ if (!fs.existsSync(bundlePath)) {
     process.exit(1);
 }
 
-const { render } = await import(pathToFileURL(bundlePath).href);
-const html = await render(payload);
-process.stdout.write(html);
+const { render, resolveQrCode } = await import(pathToFileURL(bundlePath).href);
+const output = process.argv[2] === '--qr' ? JSON.stringify(await resolveQrCode(payload)) : await render(payload);
+process.stdout.write(output);

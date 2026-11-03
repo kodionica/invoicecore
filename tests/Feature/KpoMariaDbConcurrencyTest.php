@@ -206,6 +206,9 @@ function runConcurrentKpoWorkers(
             }
         }
 
+        if ($mode === 'issue') {
+            (new \Illuminate\Filesystem\Filesystem)->deleteDirectory($root.'/invoice-pdfs');
+        }
         cleanupKpoConcurrencyTempDirectory($root, $workerEntries);
     }
 }
@@ -228,6 +231,22 @@ final class KpoMariaDbConcurrencyTest extends BaseTestCase
             '--database' => 'mariadb',
             '--force' => true,
         ]);
+    }
+
+    public function test_serializes_simultaneous_issuance_of_the_same_invoice(): void
+    {
+        [$company, [$invoice]] = createKpoConcurrencyContext('same-issuance');
+        $company->user->update(['active_company_id' => $company->id]);
+        foreach ($invoice->items as $position => $item) {
+            $item->update(['tax_percent' => 0, 'position' => $position]);
+        }
+        $payload = ['invoice_id' => $invoice->id];
+
+        runConcurrentKpoWorkers($company->id, [$payload, $payload], 'same-issuance', 'issue');
+
+        $this->assertNotNull($invoice->fresh()->issued_at);
+        $this->assertSame(1, $invoice->pdfVersions()->whereNotNull('protected_at')->count());
+        $this->assertSame(1, $invoice->revisions()->where('action_type', 'issued')->count());
     }
 
     public function test_serializes_simultaneous_generation_of_the_same_mixed_invoice(): void

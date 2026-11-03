@@ -36,6 +36,7 @@ export function buildIpsQrBodyParams({
 export async function fetchIpsQrCodeResponse(bodyParams: string[]) {
     const response = await fetch('https://nbs.rs/QRcode/api/qr/v1/generate', {
         method: 'POST',
+        signal: AbortSignal.timeout(5000),
         body: bodyParams.join('|'),
     });
 

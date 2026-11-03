@@ -20,8 +20,8 @@ Prioriteti: P0 blokatori integriteta i bezbednosti, P1 svakodnevno poslovanje, P
 
 ### 3. Životni ciklus fakture i payment
 
-- Stanje: statusi, paid_at, payment_note, PDF verzije, e-mail istorija i audit postoje.
-- Preostalo: samo ako poslovno treba — parcijalne uplate, saldo, refundacije ili formalni Payment domen.
+- Stanje: eksplicitno izdavanje, zaključavanje poslovnih podataka, snapshot kupca i izdavaoca, PDF verzije, email istorija i audit.
+- Preostalo: potvrditi dozvoljene tehničke revizije i tok korektivnih dokumenata. Parcijalne uplate, saldo i refundacije ostaju zasebna poslovna odluka.
 - Kriterijum: odluka pre širenja modela; ne izvlačiti računovodstvena pravila iz statusa paid.
 
 ### 4. Bankovni računi po valuti
@@ -36,7 +36,12 @@ Prioriteti: P0 blokatori integriteta i bezbednosti, P1 svakodnevno poslovanje, P
 - Preostalo: potvrda računovodstvenih pravila za VAT, period lock, storno i pravnu usklađenost PDF-a.
 - Kriterijum: nema duplog prihoda, ručne korekcije se čuvaju, stale preview se odbija.
 
-### 6. Dnevni rad
+### 6. Profili klijenata
+
+- Stanje: domaći i strani klijenti, tri tipa, opcioni identifikatori, CSV i podrazumevana valuta i jezik novih faktura.
+- Preostalo: dodatni jezici sa kompletnim šablonima i poslovno pravilo za izbor IPS šifre prema osnovu plaćanja.
+
+### 7. Dnevni rad
 
 - Stanje: overdue filter, timezone firme, numeracija po firmi i PDF/e-mail tokovi postoje.
 - Preostalo: samo konkretni UX problemi potvrđeni testom; ne uvoditi generički refactor.

@@ -1,3 +1,4 @@
+import type {InvoiceDocumentProps} from '../components/InvoiceDocument';
 import React, {createContext, useContext, useEffect, useState} from 'react';
 import axios from 'axios';
 import {toast} from 'sonner';
@@ -44,6 +45,11 @@ export interface CompanyBankAccount {
 }
 
 export interface Client {
+    country_code?: string;
+    postal_code?: string;
+    contact_person?: string;
+    default_currency?: string;
+    preferred_language?: string;
     id: number;
     companyId: number;
     name: string;
@@ -71,11 +77,15 @@ export type InvoiceIncomeCategory = 'product' | 'service' | 'unclassified';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
 
 export interface Invoice {
+    document?: InvoiceDocumentProps | null;
+    legacyDocument?: boolean;
+    issuedAt?: string | null;
     id: number;
     companyId: number;
     clientId: number;
     number: string;
     date: string;
+    serviceDate?: string;
     dueDate: string;
     isOverdue?: boolean;
     overdueDays?: number;
@@ -342,7 +352,12 @@ interface CompanyUpdatePayload extends Partial<Omit<CompanyCreatePayload, 'logoF
     remove_logo?: boolean;
 }
 
-interface ClientCreatePayload {
+export interface ClientCreatePayload {
+    country_code?: string;
+    postal_code?: string;
+    contact_person?: string;
+    default_currency?: string;
+    preferred_language?: string;
     name: string;
     email?: string;
     address?: string;
@@ -385,8 +400,10 @@ export interface InvoiceListPage {
 }
 
 interface InvoiceCreatePayload {
+    documentLocale?: string;
     clientId: number;
     date: string;
+    serviceDate?: string;
     dueDate: string;
     number?: string;
     currency?: string;
@@ -423,7 +440,9 @@ export interface MetaData {
     currencies: Record<string, { name: string; symbol?: string }> | Array<{ code: string; name: string; symbol?: string }>;
     payment_methods: Record<string, string> | Array<{ key: string; label: string }>;
     invoice_statuses?: Array<{ key: string; label: string }>;
-    client_types: Array<{ value: string; label: string, code: string }>;
+    client_types: Array<{ value: string; label: string; code?: string }>;
+    client_countries?: string[];
+    invoice_languages?: Record<string, string>;
 }
 
 export interface AppSettings {
@@ -461,8 +480,9 @@ interface AppContextType {
     setDefaultBankAccount: (companyId: number, accountId: number) => Promise<CompanyBankAccount>;
     deactivateBankAccount: (companyId: number, accountId: number) => Promise<void>;
     deleteCompany: (id: number) => Promise<void>;
+    getClient: (id: number) => Promise<Client>;
     addClient: (client: ClientCreatePayload) => Promise<void>;
-    updateClient: (id: number, data: ClientCreatePayload) => Promise<void>;
+    updateClient: (id: number, data: Partial<ClientCreatePayload>) => Promise<void>;
     deleteClient: (id: number) => Promise<void>;
     addInvoice: (invoice: InvoiceCreatePayload) => Promise<void>;
     updateInvoice: (id: number, invoice: InvoiceCreatePayload, confirmation?: InvoiceKpoConfirmation) => Promise<void>;
@@ -477,7 +497,7 @@ interface AppContextType {
     loadInvoicePage: (filters?: InvoiceListFilters) => Promise<InvoiceListPage>;
     updateInvoiceItemClassifications: (id: number, items: { id: number; incomeCategory: InvoiceIncomeCategory }[]) => Promise<void>;
     downloadInvoicePdf: (id: number, invoiceNumber?: string, options?: { force?: boolean }) => Promise<void>;
-    sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string }, idempotencyKey?: string) => Promise<any>;
+    sendInvoiceEmail: (id: number, payload?: { recipient?: string; subject?: string; message?: string; pdf_version_id?: number }, idempotencyKey?: string) => Promise<any>;
     getInvoiceEmailHistory: (id: number) => Promise<any[]>;
     loadKpo: (filters?: KpoFilters) => Promise<KpoListResponse>;
     downloadKpoPdf: (filters?: KpoFilters) => Promise<void>;
@@ -594,6 +614,11 @@ const normalizeClient = (client: any): Client => {
         city: client.city ?? undefined,
         country: client.country ?? undefined,
         createdAt: client.created_at ?? client.createdAt ?? undefined,
+        country_code: client.country_code ?? undefined,
+        postal_code: client.postal_code ?? undefined,
+        contact_person: client.contact_person ?? undefined,
+        default_currency: client.default_currency ?? undefined,
+        preferred_language: client.preferred_language ?? undefined,
         client_type: client.client_type
     };
 };
@@ -614,11 +639,15 @@ const normalizeInvoice = (invoice: any): Invoice => {
     const totalRsd = Number(invoice.total_rsd ?? 0);
 
     return {
+        document: invoice.document,
+        legacyDocument: invoice.legacy_document,
+        issuedAt: invoice.issued_at,
         id: Number(invoice.id),
         companyId: Number(invoice.company_id ?? 0),
         clientId: Number(invoice.client_id ?? 0),
         number: invoice.invoice_number ?? '',
         date: normalizeDateInput(invoice.issue_date),
+        serviceDate: normalizeDateInput(invoice.service_date),
         dueDate: normalizeDateInput(invoice.due_date),
         isOverdue: Boolean(invoice.is_overdue),
         overdueDays: Number(invoice.overdue_days ?? 0),
@@ -1197,13 +1226,15 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         }
     };
 
+    const getClient = async (id: number) => normalizeClient((await api.get(`/api/clients/${id}`)).data);
+
     const addClient = async (client: ClientCreatePayload) => {
         const response = await api.post('/api/clients', client);
         const created = normalizeClient(response.data);
         setClients(current => [...current, created]);
     };
 
-    const updateClient = async (id: number, data: ClientCreatePayload) => {
+    const updateClient = async (id: number, data: Partial<ClientCreatePayload>) => {
         const response = await api.put(`/api/clients/${id}`, data);
         const updated = normalizeClient(response.data);
         setClients(current => current.map(c => (c.id === id ? updated : c)));
@@ -1219,8 +1250,10 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             client_id: invoice.clientId,
             invoice_number: invoice.number,
             issue_date: invoice.date || undefined,
+            service_date: invoice.serviceDate || undefined,
             due_date: invoice.dueDate || undefined,
             currency: invoice.currency,
+            document_locale: invoice.documentLocale,
             payment_method: invoice.paymentMethod,
             note: invoice.note,
             include_in_kpo: invoice.includeInKpo !== false,
@@ -1245,6 +1278,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             client_id: invoice.clientId,
             invoice_number: invoice.number,
             issue_date: invoice.date || undefined,
+            service_date: invoice.serviceDate || undefined,
             due_date: invoice.dueDate || undefined,
             currency: invoice.currency,
             payment_method: invoice.paymentMethod,
@@ -1290,19 +1324,28 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         const rawInvoice = response.data?.invoice ?? response.data;
         const updated = normalizeInvoice({
             ...rawInvoice,
+            document: response.data.document,
+            legacy_document: response.data.legacy_document,
             items: rawInvoice?.items ?? response.data?.invoice_items ?? [],
         });
-        setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+        setInvoices(current => current.some(inv => inv.id === id)
+            ? current.map(inv => inv.id === id ? updated : inv)
+            : [...current, updated]);
         return updated;
     };
 
     const updateInvoiceStatus = async (id: number, status: InvoiceStatus, payment?: {paidAt?: string | null; paymentNote?: string | null}) => {
+        if (status === 'sent' && invoices.find(invoice => invoice.id === id)?.status === 'draft') {
+            await api.post(`/api/invoices/${id}/issue`);
+            await refreshInvoice(id);
+            return;
+        }
         const response = await api.put(`/api/invoices/${id}`, {
             status,
             ...(payment ? {paid_at: payment.paidAt ?? null, payment_note: payment.paymentNote ?? null} : {}),
         });
         const updated = normalizeInvoice(response.data);
-        setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+        setInvoices(current => current.map(inv => (inv.id === id ? {...updated, document: inv.document, legacyDocument: inv.legacyDocument} : inv)));
     };
 
     const getInvoiceHistory = async (id: number) => {
@@ -1331,7 +1374,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             })),
         });
         const updated = normalizeInvoice(response.data);
-        setInvoices(current => current.map(inv => (inv.id === id ? updated : inv)));
+        setInvoices(current => current.map(inv => (inv.id === id ? {...updated, document: inv.document, legacyDocument: inv.legacyDocument} : inv)));
     };
 
     const downloadInvoicePdf = async (id: number, invoiceNumber?: string, options?: { force?: boolean }) => {
@@ -1368,7 +1411,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
         window.URL.revokeObjectURL(url);
     };
 
-    const sendInvoiceEmail = async (id: number, payload?: { recipient?: string; subject?: string; message?: string }, idempotencyKey?: string) => {
+    const sendInvoiceEmail = async (id: number, payload?: { recipient?: string; subject?: string; message?: string; pdf_version_id?: number }, idempotencyKey?: string) => {
         const response = await api.post(`/api/invoices/${id}/email`, payload ?? {}, idempotencyKey ? {
             headers: {'Idempotency-Key': idempotencyKey},
         } : undefined);
@@ -1447,6 +1490,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             setDefaultBankAccount,
             deactivateBankAccount,
             deleteCompany,
+            getClient,
             addClient,
             updateClient,
             deleteClient,

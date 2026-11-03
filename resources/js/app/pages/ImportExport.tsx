@@ -4,7 +4,7 @@ import {toast} from 'sonner';
 import {CsvImportPreview, useApp} from '../context/AppContext';
 
 const labels: Record<string, string> = {
-    name: 'Naziv', email: 'Email', tax_id: 'PIB', registration_number: 'Matični broj', address: 'Adresa', city: 'Grad', country: 'Država', phone: 'Telefon', client_type: 'Tip klijenta',
+    name: 'Naziv', email: 'Email', tax_id: 'PIB / Tax ID', registration_number: 'Matični / registracioni broj', country_code: 'ISO kod države', postal_code: 'Poštanski broj', contact_person: 'Kontakt osoba', default_currency: 'Podrazumevana valuta', preferred_language: 'Jezik fakture', address: 'Adresa', city: 'Grad', country: 'Država', phone: 'Telefon', client_type: 'Tip klijenta',
     invoice_number: 'Broj fakture', issue_date: 'Datum izdavanja', due_date: 'Rok plaćanja', currency: 'Valuta', status: 'Status', client_id: 'ID klijenta', client_name: 'Naziv klijenta', payment_method: 'Način plaćanja', note: 'Napomena', vat_enabled_at_issue: 'PDV pri izdavanju', paid_at: 'Datum uplate', payment_note: 'Napomena o uplati', fx_rate_to_rsd: 'Kurs prema RSD', fx_provider: 'Izvor kursa', fx_date: 'Datum kursa', item_name: 'Naziv stavke', item_description: 'Opis stavke', quantity: 'Količina', price: 'Cena', tax_percent: 'Porez %', income_category: 'Kategorija prihoda',
 };
 

@@ -6,13 +6,13 @@ InvoiceController generiše PDF preko Spatie Laravel PDF, Browsershot/Puppeteer 
 
 PDF verzije su u invoice_pdf_versions, sa verzijom, immutable storage putanjom, protected_at/sent_at i current PDF vezom preko fakture. Zaštićene i aktivne verzije nisu predmet retention brisanja. Retention radi staging kopiju i prijavljuje filesystem/DB grešku bez lažnog uspeha.
 
-Ponovljeni download bez promene koristi postojeću verziju. Izmena poslate fakture pravi novu trenutnu verziju i čuva prethodnu zaštićenu verziju. E-mail beleži tačnu PDF verziju.
+Ponovljeni download bez promene koristi postojeću verziju. Regeneracija izdate fakture dodaje novu verziju i čuva prethodnu zaštićenu verziju. E-mail beleži tačnu PDF verziju.
 
 PDF fajlovi su u privatnom storage-u i ne treba ih izlagati javnim URL-ovima. Preuzimanje i istorija proveravaju policy i aktivnu firmu.
 
 ## E-mail
 
-InvoiceController::sendEmail koristi invoice_email_sends i idempotency ključ. Isti ključ se ne šalje ponovo; nova namerna operacija dobija novi ključ. Uspešno slanje štiti korišćenu PDF verziju i postavlja fakturu na sent. Neuspeh se beleži, a neizvestan ishod se ne predstavlja kao uspeh.
+InvoiceController::sendEmail koristi invoice_email_sends i idempotency ključ. Isti ključ se ne šalje ponovo; nova namerna operacija dobija novi ključ. Uspešno slanje beleži vreme slanja korišćene PDF verzije. Neuspeh se beleži, a neizvestan ishod se ne predstavlja kao uspeh.
 
 ## Bankarski podaci
 
@@ -23,3 +23,9 @@ PDF koristi invoice snapshot payment instrukcija kada postoji, a legacy podatke 
 KpoController generiše server-side PDF sa pet fizičkih kolona: redni broj, datum/opis, proizvodi, usluge i ukupno. income_category je primarni izvor, a legacy NULL kategorija koristi poznati income_type mapping. Nepoznata legacy klasifikacija se prikazuje kao unresolved/warning i ne dobija izmišljenu kategoriju.
 
 KPO PDF ne treba označavati kao potpuno pravno usaglašen obrazac bez računovodstvene/propisne potvrde.
+
+## Izdati i legacy dokumenti
+
+React detalj i SSR koriste isti serverski payload. Izdati dokument koristi sačuvane podatke kupca i izdavaoca, logo kopiran u snapshot, efektivne metapodatke i postojeće bankarske i FX kolone. IPS QR se određuje pri izdavanju. Regeneracija kompletne izdate fakture dodaje zaštićenu PDF verziju. Poslovna izmena izdate fakture blokirana je u običnom update toku.
+
+Legacy dokumenti bez potpunih snapshot podataka dostupni su kroz postojeće PDF fajlove i istoriju. Zahtev za regeneraciju vraća 409. Email zahteva izdavanje ili zaštićeni legacy dokument sa dostupnim fajlom. Slanje koristi određenu zaštićenu PDF verziju, a retry sa istim ključem vraća prethodni ishod i čuva stanje naplate.

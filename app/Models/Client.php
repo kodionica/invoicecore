@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -46,6 +47,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @mixin \Eloquent
  */
 class Client extends Model {
+    use HasFactory;
     protected $fillable = [
         'name',
         'tax_id',
@@ -56,7 +58,23 @@ class Client extends Model {
         'email',
         'phone',
         'client_type',
+        'country_code',
+        'postal_code',
+        'contact_person',
+        'default_currency',
+        'preferred_language',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(static function (Client $client): void {
+            if (! array_key_exists('country_code', $client->getAttributes())) {
+                $client->country_code = $client->country
+                    ? \App\Support\ClientProfile::recognizeCountry($client->country)
+                    : 'RS';
+            }
+        });
+    }
 
     public function company(): BelongsTo {
         return $this->belongsTo( Company::class );

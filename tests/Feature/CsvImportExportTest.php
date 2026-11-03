@@ -89,3 +89,22 @@ it('rejects invalid invoice rows before import and imports clients without overw
     ])->assertOk();
     expect($company->clients()->where('email', 'new@example.test')->exists())->toBeTrue();
 });
+
+it('maps legacy client types and shares country and identifier validation with the API', function () {
+    [$user, $company] = csvTestContext('csv-client-profiles@example.test');
+    $this->actingAs($user);
+    $csv = "name;country;client_type;tax_id;default_currency;preferred_language\nForeign;Nemačka;b2b;001-A;EUR;sr-Latn\n";
+    $preview = $this->post('/api/import-export/clients/preview', ['file' => csvUpload($csv)])
+        ->assertOk()->assertJsonPath('can_import', true);
+    $this->withHeaders(['Accept' => 'application/json'])->post('/api/import-export/clients/import', [
+        'file' => csvUpload($csv), 'mapping' => json_encode($preview->json('mapping')), 'confirmed' => 1,
+    ])->assertOk();
+    $this->assertDatabaseHas('clients', [
+        'company_id' => $company->id, 'name' => 'Foreign', 'country' => 'Nemačka',
+        'country_code' => 'DE', 'client_type' => 'company', 'tax_id' => '001-A', 'default_currency' => 'EUR',
+    ]);
+    $this->post('/api/import-export/clients/preview', ['file' => csvUpload($csv)])
+        ->assertOk()->assertJsonPath('can_import', false);
+    expect($this->get('/api/import-export/clients/export')->streamedContent())
+        ->toContain('country_code', 'preferred_language', '001-A');
+});

@@ -33,6 +33,18 @@ if (config('database.default') !== 'mariadb'
 [$companyId, $year, $encodedEntries, $readyFile, $releaseFile, $mode] = array_pad(array_slice($argv, 1), 6, null);
 $entries = json_decode(base64_decode((string) $encodedEntries), true, 512, JSON_THROW_ON_ERROR);
 
+if ($mode === 'issue') {
+    config(['filesystems.disks.local.root' => dirname($readyFile).'/invoice-pdfs']);
+    $pdf = Mockery::mock(\Spatie\LaravelPdf\PdfBuilder::class);
+    $pdf->shouldReceive('format', 'withBrowsershot', 'disk')->andReturnSelf();
+    $pdf->shouldReceive('save')->andReturnUsing(static function (string $path) use ($pdf) {
+        \Illuminate\Support\Facades\Storage::disk('local')->put($path, '%PDF issuance test');
+
+        return $pdf;
+    });
+    \Spatie\LaravelPdf\Facades\Pdf::shouldReceive('html')->andReturn($pdf);
+}
+
 if ($mode === 'fail_after_first') {
     KpoEntry::creating(static function (KpoEntry $entry): void {
         if ($entry->income_category === 'service') {
@@ -66,7 +78,14 @@ if (! in_array($mode, ['fail_after_first', 'fail_regeneration_revision'], true))
 
 try {
     $company = Company::query()->findOrFail((int) $companyId);
-    if ($mode === 'regenerate' || $mode === 'fail_regeneration_revision') {
+    if ($mode === 'issue') {
+        \Illuminate\Support\Facades\Auth::setUser($company->user);
+        $invoice = $company->invoices()->findOrFail($entries['invoice_id']);
+        $response = app(\App\Http\Controllers\InvoiceController::class)->issue($invoice);
+        if ($response->getStatusCode() !== 200) {
+            throw new RuntimeException('Invoice issuance did not succeed.');
+        }
+    } elseif ($mode === 'regenerate' || $mode === 'fail_regeneration_revision') {
         app(KpoEntryService::class)->regenerateFromInvoices(
             $company,
             (int) $year,

@@ -15,15 +15,17 @@ class ClientFactory extends Factory {
      * @return array<string, mixed>
      */
     public function definition(): array {
-        $user = User::all()->random();
-
         return [
-            'user_id'    => $user?->id,
+            'company_id' => function (): int {
+                $owner = User::factory()->create(['username' => $this->faker->unique()->userName()]);
+
+                return $owner->companies()->create(['name' => $this->faker->company(), 'currency' => 'RSD'])->id;
+            },
             'name'       => $this->faker->company(),
             'email'      => $this->faker->unique()->safeEmail(),
             'address'    => $this->faker->address(),
-            'country'    => $this->faker->country(),
-            'vat_number' => $this->faker->bothify( '??#########' ),
+            'country_code' => 'RS',
+            'client_type' => 'company',
         ];
     }
 }

@@ -214,9 +214,6 @@ export default function Invoices() {
                 ? crypto.randomUUID()
                 : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             await sendInvoiceEmail( id, undefined, operationKey );
-            if ( currentStatus !== 'sent' ) {
-                await updateInvoiceStatus( id, 'sent' as any );
-            }
             toast.success( `Email je poslat${ clientName ? ` (${ clientName })` : '' }` );
         } catch ( error: any ) {
             const message = error?.response?.data?.message ?? 'Neuspešno slanje emaila.';

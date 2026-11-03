@@ -12,6 +12,8 @@
 
 Implementacija je u InvoiceController, Form Request klasama, Invoice modelu, policies i AppContext/React stranicama.
 
+Pri kreiranju fakture stavke podrazumevano dobijaju kategoriju Usluga (`service`). Eksplicitno izabrana kategorija ima prednost.
+
 ## Iznosi, valute i PDV
 
 Server čuva subtotal, porez i total u originalnoj valuti i RSD, uz fx_rate_to_rsd, fx_provider i fx_date snapshot. Kurs dobavlja ExchangeRateService; nova faktura ne zavisi od kasnije promene kursa.
@@ -32,7 +34,7 @@ Dospelost se računa kada due_date postoji, prethodi današnjem datumu firme i s
 
 ## Bankovni račun fakture
 
-Faktura čuva bank_account_id i snapshot bankarskih instrukcija. Pri kreiranju se bira aktivan račun odgovarajuće valute; kasnija promena/deaktiviranje računa ne menja već sačuvanu fakturu ili PDF. Stare fakture bez snapshot-a koriste legacy payment polja.
+Faktura čuva bank_account_id i snapshot bankarskih instrukcija. Pri kreiranju se bira aktivan račun odgovarajuće valute; kasnija promena/deaktiviranje računa ne menja već sačuvanu fakturu ili PDF. Zaštićene stare fakture bez snapshot-a koriste sačuvani PDF.
 
 ## KPO
 
@@ -41,3 +43,15 @@ include_in_kpo kontroliše da li se faktura nudi za novo KPO generisanje. KPO da
 ## Otvorena pitanja
 
 Računovodstveno značenje KPO prihoda, storno i zaključavanje perioda dokumentovani su u otvorena-pitanja.md.
+
+## Eksplicitno izdavanje i integritet
+
+`POST /api/invoices/{invoice}/issue` zaključava podatke kupca, izdavaoca i stavki, generiše zaštićeni PDF i upisuje `issued_at`. Ponovljen zahtev vraća istu izdatu fakturu. `sent` ostaje kompatibilan status prikaza, dok ishod slanja pripada email evidenciji.
+
+Obična izmena i brisanje zaključanih poslovnih podataka vraćaju 409. Evidencija naplate i KPO ostaju odvojene operacije. Korektivni dokumenti i dozvoljene tehničke revizije zahtevaju definisana poslovna pravila pre dodavanja zasebnog toka.
+
+Pre primene novih migracija proveriti FK pravila i dostupnost istorijskih PDF verzija. Stari dokumenti sa statusom ili evidencijom zaštite/slanja ostaju zaključani bez automatskog popunjavanja `issued_at`. Klijent ili firma sa povezanom istorijom dobijaju 409 pri brisanju.
+
+## Datum prometa
+
+`service_date` je zaseban datum. Pri kreiranju se bez eksplicitne vrednosti koristi datum izdavanja. Izmena koja izostavi polje čuva sačuvanu vrednost. Za istorijske zapise bez datuma prometa dokument koristi datum izdavanja pri prikazu. Izdavanje zaključava datum prometa zajedno sa ostalim poslovnim podacima.

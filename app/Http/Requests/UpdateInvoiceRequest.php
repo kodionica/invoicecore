@@ -22,6 +22,7 @@ class UpdateInvoiceRequest extends FormRequest
             'client_id' => ['sometimes', 'integer'],
             'invoice_number' => ['sometimes', 'string', 'max:255'],
             'issue_date' => ['sometimes', 'date'],
+            'service_date' => ['sometimes', 'date_format:Y-m-d'],
             'due_date' => ['sometimes', 'date'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'payment_method' => ['sometimes', 'nullable', 'string'],

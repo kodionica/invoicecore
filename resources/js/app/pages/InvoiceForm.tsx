@@ -12,8 +12,10 @@ interface InvoiceFormData {
     clientId: string;
     number: string;
     date: string;
+    serviceDate: string;
     dueDate: string;
     currency: string;
+    documentLocale?: string;
     paymentMethod: string;
     includeInKpo: boolean;
     bankAccountId: string;
@@ -36,6 +38,7 @@ export default function InvoiceForm() {
     const [confirmKpoConflict, setConfirmKpoConflict] = useState(false);
     const [confirmManualKpoOverwrite, setConfirmManualKpoOverwrite] = useState(false);
     const [saving, setSaving] = useState(false);
+    const serviceDateManuallyEdited = useRef(false);
     const editInitialCurrency = useRef<string | null>(null);
     const activeCompany = activeCompanyId ? companies.find(company => company.id === activeCompanyId) : undefined;
     const todayString = companyToday(activeCompany?.timezone);
@@ -43,12 +46,13 @@ export default function InvoiceForm() {
     const today = new Date(todayYear, todayMonth - 1, todayDay);
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const lastDayOfMonthString = formatLocalDate(lastDayOfMonth);
-    const dueDate = addDaysToDate(lastDayOfMonth, 15);
+    const dueDate = addDaysToDate(lastDayOfMonth, 14);
 
     const {register, control, handleSubmit, watch, setValue, reset, formState: {errors, dirtyFields}} = useForm<InvoiceFormData>({
         defaultValues: {
             number: '',
             date: lastDayOfMonthString,
+            serviceDate: lastDayOfMonthString,
             dueDate: formatLocalDate(dueDate),
             currency: '',
             paymentMethod: '',
@@ -60,7 +64,7 @@ export default function InvoiceForm() {
                 description: `Web razvoj, računarsko programiranje i IT podrška po Ugovoru o poslovno-tehničkoj saradnji za ${String(today.getMonth() + 1).padStart(2, '0')}-${today.getFullYear()}. godine / {{ HOURS }} h / {{ PRICE }} EUR`,
                 quantity: 1,
                 price: 100,
-                incomeCategory: 'unclassified'
+                incomeCategory: 'service'
             }]
         }
     });
@@ -71,6 +75,7 @@ export default function InvoiceForm() {
             clientId: String(editingInvoice.clientId),
             number: editingInvoice.number,
             date: editingInvoice.date,
+            serviceDate: editingInvoice.serviceDate ?? '',
             dueDate: editingInvoice.dueDate,
             currency: editingInvoice.currency,
             paymentMethod: editingInvoice.paymentMethod ?? '',
@@ -97,7 +102,18 @@ export default function InvoiceForm() {
     const watchItems = watch("items");
     const watchVatEnabled = watch("vatEnabledAtIssue");
     const watchDate = watch("date");
+
+    useEffect(() => {
+        serviceDateManuallyEdited.current = false;
+    }, [editingInvoiceId]);
+
+    useEffect(() => {
+        if (!isEdit && !serviceDateManuallyEdited.current) {
+            setValue('serviceDate', watchDate);
+        }
+    }, [isEdit, setValue, watchDate]);
     const selectedCurrency = watch("currency");
+    const selectedClient = clients.find(client => client.id === Number(watch("clientId")) && client.companyId === activeCompanyId);
     const selectedBankAccountId = watch("bankAccountId");
     const matchingBankAccounts = useMemo(
         () => (activeCompany?.bankAccounts ?? []).filter(account => account.currency === String(selectedCurrency ?? '').toUpperCase() && account.isActive),
@@ -171,22 +187,25 @@ export default function InvoiceForm() {
     }, [activeCompanyId, dirtyFields.number, getNextInvoiceNumber, isEdit, setValue]);
 
     useEffect(() => {
-        if (isEdit || !activeCompany?.currency) return;
+        if (isEdit) return;
         if (!dirtyFields.currency) {
-            setValue('currency', activeCompany.currency);
+            setValue('currency', selectedClient?.default_currency ?? activeCompany?.currency ?? 'RSD');
         }
-    }, [activeCompany?.currency, dirtyFields.currency, setValue]);
+        if (!dirtyFields.documentLocale) {
+            setValue('documentLocale', selectedClient?.preferred_language ?? 'sr-Latn');
+        }
+    }, [isEdit, activeCompany?.currency, selectedClient, dirtyFields.currency, dirtyFields.documentLocale, setValue]);
 
     useEffect(() => {
-        if (!activeCompany?.payment_due_days) return;
+        if (isEdit) return;
         if (!watchDate) return;
         if (dirtyFields.dueDate) return;
         const [year, month, day] = watchDate.split('-').map(Number);
         const baseDate = new Date(year, month - 1, day);
         if (Number.isNaN(baseDate.getTime())) return;
-        const dueDate = addDaysToDate(baseDate, activeCompany.payment_due_days);
+        const dueDate = addDaysToDate(baseDate, activeCompany?.payment_due_days ?? 14);
         setValue('dueDate', formatLocalDate(dueDate), {shouldDirty: false});
-    }, [activeCompany?.payment_due_days, dirtyFields.dueDate, setValue, watchDate]);
+    }, [activeCompany?.payment_due_days, dirtyFields.dueDate, isEdit, setValue, watchDate]);
 
     useEffect(() => {
         if (!selectedCurrency) return;
@@ -218,8 +237,10 @@ export default function InvoiceForm() {
             clientId: Number(data.clientId),
             number: data.number,
             date: data.date,
+            serviceDate: data.serviceDate || undefined,
             dueDate: data.dueDate,
             currency: data.currency,
+            documentLocale: data.documentLocale,
             paymentMethod: data.paymentMethod,
             includeInKpo: data.includeInKpo,
             bankAccountId: data.bankAccountId ? Number(data.bankAccountId) : null,
@@ -432,6 +453,26 @@ export default function InvoiceForm() {
                     </div>
 
                     <div>
+                        <label htmlFor="service-date" className="block text-sm font-medium text-gray-700">Datum prometa</label>
+                        <div className="mt-1 relative rounded-md shadow-sm">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <Calendar className="h-5 w-5 text-gray-400"/>
+                            </div>
+                            <input
+                                id="service-date"
+                                type="date"
+                                {...register('serviceDate', {
+                                    required: !isEdit || Boolean(editingInvoice?.serviceDate),
+                                    onChange: () => { serviceDateManuallyEdited.current = true; },
+                                })}
+                                className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-2 border"
+                            />
+                        </div>
+                        {errors.serviceDate && <p className="mt-1 text-sm text-red-600">Unesite datum prometa.</p>}
+                        {serverErrors.service_date?.map(message => <p key={message} className="mt-1 text-sm text-red-600">{message}</p>)}
+                    </div>
+
+                    <div>
                         <label className="block text-sm font-medium text-gray-700">Rok Plaćanja</label>
                         <div className="mt-1 relative rounded-md shadow-sm">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -466,6 +507,16 @@ export default function InvoiceForm() {
                         </select>
                         {errors.currency && <p className="mt-1 text-sm text-red-600">{errors.currency.message}</p>}
                     </div>
+
+                    {!isEdit && <div>
+                        <label htmlFor="documentLocale" className="block text-sm font-medium text-gray-700">Jezik fakture</label>
+                        <select id="documentLocale" {...register('documentLocale')} className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3">
+                            {Object.entries(meta?.invoice_languages ?? {'sr-Latn': 'Srpski (latinica)'}).map(([code, label]) =>
+                                <option key={code} value={code}>{label}</option>
+                            )}
+                        </select>
+                        {serverErrors.document_locale?.map(message => <p key={message} className="text-sm text-red-600">{message}</p>)}
+                    </div>}
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700">Način Plaćanja</label>
@@ -534,7 +585,7 @@ export default function InvoiceForm() {
                         <h3 className="text-lg font-medium leading-6 text-gray-900">Stavke</h3>
                         <button
                             type="button"
-                            onClick={() => append({description: '', quantity: 1, price: 0, incomeCategory: 'unclassified'})}
+                            onClick={() => append({description: '', quantity: 1, price: 0, incomeCategory: isEdit ? 'unclassified' : 'service'})}
                             className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                         >
                             <Plus className="h-4 w-4 mr-1"/>

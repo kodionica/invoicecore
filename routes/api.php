@@ -45,6 +45,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('currency-rates/{currency}/today', CurrencyRateController::class);
 
     Route::get('invoices/next-number', [InvoiceController::class, 'nextNumber']);
+    Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'issue']);
     Route::apiResource('invoices', InvoiceController::class);
     Route::get('invoices/{invoice}/history', [InvoiceController::class, 'history']);
     Route::patch('invoices/{invoice}/items/classifications', [InvoiceController::class, 'updateItemClassifications']);

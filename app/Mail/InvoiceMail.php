@@ -30,8 +30,8 @@ class InvoiceMail extends Mailable {
             ->subject( $this->subjectText )
             ->view( 'emails.invoice', [
                 'invoice' => $this->invoice,
-                'company' => $this->invoice->company,
-                'client'  => $this->invoice->client,
+                'companyName' => $this->invoice->seller_snapshot['name'] ?? null,
+                'clientName' => $this->invoice->buyer_snapshot['name'] ?? null,
                 'body' => $this->messageText,
             ] )
             ->attach( Storage::disk( 'local' )->path( $this->pdfPath ), [

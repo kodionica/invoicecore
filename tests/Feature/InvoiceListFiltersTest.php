@@ -45,8 +45,8 @@ it('uses existing scoped status endpoints for successful and failed bulk-style o
     $this->actingAs($user);
     $this->putJson("/api/invoices/{$first->id}", ['status' => 'paid'])->assertUnprocessable()->assertJsonValidationErrors('paid_at');
     $this->putJson("/api/invoices/{$first->id}", ['status' => 'paid', 'paid_at' => '2026-03-10', 'payment_note' => 'Grupna uplata'])->assertOk();
-    $this->putJson("/api/invoices/{$second->id}", ['status' => 'draft'])->assertOk();
+    $this->putJson("/api/invoices/{$second->id}", ['status' => 'draft'])->assertConflict();
     $this->putJson("/api/invoices/{$foreignInvoice->id}", ['status' => 'paid', 'paid_at' => '2026-03-10'])->assertForbidden();
 
-    expect($first->fresh()->status)->toBe('paid')->and($first->fresh()->paid_at?->toDateString())->toBe('2026-03-10')->and($second->fresh()->status)->toBe('draft');
+    expect($first->fresh()->status)->toBe('paid')->and($first->fresh()->paid_at?->toDateString())->toBe('2026-03-10')->and($second->fresh()->status)->toBe('sent');
 });

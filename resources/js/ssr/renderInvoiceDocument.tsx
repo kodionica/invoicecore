@@ -5,30 +5,31 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { buildIpsQrBodyParams, fetchIpsQrCode } from '../app/utils/ipsQrCode';
 import { resolveInvoiceDocumentState } from '../app/utils/invoiceDocumentState';
 
-export async function render(props: InvoiceDocumentProps): Promise<string> {
-    const queryClient = new QueryClient({
-        defaultOptions: {
-            queries: {
-                retry: false,
-            },
-        },
-    });
-
-    const { invoice, client, company } = props;
+export async function resolveQrCode(props: InvoiceDocumentProps): Promise<string | null> {
+    if (props.qrCode !== undefined) {
+        return props.qrCode;
+    }
     const state = resolveInvoiceDocumentState(props);
-    let qrCode: string | null = null;
+    if (!state.canGenerateQrCode) {
+        return null;
+    }
 
-    if (state.canGenerateQrCode) {
-        const bodyParams = buildIpsQrBodyParams({
-            company,
-            client,
-            invoice,
+    try {
+        return await fetchIpsQrCode(buildIpsQrBodyParams({
+            company: props.company,
+            client: props.client,
+            invoice: props.invoice,
             amountInRSD: state.amountInRSD,
             clientTypeCode: state.clientTypeCode,
-        });
-
-        qrCode = await fetchIpsQrCode(bodyParams);
+        }));
+    } catch {
+        return null;
     }
+}
+
+export async function render(props: InvoiceDocumentProps): Promise<string> {
+    const queryClient = new QueryClient({defaultOptions: {queries: {retry: false}}});
+    const qrCode = await resolveQrCode(props);
 
     return renderToStaticMarkup(
         <QueryClientProvider client={queryClient}>

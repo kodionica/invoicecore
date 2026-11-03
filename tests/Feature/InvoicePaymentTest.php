@@ -48,6 +48,7 @@ function paymentFixture(string $email = 'invoice-payment@example.com'): array
 
 it('marks an invoice paid with a date and records payment changes in audit history', function () {
     [$user, $company, $client, $invoice] = paymentFixture('invoice-payment-mark@example.com');
+    $invoice->update(['status' => 'sent']);
     $this->actingAs($user);
 
     $this->putJson("/api/invoices/{$invoice->id}", [
@@ -83,12 +84,12 @@ it('updates payment details and clears the active payment date when leaving paid
         'payment_note' => null,
     ])->assertOk();
 
-    $this->putJson("/api/invoices/{$invoice->id}", ['status' => 'draft'])
+    $this->putJson("/api/invoices/{$invoice->id}", ['status' => 'sent'])
         ->assertOk();
 
     $this->assertDatabaseHas('invoices', [
         'id' => $invoice->id,
-        'status' => 'draft',
+        'status' => 'sent',
         'paid_at' => null,
         'payment_note' => null,
     ]);

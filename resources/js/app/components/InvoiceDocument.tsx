@@ -35,6 +35,8 @@ export interface InvoiceDocumentClient {
     address?: string | null;
     city?: string | null;
     country?: string | null;
+    country_code?: string | null;
+    postal_code?: string | null;
     phone?: string | null;
     tax_id?: string | null;
     registration_number?: string | null;
@@ -46,12 +48,14 @@ export interface InvoiceDocumentItem {
     description: string;
     quantity: number;
     price: number;
+    subtotal?: number;
 }
 
 export interface InvoiceDocumentInvoice {
     id: number;
     number: string;
     date: string;
+    serviceDate?: string | null;
     dueDate: string;
     currency?: string | null;
     paymentMethod: string;
@@ -60,8 +64,11 @@ export interface InvoiceDocumentInvoice {
     subtotalOriginal?: number;
     taxOriginal?: number;
     totalOriginal?: number;
-    totalRsd?: number;
-    fxRateToRsd?: number;
+    subtotalRsd?: number | null;
+    taxRsd?: number | null;
+    totalRsd?: number | null;
+    fxRateToRsd?: number | null;
+    note?: string | null;
     vatEnabledAtIssue?: boolean | null;
     bankAccountId?: number | null;
     bankAccountNumber?: string | null;
@@ -83,6 +90,7 @@ export interface InvoiceDocumentProps {
     className?: string;
     meta?: MetaData | null;
     qrCode?: string | null;
+    locale?: string;
 }
 
 export default function InvoiceDocument({
@@ -93,6 +101,7 @@ export default function InvoiceDocument({
                                             className,
                                             meta,
                                             qrCode: providedQrCode,
+                                            locale = 'sr-Latn',
                                         }: InvoiceDocumentProps) {
     const safeMeta = meta ?? {
         countries: {},
@@ -123,34 +132,26 @@ export default function InvoiceDocument({
     const vatStatus = invoice.vatEnabledAtIssue;
     const hasKnownVat = vatStatus === true || vatStatus === false;
     const showVatRow = vatStatus === true || (vatStatus === null && taxAmount !== 0);
-    const isExternalPayment = effectiveCompany.country !== ccountry;
+    const buyerCountry = client.country_code
+        ? new Intl.DisplayNames([locale], {type: 'region'}).of(client.country_code) ?? ccountry
+        : ccountry;
+    const sellerCountry = effectiveCompany.country === 'Srbija' ? 'RS' : effectiveCompany.country;
+    const isExternalPayment = sellerCountry !== (client.country_code ?? (ccountry === 'Srbija' ? 'RS' : ccountry));
     const paymentMethodLabel = Array.isArray(safeMeta.payment_methods)
         ? safeMeta.payment_methods.find(method => method.key === invoice.paymentMethod)?.label
         : safeMeta.payment_methods?.[invoice.paymentMethod];
-    const {data: exchangeRateData, error: exchangeRateError} = useQuery({
-        queryKey: ['currency', resolvedCurrency],
-        queryFn: async () => {
-            const response = await fetch(`/api/currency-rates/${resolvedCurrency}/today`);
-            if (!response.ok) {
-                throw new Error('Neuspesno preuzimanje dnevnog kursa.');
-            }
-
-            return response.json();
-        },
-        enabled: shouldConvertToRSD && !hasStoredFxRate
-    });
-
-    const exchangeRate = hasStoredFxRate ? invoice.fxRateToRsd : exchangeRateData?.exchange_middle;
-    const resolvedAmountInRSD = shouldConvertToRSD && exchangeRate
-        ? totalWithVat * exchangeRate
-        : amountInRSD;
-    const displayCurrency = shouldConvertToRSD ? 'RSD' : resolvedCurrency;
+    const exchangeRate = hasStoredFxRate ? invoice.fxRateToRsd : undefined;
+    const resolvedAmountInRSD = amountInRSD;
+    const displayCurrency = shouldConvertToRSD && exchangeRate ? 'RSD' : resolvedCurrency;
     const convertToDisplayAmount = (amount: number) => (
         shouldConvertToRSD && exchangeRate ? amount * exchangeRate : amount
     );
-    const renderAmount = (amount: number) => {
-        const primary = formatCurrency(convertToDisplayAmount(amount), displayCurrency);
-        if (!shouldConvertToRSD) {
+    const renderAmount = (amount: number, storedRsd?: number | null) => {
+        const displayAmount = shouldConvertToRSD && exchangeRate
+            ? storedRsd ?? convertToDisplayAmount(amount)
+            : amount;
+        const primary = formatCurrency(displayAmount, displayCurrency);
+        if (!shouldConvertToRSD || !exchangeRate) {
             return primary;
         }
 
@@ -182,10 +183,6 @@ export default function InvoiceDocument({
 
     if (error) {
         toast.error(error.message);
-    }
-
-    if (exchangeRateError) {
-        toast.error(exchangeRateError.message);
     }
 
     if (providedQrCode === undefined && isDomesticPayment && !isLoading && data?.s?.code !== 0 && data !== undefined) {
@@ -234,7 +231,7 @@ export default function InvoiceDocument({
                             <div className="flex justify-between gap-8">
                                 <span>Datum prometa:</span>
                                 <span className="font-medium text-gray-900">
-                                    {format(new Date(invoice.date), 'dd. MMM yyyy', {locale: srLatn})}
+                                    {format(new Date(invoice.serviceDate ? `${invoice.serviceDate}T00:00:00` : invoice.date), 'dd. MMM yyyy', {locale: srLatn})}
                                 </span>
                             </div>
                             <div className="flex justify-between gap-8">
@@ -252,11 +249,11 @@ export default function InvoiceDocument({
                         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Za klijenta:</h3>
                         <div className="text-gray-900 font-medium text-lg">{cname}</div>
                         <div className="text-gray-500 text-sm mt-1 space-y-1">
-                            <p>{[caddress, ccity, ccountry].join(', ')}</p>
+                            <p>{[caddress, [client.postal_code, ccity].filter(Boolean).join(' '), buyerCountry].filter(Boolean).join(', ')}</p>
                             {cemail && <p>{cemail}</p>}
                             {cphone && <p>{cphone}</p>}
-                            {ctax_id && <p>PIB: {ctax_id}</p>}
-                            {cregistration_number && <p>MB: {cregistration_number}</p>}
+                            {ctax_id && <p>{client.country_code && client.country_code !== 'RS' ? 'Tax ID / TIN' : 'PIB'}: {ctax_id}</p>}
+                            {cregistration_number && <p>{client.country_code && client.country_code !== 'RS' ? 'Registration number' : 'MB'}: {cregistration_number}</p>}
                         </div>
                     </div>
                 </div>
@@ -282,7 +279,7 @@ export default function InvoiceDocument({
                                     {renderAmount(item.price)}
                                 </td>
                                 <td className="py-4 pl-3 pr-4 text-sm text-right text-gray-900 font-medium sm:pr-0">
-                                    {renderAmount(item.quantity * item.price)}
+                                    {renderAmount(item.subtotal ?? item.quantity * item.price)}
                                 </td>
                             </tr>
                         ))}
@@ -299,7 +296,7 @@ export default function InvoiceDocument({
                             <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Međuzbir</th>
                             <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Međuzbir</th>
                             <td className="pl-3 pr-4 pt-6 text-right text-sm text-gray-500 sm:pr-0">
-                                {renderAmount(subtotal)}
+                                {renderAmount(subtotal, invoice.subtotalRsd)}
                             </td>
                         </tr>
                         <tr>
@@ -314,7 +311,7 @@ export default function InvoiceDocument({
                                 <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-4 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">{hasKnownVat ? 'PDV' : 'PDV (status nije potvrđen)'}</th>
                                 <th scope="row" className="pl-4 pr-3 pt-4 text-left text-sm font-normal text-gray-500 sm:hidden">{hasKnownVat ? 'PDV' : 'PDV (status nije potvrđen)'}</th>
                                 <td className="pl-3 pr-4 pt-4 text-right text-sm text-gray-500 sm:pr-0">
-                                    {renderAmount(taxAmount)}
+                                    {renderAmount(taxAmount, invoice.taxRsd)}
                                 </td>
                             </tr>
                         )}
@@ -322,7 +319,7 @@ export default function InvoiceDocument({
                             <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-4 text-right text-base font-bold text-gray-900 sm:table-cell sm:pl-0">Ukupno za plaćanje</th>
                             <th scope="row" className="pl-4 pr-3 pt-4 text-left text-base font-bold text-gray-900 sm:hidden">Ukupno</th>
                             <td className="pl-3 pr-4 pt-4 text-right text-base font-bold text-gray-900 sm:pr-0">
-                                {renderAmount(totalWithVat)}
+                                {renderAmount(totalWithVat, invoice.totalRsd)}
                             </td>
                         </tr>
                         </tfoot>
@@ -330,6 +327,7 @@ export default function InvoiceDocument({
                 </div>
 
                 <div className="mt-12 pt-6 border-t border-gray-100">
+                    {invoice.note && <p className="whitespace-pre-wrap">{invoice.note}</p>}
                     {vatStatus === false && <p className="text-gray-500 text-sm">PDV nije obračunat na fakturi prema sačuvanom statusu u trenutku izdavanja.</p>}
                     {vatStatus === null && <p className="text-amber-700 text-sm">Istorijski PDV status ove fakture nije potvrđen; prikazani iznosi su sačuvani snapshot fakture.</p>}
                 </div>

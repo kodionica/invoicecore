@@ -16,8 +16,10 @@ class StoreInvoiceRequest extends FormRequest {
         return [
             'client_id'      => [ 'required', 'integer' ],
             'issue_date'     => [ 'nullable', 'date' ],
+            'service_date' => ['sometimes', 'date_format:Y-m-d'],
             'due_date'       => [ 'nullable', 'date' ],
             'invoice_number' => [ 'nullable', 'string', 'max:255' ],
+            'document_locale' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Support\ClientProfile::LANGUAGES))],
             'currency'       => [ 'nullable', 'string', 'size:3' ],
             'payment_method' => [ 'nullable', 'string' ],
             'note'           => [ 'nullable', 'string' ],

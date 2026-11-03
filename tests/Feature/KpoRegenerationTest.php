@@ -129,6 +129,7 @@ it('does not show a mixed invoice as actionable after initial KPO generation', f
 it('keeps an automatically synchronized invoice unchanged in regeneration preview and accepts a fresh confirmation', function () {
     [$user, $company, $client] = phaseFiveBContext('phase-fiveb-sync-preview@example.com');
     $invoice = phaseFiveBInvoice($company, $client->id, 'PHASE-SYNC-1', 100);
+    $invoice->update(['status' => 'draft']);
     phaseFiveBItem($invoice, 100, 'service');
     $this->actingAs($user);
 
