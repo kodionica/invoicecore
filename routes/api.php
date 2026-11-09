@@ -12,6 +12,7 @@ use App\Http\Controllers\CompanyBankAccountController;
 use App\Http\Controllers\CompanySwitchController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\KpoController;
+use App\Http\Controllers\TaxObligationController;
 use App\Http\Controllers\ImportExportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -67,6 +68,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('kpo/{kpo}', [KpoController::class, 'update']);
     Route::delete('kpo/{kpo}', [KpoController::class, 'destroy']);
     Route::post('kpo/{kpo}/remove-generated', [KpoController::class, 'removeGenerated']);
+
+    Route::prefix('companies/{company}/taxes')->where([
+        'company' => '[1-9][0-9]{0,17}',
+        'schedule' => '[1-9][0-9]{0,17}',
+        'obligation' => '[1-9][0-9]{0,17}',
+        'attachment' => '[1-9][0-9]{0,17}',
+    ])->controller(TaxObligationController::class)->group(function () {
+        Route::get('/', 'index');
+        Route::post('schedules', 'store');
+        Route::post('schedules/{schedule}/versions', 'revise');
+        Route::post('schedules/{schedule}/attachments', 'attach');
+        Route::get('schedules/{schedule}/attachments/{attachment}', 'download');
+        Route::post('generate', 'generate');
+        Route::put('calendar', 'calendar');
+        Route::get('obligations/{obligation}', 'show');
+        Route::patch('obligations/{obligation}', 'update');
+        Route::post('obligations/{obligation}/payments', 'pay');
+    });
 
     Route::put('profile', [ProfileController::class, 'update']);
     Route::put('password', [PasswordController::class, 'update']);

@@ -55,3 +55,13 @@ Pre primene novih migracija proveriti FK pravila i dostupnost istorijskih PDF ve
 ## Datum prometa
 
 `service_date` je zaseban datum. Pri kreiranju se bez eksplicitne vrednosti koristi datum izdavanja. Izmena koja izostavi polje čuva sačuvanu vrednost. Za istorijske zapise bez datuma prometa dokument koristi datum izdavanja pri prikazu. Izdavanje zaključava datum prometa zajedno sa ostalim poslovnim podacima.
+
+## Instrukcije za lokalni IPS QR
+
+Na RSD nacrtu forme postoji unos IPS šifre plaćanja, opcione svrhe i modela spojenog sa pozivom na broj. API prima `ips_payment_details` sa ključevima `SF`, `S` i `RO`, kroz postojeće store/update rute. Vrednosti se validiraju postojećim IpsQrService servisom i čuvaju u document_settings. Izostavljanje polja pri API izmeni čuva prethodne instrukcije.
+
+Šifra plaćanja se eksplicitno unosi prema osnovu plaćanja. Poziv na broj se upisuje sa svojim modelom kada je primenljiv. Za ranije fakture bez eksplicitne svrhe ostaje postojeće pravilo korišćenja prvih 35 znakova opisa prve stavke.
+
+Lokalni QR se generiše za RSD fakturu domaćeg izdavaoca i domaćeg klijenta, sa validnim domaćim dinarskim računom. Koristi se originalni iznos fakture, pretvoren u cele pare bez FX konverzije. Devizna faktura, strani klijent, devizni ili strani račun, nedostajuća šifra i nevalidne instrukcije daju objašnjenje na dokumentu.
+
+Vrsta izabranog računa čuva se uz instrukcije pri izboru računa. Već izdata faktura koristi seller/buyer, bankarske i QR snapshot podatke. Eksplicitne instrukcije zaključavaju se pri izdavanju.

@@ -29,6 +29,7 @@ class UpdateInvoiceRequest extends FormRequest
             'note' => ['sometimes', 'nullable', 'string'],
             'include_in_kpo' => ['sometimes', 'boolean'],
             'vat_enabled_at_issue' => ['sometimes', 'boolean'],
+            ...StoreInvoiceRequest::ipsRules(),
             'bank_account_id' => ['sometimes', 'nullable', 'integer'],
             'confirm_vat_status_change' => ['sometimes', 'boolean'],
             'kpo_confirmation' => ['sometimes', 'array'],
@@ -54,6 +55,7 @@ class UpdateInvoiceRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator): void {
+            StoreInvoiceRequest::validateIpsDetails($validator, $this->input('ips_payment_details'));
             $issueDate = $this->input('issue_date');
             $dueDate = $this->input('due_date');
 

@@ -95,6 +95,13 @@ class Invoice extends Model {
     ];
     protected $hidden = ['seller_snapshot', 'buyer_snapshot', 'document_settings'];
 
+    protected $appends = ['ips_payment_details'];
+
+    public function getIpsPaymentDetailsAttribute(): array
+    {
+        return $this->document_settings['ips_payment_details'] ?? [];
+    }
+
     protected $casts    = [
         'issued_at' => 'datetime',
         'seller_snapshot' => 'array',

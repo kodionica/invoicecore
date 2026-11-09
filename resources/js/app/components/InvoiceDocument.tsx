@@ -4,9 +4,6 @@ import {format} from 'date-fns';
 import {srLatn} from 'date-fns/locale';
 import {formatCurrency} from '../utils/format';
 import {MetaData} from "../context/AppContext";
-import {useQuery} from "@tanstack/react-query";
-import {toast} from "sonner";
-import {buildIpsQrBodyParams, fetchIpsQrCodeResponse} from '../utils/ipsQrCode';
 import {resolveInvoiceDocumentState} from '../utils/invoiceDocumentState';
 
 export interface InvoiceDocumentCompany {
@@ -90,6 +87,8 @@ export interface InvoiceDocumentProps {
     className?: string;
     meta?: MetaData | null;
     qrCode?: string | null;
+    qrCodeError?: string | null;
+    qrPayload?: string | null;
     locale?: string;
 }
 
@@ -100,7 +99,8 @@ export default function InvoiceDocument({
                                             currency,
                                             className,
                                             meta,
-                                            qrCode: providedQrCode,
+                                            qrCode,
+                                            qrCodeError,
                                             locale = 'sr-Latn',
                                         }: InvoiceDocumentProps) {
     const safeMeta = meta ?? {
@@ -119,12 +119,8 @@ export default function InvoiceDocument({
     };
     const {
         resolvedCurrency,
-        isDomesticPayment,
         shouldConvertToRSD,
         hasStoredFxRate,
-        clientTypeCode,
-        amountInRSD,
-        canGenerateQrCode,
     } = resolveInvoiceDocumentState({invoice, client, company: effectiveCompany, currency, meta});
     const subtotal = invoice.subtotalOriginal ?? invoice.totalOriginal ?? invoice.total;
     const taxAmount = invoice.taxOriginal ?? 0;
@@ -141,7 +137,6 @@ export default function InvoiceDocument({
         ? safeMeta.payment_methods.find(method => method.key === invoice.paymentMethod)?.label
         : safeMeta.payment_methods?.[invoice.paymentMethod];
     const exchangeRate = hasStoredFxRate ? invoice.fxRateToRsd : undefined;
-    const resolvedAmountInRSD = amountInRSD;
     const displayCurrency = shouldConvertToRSD && exchangeRate ? 'RSD' : resolvedCurrency;
     const convertToDisplayAmount = (amount: number) => (
         shouldConvertToRSD && exchangeRate ? amount * exchangeRate : amount
@@ -162,32 +157,6 @@ export default function InvoiceDocument({
             </div>
         );
     };
-
-    const bodyParams = canGenerateQrCode && effectiveCompany.bank_account
-        ? buildIpsQrBodyParams({
-            company: effectiveCompany,
-            client,
-            invoice,
-            amountInRSD: resolvedAmountInRSD,
-            clientTypeCode,
-        })
-        : [];
-
-    const {data, isLoading, error} = useQuery({
-        queryKey: ['qrCode', invoice.number, bodyParams.join('|')],
-        queryFn: () => fetchIpsQrCodeResponse(bodyParams),
-        enabled: providedQrCode === undefined && bodyParams.length > 0 && (!shouldConvertToRSD || Boolean(exchangeRate)),
-    });
-
-    const qrCode = providedQrCode ?? (data?.s?.code === 0 ? data.i : null);
-
-    if (error) {
-        toast.error(error.message);
-    }
-
-    if (providedQrCode === undefined && isDomesticPayment && !isLoading && data?.s?.code !== 0 && data !== undefined) {
-        toast.error("Nije moguće generisati IPS QR kod: ", {description: data?.e?.join('\n')})
-    }
 
     return (
         <div className={clsx('bg-white shadow-lg rounded-lg overflow-hidden print:shadow-none', className)}>
@@ -287,11 +256,13 @@ export default function InvoiceDocument({
                         <tfoot>
                         <tr>
                             <td rowSpan={3}>
-                                {isDomesticPayment && qrCode && (
+                                {qrCode && (
                                     <div>
-                                        <img src={`data:image/png;base64,${qrCode}`} alt="IPS QR Code" className="w-32 h-32"/>
+                                        <img src={`data:image/png;base64,${qrCode}`} alt="NBS IPS QR" className="w-32 h-32"/>
+                                        <span className="text-xs text-gray-500">NBS IPS QR</span>
                                     </div>
                                 )}
+                                {!qrCode && qrCodeError && <p className="max-w-xs pr-4 pt-4 text-xs text-gray-500">{qrCodeError}</p>}
                             </td>
                             <th scope="row" colSpan={2} className="hidden pl-4 pr-3 pt-6 text-right text-sm font-normal text-gray-500 sm:table-cell sm:pl-0">Međuzbir</th>
                             <th scope="row" className="pl-4 pr-3 pt-6 text-left text-sm font-normal text-gray-500 sm:hidden">Međuzbir</th>

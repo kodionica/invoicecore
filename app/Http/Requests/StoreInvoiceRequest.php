@@ -7,6 +7,25 @@ use Illuminate\Foundation\Http\FormRequest;
 use App\Models\Company;
 
 class StoreInvoiceRequest extends FormRequest {
+    public static function ipsRules(): array
+    {
+        return [
+            'ips_payment_details' => ['sometimes', 'array:SF,RO,S'],
+            'ips_payment_details.*' => ['nullable', 'string', 'max:100'],
+        ];
+    }
+
+    public static function validateIpsDetails($validator, $details): void
+    {
+        if ($validator->errors()->isNotEmpty() || ! is_array($details)) {
+            return;
+        }
+
+        foreach (app(\App\Services\IpsQrService::class)->paymentDetailErrors($details, false) as $tag => $error) {
+            $validator->errors()->add('ips_payment_details.'.$tag, $error);
+        }
+    }
+
     /**
      * Get the validation rules that apply to the request.
      *
@@ -25,6 +44,7 @@ class StoreInvoiceRequest extends FormRequest {
             'note'           => [ 'nullable', 'string' ],
             'include_in_kpo' => [ 'sometimes', 'boolean' ],
             'vat_enabled_at_issue' => [ 'sometimes', 'boolean' ],
+            ...StoreInvoiceRequest::ipsRules(),
             'bank_account_id' => [ 'sometimes', 'nullable', 'integer' ],
 
             'items'               => [ 'required', 'array', 'min:1' ],
@@ -38,6 +58,7 @@ class StoreInvoiceRequest extends FormRequest {
 
     public function withValidator( $validator ): void {
         $validator->after( function ( $validator ) {
+            StoreInvoiceRequest::validateIpsDetails($validator, $this->input('ips_payment_details'));
             $issueDate = $this->input( 'issue_date' );
             $dueDate   = $this->input( 'due_date' );
             $timezone = $this->user()?->activeCompany?->effectiveTimezone() ?? Company::DEFAULT_TIMEZONE;

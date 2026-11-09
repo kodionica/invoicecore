@@ -46,6 +46,12 @@ Prioriteti: P0 blokatori integriteta i bezbednosti, P1 svakodnevno poslovanje, P
 - Stanje: overdue filter, timezone firme, numeracija po firmi i PDF/e-mail tokovi postoje.
 - Preostalo: samo konkretni UX problemi potvrđeni testom; ne uvoditi generički refactor.
 
+### 8. Porezi i doprinosi
+
+- Stanje: godišnje rešenje, dodatni rasporedi, verzije iznosa i instrukcija, generisanje perioda, evidencija uplata, prilozi, podsetnici u modulu i lokalni IPS QR.
+- Stanje IPS QR-a faktura: integrisan zajednički lokalni servis, eksplicitne instrukcije za plaćanje, očuvanje sačuvanih QR slika i upotreba istog rezultata u React/SSR dokumentu.
+- [Porezi i doprinosi](porezi-i-doprinosi.md)
+
 ## P2
 
 - Export faktura/KPO u dodatne formate ako postoji konkretna potreba.

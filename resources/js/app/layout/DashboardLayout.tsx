@@ -11,7 +11,7 @@ import {
     ChevronDown,
     Bell,
     Search,
-    Menu, CurrencyIcon, BookOpen, ArrowDownUp
+    Menu, CurrencyIcon, BookOpen, ArrowDownUp, Receipt
 } from 'lucide-react';
 import {useApp} from '../context/AppContext';
 import clsx from 'clsx';
@@ -84,6 +84,7 @@ export default function DashboardLayout() {
         {to: "/dashboard", icon: LayoutDashboard, label: "Kontrolna Tabla", end: true},
         {to: "/dashboard/turnover", icon: CurrencyIcon, label: "Promet"},
         {to: "/dashboard/kpo", icon: BookOpen, label: "KPO evidencija"},
+        {to: "/dashboard/taxes", icon: Receipt, label: "Porezi i doprinosi"},
         {to: "/dashboard/clients", icon: Users, label: "Klijenti"},
         {to: "/dashboard/invoices", icon: FileText, label: "Fakture"},
         {to: "/dashboard/companies", icon: Building2, label: "Moje Firme"},

@@ -18,6 +18,7 @@ use App\Models\CompanyBankAccount;
 use App\Models\Company;
 use App\Services\ExchangeRateService;
 use App\Services\KpoEntryService;
+use App\Services\IpsQrService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -268,7 +269,11 @@ class InvoiceController extends Controller {
 
             $invoice = new Invoice($attrs);
             $invoice->forceFill([
-                'document_settings' => ['locale' => $attrs['document_locale'] ?? $buyer->preferred_language ?? 'sr-Latn'],
+                'document_settings' => [
+                    'locale' => $attrs['document_locale'] ?? $buyer->preferred_language ?? 'sr-Latn',
+                    'ips_payment_details' => $attrs['ips_payment_details'] ?? [],
+                    'bank_account_type' => $bankAccount?->account_type,
+                ],
             ])->save();
 
             foreach ( $attrs[ 'items' ] as $position => $item ) {
@@ -400,24 +405,21 @@ class InvoiceController extends Controller {
             $locked->forceFill([
                 'seller_snapshot' => $seller,
                 'buyer_snapshot' => $document['client'],
-                'document_settings' => ['locale' => $locked->document_settings['locale'] ?? 'sr-Latn', 'template_version' => 1, 'meta' => $document['meta']],
+                'document_settings' => [
+                    ...($locked->document_settings ?? []),
+                    'locale' => $locked->document_settings['locale'] ?? 'sr-Latn',
+                    'template_version' => 1,
+                    'meta' => $document['meta'],
+                    'qr_code' => $document['qrCode'],
+                    'qr_payload' => $document['qrPayload'],
+                    'qr_error' => $document['qrCodeError'],
+                ],
                 'bank_account_number' => $document['invoice']['bankAccountNumber'],
                 'bank_account_iban' => $document['invoice']['bankAccountIban'],
                 'bank_account_swift_bic' => $document['invoice']['bankAccountSwiftBic'],
                 'issued_at' => now(),
                 'status' => InvoiceStatus::SENT->value,
             ])->save();
-
-            $paymentCode = collect($document['meta']['client_types'])->firstWhere('value', $document['client']['client_type'])['code'] ?? null;
-            $buyerCountry = $document['client']['country_code'] ?? $document['client']['country'];
-            if ($paymentCode && $locked->bank_account_number && in_array($seller['country'], ['RS', 'Srbija'], true)
-                && in_array($buyerCountry, ['RS', 'Srbija'], true)) {
-                $issuedDocument = $this->buildInvoiceDocumentPayload($locked, null, null, $items);
-                unset($issuedDocument['qrCode']);
-                $settings = $locked->document_settings;
-                $settings['qr_code'] = json_decode($this->renderInvoiceDocumentWithSsr($issuedDocument, true), true, flags: JSON_THROW_ON_ERROR);
-                $locked->forceFill(['document_settings' => $settings])->save();
-            }
 
             $this->ensureInvoicePdf($locked, true);
             $this->protectCurrentPdfVersion($locked->refresh(), false);
@@ -677,7 +679,7 @@ class InvoiceController extends Controller {
         $expectedKpoConfirmationFingerprint = $kpoEntryService->invoiceEditConfirmationFingerprint($invoice, $data);
         $editableFields = ['client_id', 'invoice_number', 'issue_date', 'currency', 'items', 'include_in_kpo', 'vat_enabled_at_issue'];
         $isFullEdit = collect($editableFields)->contains(static fn (string $field): bool => array_key_exists($field, $data));
-        $hasPdfRelevantEdit = $isFullEdit || array_key_exists('note', $data) || array_key_exists('service_date', $data);
+        $hasPdfRelevantEdit = $isFullEdit || array_key_exists('note', $data) || array_key_exists('service_date', $data) || array_key_exists('ips_payment_details', $data);
 
         $requestedVatStatus = array_key_exists('vat_enabled_at_issue', $data)
             ? (bool) $data['vat_enabled_at_issue']
@@ -834,6 +836,9 @@ class InvoiceController extends Controller {
 
             if ($bankAccountSelectionProvided || $currency !== strtoupper((string) $lockedInvoice->currency)) {
                 $this->applyBankAccountSnapshot($data, $bankAccount);
+                $settings = $lockedInvoice->document_settings ?? [];
+                $settings['bank_account_type'] = $bankAccount?->account_type;
+                $lockedInvoice->forceFill(['document_settings' => $settings]);
             }
 
             if ($currency !== strtoupper((string) $lockedInvoice->currency)) {
@@ -911,7 +916,13 @@ class InvoiceController extends Controller {
             $taxRsd = $currency === 'RSD' ? $taxOriginal : $taxOriginal * (float) $fxRate;
             $totalRsd = $currency === 'RSD' ? $totalOriginal : $totalOriginal * (float) $fxRate;
 
-            $invoiceValues = collect($data)->except(['items', 'vat_enabled_at_issue', 'confirm_vat_status_change'])->all();
+            $invoiceValues = collect($data)->except(['items', 'vat_enabled_at_issue', 'confirm_vat_status_change', 'ips_payment_details'])->all();
+            if (array_key_exists('ips_payment_details', $data)) {
+                $settings = $lockedInvoice->document_settings ?? [];
+                $settings['ips_payment_details'] = $data['ips_payment_details'];
+                unset($settings['qr_code'], $settings['qr_payload'], $settings['qr_error']);
+                $lockedInvoice->forceFill(['document_settings' => $settings]);
+            }
             $invoiceValues['currency'] = $currency;
             $invoiceValues['fx_rate_to_rsd'] = $currency === 'RSD' ? 1 : $fxRate;
             $invoiceValues['subtotal_original'] = round($subtotalOriginal, 2);
@@ -1455,7 +1466,7 @@ class InvoiceController extends Controller {
             }
         }
 
-        return [
+        $payload = [
             'invoice' => [
                 'id'       => $invoice->id,
                 'number'   => (string) $invoice->invoice_number,
@@ -1528,7 +1539,6 @@ class InvoiceController extends Controller {
                 'client_type'          => (string) $client->client_type,
             ],
             'locale' => $invoice->document_settings['locale'] ?? 'sr-Latn',
-            ...($invoice->issued_at ? ['qrCode' => $invoice->document_settings['qr_code'] ?? null] : []),
             'currency' => $invoice->issued_at ? $invoice->currency : ($invoice->currency ?: $company->currency),
             'meta' => $invoice->issued_at ? $invoice->document_settings['meta'] : [
                 'countries'       => config( 'countries' ),
@@ -1537,9 +1547,73 @@ class InvoiceController extends Controller {
                 'client_types'    => config( 'client-type' ),
             ],
         ];
+
+        return [...$payload, ...$this->invoiceQrResult($invoice, $payload)];
     }
 
-    private function renderInvoiceDocumentWithSsr( array $payload, bool $qrOnly = false ): string {
+    private function invoiceQrResult(Invoice $invoice, array $document): array
+    {
+        $settings = $invoice->document_settings ?? [];
+        $result = ['qrCode' => null, 'qrPayload' => null, 'qrCodeError' => null];
+
+        if (is_string($settings['qr_code'] ?? null) && $settings['qr_code'] !== '') {
+            return [...$result, 'qrCode' => $settings['qr_code'], 'qrPayload' => $settings['qr_payload'] ?? null];
+        }
+        if ($invoice->issued_at && array_key_exists('qr_error', $settings)) {
+            return [...$result, 'qrCodeError' => $settings['qr_error']];
+        }
+
+        $seller = $document['company'];
+        $buyer = $document['client'];
+        $currency = strtoupper((string) $invoice->currency);
+        $accountCurrency = strtoupper((string) ($invoice->bank_account_currency ?? $currency));
+
+        if ($currency !== 'RSD' || $accountCurrency !== 'RSD') {
+            return [...$result, 'qrCodeError' => 'IPS QR je dostupan za domaće dinarske uplate. Faktura ili račun su u stranoj valuti.'];
+        }
+        if (! in_array($seller['country'] ?? null, ['RS', 'Srbija'], true)
+            || ! in_array($buyer['country_code'] ?? $buyer['country'] ?? null, ['RS', 'Srbija'], true)) {
+            return [...$result, 'qrCodeError' => 'IPS QR je dostupan za plaćanja između domaćeg izdavaoca i domaćeg klijenta.'];
+        }
+        $accountType = $settings['bank_account_type']
+            ?? (! $invoice->issued_at && $invoice->bank_account_id ? $invoice->bankAccount?->account_type : null);
+        if ($accountType === 'foreign'
+            || ($invoice->bank_account_iban && ! str_starts_with(strtoupper($invoice->bank_account_iban), 'RS'))) {
+            return [...$result, 'qrCodeError' => 'Izabrani bankovni račun nije domaći dinarski račun za IPS plaćanje.'];
+        }
+
+        $amount = (string) ($invoice->total_original ?? $invoice->total);
+        if (! preg_match('/\A([0-9]{1,12})(?:\.([0-9]{1,2}))?\z/', $amount, $parts)) {
+            return [...$result, 'qrCodeError' => 'Iznos fakture nije u podržanom formatu za IPS plaćanje.'];
+        }
+
+        $details = $settings['ips_payment_details'] ?? [];
+        // Older issued documents may already contain an explicit payment code in their metadata.
+        if (! array_key_exists('SF', $details) && $invoice->issued_at) {
+            $details['SF'] = collect($document['meta']['client_types'] ?? [])
+                ->firstWhere('value', $buyer['client_type'])['code'] ?? null;
+        }
+        $details['R'] = $document['invoice']['bankAccountNumber'] ?? '';
+        $details['N'] = $seller['name'] ?? '';
+        if (! array_key_exists('S', $details)) {
+            $details['S'] = mb_substr($document['invoice']['items'][0]['description'] ?? '', 0, 35);
+        }
+        $details['P'] = implode("\n", array_filter([
+            $buyer['name'] ?? '',
+            trim(implode(', ', array_filter([$buyer['address'] ?? '', $buyer['city'] ?? '']))),
+        ], fn ($line) => $line !== ''));
+        $amountMinor = (int) $parts[1] * 100 + (int) str_pad($parts[2] ?? '', 2, '0');
+
+        try {
+            $code = app(IpsQrService::class)->render($details, $amountMinor);
+
+            return [...$result, 'qrCode' => base64_encode($code['png']), 'qrPayload' => $code['payload']];
+        } catch (ValidationException $error) {
+            return [...$result, 'qrCodeError' => implode(' ', array_merge(...array_values($error->errors())))];
+        }
+    }
+
+    private function renderInvoiceDocumentWithSsr( array $payload ): string {
         $script_path = base_path( 'scripts/render-invoice-ssr.mjs' );
         $bundle_path = base_path( 'bootstrap/ssr/renderInvoiceDocument.js' );
 
@@ -1548,9 +1622,6 @@ class InvoiceController extends Controller {
         }
 
         $command = ['node', $script_path];
-        if ($qrOnly) {
-            $command[] = '--qr';
-        }
         $process = new Process($command, base_path(), null, json_encode($payload, JSON_THROW_ON_ERROR), 20);
         $process->run();
 

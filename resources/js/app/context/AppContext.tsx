@@ -95,6 +95,7 @@ export interface Invoice {
     paidAt?: string | null;
     paymentNote?: string | null;
     paymentMethod: string;
+    ipsPaymentDetails?: {SF?: string | null; RO?: string | null; S?: string | null};
     total: number;
     subtotalOriginal?: number;
     taxOriginal?: number;
@@ -408,6 +409,7 @@ interface InvoiceCreatePayload {
     number?: string;
     currency?: string;
     paymentMethod?: string;
+    ipsPaymentDetails?: {SF?: string | null; RO?: string | null; S?: string | null};
     note?: string;
     items: { id?: number; description: string; quantity: number; price: number; incomeCategory: InvoiceIncomeCategory }[];
     includeInKpo?: boolean;
@@ -517,7 +519,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const api = axios.create({
+export const api = axios.create({
     withCredentials: true,
     headers: {
         'X-Requested-With': 'XMLHttpRequest',
@@ -525,7 +527,7 @@ const api = axios.create({
     },
 });
 
-const ensureCsrf = async () => {
+export const ensureCsrf = async () => {
     await api.get('/sanctum/csrf-cookie');
 };
 
@@ -665,6 +667,11 @@ const normalizeInvoice = (invoice: any): Invoice => {
         fxRateToRsd: invoice.fx_rate_to_rsd !== undefined && invoice.fx_rate_to_rsd !== null
             ? Number(invoice.fx_rate_to_rsd)
             : undefined,
+        ipsPaymentDetails: {
+            SF: invoice.ips_payment_details?.SF ?? null,
+            RO: invoice.ips_payment_details?.RO ?? null,
+            S: invoice.ips_payment_details?.S ?? null,
+        },
         includeInKpo: invoice.include_in_kpo !== false,
         vatEnabledAtIssue: invoice.vat_enabled_at_issue ?? null,
         note: invoice.note ?? null,
@@ -1255,6 +1262,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             currency: invoice.currency,
             document_locale: invoice.documentLocale,
             payment_method: invoice.paymentMethod,
+            ips_payment_details: invoice.ipsPaymentDetails,
             note: invoice.note,
             include_in_kpo: invoice.includeInKpo !== false,
             vat_enabled_at_issue: invoice.vatEnabledAtIssue,
@@ -1282,6 +1290,7 @@ export function AppProvider({children}: { children: React.ReactNode }) {
             due_date: invoice.dueDate || undefined,
             currency: invoice.currency,
             payment_method: invoice.paymentMethod,
+            ips_payment_details: invoice.ipsPaymentDetails,
             note: invoice.note,
             include_in_kpo: invoice.includeInKpo !== false,
             vat_enabled_at_issue: invoice.vatEnabledAtIssue,

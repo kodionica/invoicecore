@@ -17,6 +17,9 @@ interface InvoiceFormData {
     currency: string;
     documentLocale?: string;
     paymentMethod: string;
+    ipsPaymentCode: string;
+    ipsReference: string;
+    ipsPurpose: string;
     includeInKpo: boolean;
     bankAccountId: string;
     vatEnabledAtIssue: boolean | null;
@@ -56,6 +59,9 @@ export default function InvoiceForm() {
             dueDate: formatLocalDate(dueDate),
             currency: '',
             paymentMethod: '',
+            ipsPaymentCode: '',
+            ipsReference: '',
+            ipsPurpose: '',
             includeInKpo: true,
             bankAccountId: '',
             vatEnabledAtIssue: activeCompany?.vat_enabled ?? false,
@@ -79,6 +85,9 @@ export default function InvoiceForm() {
             dueDate: editingInvoice.dueDate,
             currency: editingInvoice.currency,
             paymentMethod: editingInvoice.paymentMethod ?? '',
+            ipsPaymentCode: editingInvoice.ipsPaymentDetails?.SF ?? '',
+            ipsReference: editingInvoice.ipsPaymentDetails?.RO ?? '',
+            ipsPurpose: editingInvoice.ipsPaymentDetails?.S ?? '',
             includeInKpo: editingInvoice.includeInKpo,
             bankAccountId: editingInvoice.bankAccountId ? String(editingInvoice.bankAccountId) : '',
             vatEnabledAtIssue: editingInvoice.vatEnabledAtIssue ?? null,
@@ -242,6 +251,11 @@ export default function InvoiceForm() {
             currency: data.currency,
             documentLocale: data.documentLocale,
             paymentMethod: data.paymentMethod,
+            ipsPaymentDetails: {
+                SF: data.ipsPaymentCode.trim() || null,
+                RO: data.ipsReference.trim() || null,
+                S: data.ipsPurpose.trim() || null,
+            },
             includeInKpo: data.includeInKpo,
             bankAccountId: data.bankAccountId ? Number(data.bankAccountId) : null,
             vatEnabledAtIssue: data.vatEnabledAtIssue ?? undefined,
@@ -555,6 +569,26 @@ export default function InvoiceForm() {
                         {matchingBankAccounts.length === 0 && <p className="mt-1 text-sm text-amber-700">Nema aktivnog računa u valuti fakture. Faktura može biti sačuvana bez računa.</p>}
                         {matchingBankAccounts.length > 1 && !matchingBankAccounts.some(account => account.isDefault) && <p className="mt-1 text-sm text-amber-700">Izaberite račun jer postoji više aktivnih računa bez podrazumevanog izbora.</p>}
                     </div>
+
+                    {selectedCurrency === 'RSD' && (
+                        <details className="rounded-lg border border-gray-200 p-3 md:col-span-2">
+                            <summary className="cursor-pointer text-sm font-medium">Podaci za IPS QR plaćanje</summary>
+                            <p className="mt-2 text-xs text-gray-500">Unesite šifru prema osnovu plaćanja. Model i poziv na broj unesite spojeno, kada su primenljivi.</p>
+                            <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                {([
+                                    ['ipsPaymentCode', 'Šifra plaćanja', 'SF', 3],
+                                    ['ipsReference', 'Model i poziv na broj', 'RO', 25],
+                                    ['ipsPurpose', 'Svrha plaćanja', 'S', 35],
+                                ] as const).map(([field, label, tag, maxLength]) => (
+                                    <label key={field} className="text-sm text-gray-700">
+                                        {label}
+                                        <input {...register(field)} maxLength={maxLength} className="mt-1 block w-full rounded-md border-gray-300 px-3 py-2 text-sm shadow-sm"/>
+                                        {serverErrors[`ips_payment_details.${tag}`]?.map(message => <span key={message} className="mt-1 block text-red-600">{message}</span>)}
+                                    </label>
+                                ))}
+                            </div>
+                        </details>
+                    )}
 
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">PDV status u trenutku izdavanja</label>

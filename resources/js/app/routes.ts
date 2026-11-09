@@ -14,6 +14,7 @@ import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
 import Turnover from "./pages/Turnover";
 import Kpo from "./pages/Kpo";
+import TaxObligations from "./pages/TaxObligations";
 import ImportExport from "./pages/ImportExport";
 
 export const router = createBrowserRouter([
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
       { index: true, Component: Dashboard },
       { path: "turnover", Component: Turnover },
       { path: "kpo", Component: Kpo },
+      { path: "taxes", Component: TaxObligations },
       { path: "clients", Component: Clients },
       { path: "clients/new", Component: ClientForm },
       { path: "clients/:id", Component: ClientForm },
